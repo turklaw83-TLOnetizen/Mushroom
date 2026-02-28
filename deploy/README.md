@@ -1,8 +1,8 @@
-# TLO AllRise — Deployment Guide
+# Project Mushroom Cloud — Deployment Guide
 
 ## Quick Start (Local Development)
 ```bash
-cd /path/to/tlo-allrise-rebuild
+cd /path/to/project-mushroom-cloud
 pip install -r requirements.txt
 streamlit run app.py
 ```
@@ -10,12 +10,12 @@ streamlit run app.py
 ## Production Deployment
 
 ### 1. Systemd Service (Linux)
-Copy `tlo-allrise.service` to `/etc/systemd/system/` and enable:
+Copy `mushroom-cloud.service` to `/etc/systemd/system/` and enable:
 ```bash
-sudo cp deploy/tlo-allrise.service /etc/systemd/system/
+sudo cp deploy/mushroom-cloud.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now tlo-allrise
-sudo systemctl status tlo-allrise
+sudo systemctl enable --now mushroom-cloud
+sudo systemctl status mushroom-cloud
 ```
 
 ### 2. Secure Access (HTTPS)
@@ -33,10 +33,10 @@ chmod +x deploy/backup.sh
 # Test manually first
 ./deploy/backup.sh
 # Then add to cron (daily at 2 AM)
-sudo cp deploy/tlo-allrise-backup.timer /etc/systemd/system/
-sudo cp deploy/tlo-allrise-backup.service /etc/systemd/system/
+sudo cp deploy/mushroom-cloud-backup.timer /etc/systemd/system/
+sudo cp deploy/mushroom-cloud-backup.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now tlo-allrise-backup.timer
+sudo systemctl enable --now mushroom-cloud-backup.timer
 ```
 
 ### 4. Windows Deployment
