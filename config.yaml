@@ -1,0 +1,26 @@
+app_name: "Legal Prep Agent"
+version: "0.1.0"
+
+llm:
+  default_provider: "anthropic" # Options: "xai", "anthropic"
+  fallback_provider: "xai"
+  
+  xai:
+    model: "grok-4" # or "grok-4-fast-reasoning" if available
+    temperature: 0.3
+    max_tokens: 4096
+
+  anthropic:
+    model: "claude-4-6-opus-20260205"
+    temperature: 0.3
+    max_tokens: 4096
+
+  openai:
+    model: "whisper-1" # Industry standard for transcription
+
+storage:
+  vector_db_path: "./chroma_db"
+  upload_dir: "./uploads"
+
+privacy:
+  allow_external_api: true # Set to false to force local-only (requires local LLM setup)

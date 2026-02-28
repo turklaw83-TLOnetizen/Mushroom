@@ -1,0 +1,13 @@
+[Unit]
+Description=TLO AllRise Automated Backup
+After=network.target
+
+[Service]
+Type=oneshot
+User=tlo
+ExecStart=/opt/tlo-allrise/deploy/backup.sh
+Environment="TLO_DATA_DIR=/opt/tlo-allrise/data"
+Environment="DROPBOX_BACKUP_DIR=/home/tlo/Dropbox/TLO-AllRise-Backups"
+Environment="B2_BUCKET=tlo-allrise-backups"
+StandardOutput=journal
+StandardError=journal

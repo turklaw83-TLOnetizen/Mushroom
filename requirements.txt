@@ -1,0 +1,58 @@
+# TLO AllRise Legal Intelligence Suite - Dependencies
+# Core framework
+streamlit>=1.40.0
+streamlit-autorefresh>=1.0.1
+pyyaml>=6.0
+
+# LLM providers
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-anthropic>=0.3.0
+langchain-xai>=0.2.0
+langchain-google-genai>=2.0.0
+langchain-community>=0.3.0
+langgraph>=0.2.0
+
+# Embeddings & vector store
+langchain-openai>=0.2.0
+langchain-huggingface>=0.1.0
+chromadb>=0.5.0
+
+# Document processing
+pypdf>=4.0.0
+python-docx>=1.0.0
+fpdf2>=2.8.0
+openpyxl>=3.1.0
+Pillow>=10.0.0
+
+# OCR (optional)
+pytesseract>=0.3.10
+
+# Token counting
+tiktoken>=0.7.0
+
+# Data validation
+pydantic>=2.0.0
+
+# Web search
+duckduckgo-search>=6.0.0
+
+# Authentication
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+
+# Calendar sync (optional)
+google-api-python-client>=2.0.0
+
+# Email (billing)
+# Uses stdlib smtplib - no extra dependency
+
+# Testing
+pytest>=8.0.0
+pytest-cov>=5.0.0
+
+# Desktop wrapper
+pywebview>=5.0.0
+
+# Utilities
+python-dotenv>=1.0.0
