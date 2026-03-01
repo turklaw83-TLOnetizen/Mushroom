@@ -36,7 +36,15 @@ def _get_clerk_jwks_url() -> str:
 
 
 def _get_jwt_secret() -> str:
-    return os.getenv("JWT_SECRET", "dev-secret-change-in-production")
+    secret = os.getenv("JWT_SECRET")
+    if not secret:
+        if os.getenv("ENVIRONMENT", "").lower() == "production":
+            raise RuntimeError(
+                "JWT_SECRET environment variable is required in production. "
+                "Set a strong random secret (32+ characters)."
+            )
+        return "dev-secret-change-in-production"
+    return secret
 
 
 # ---- Clerk JWKS Verification (Fix #7) -----------------------------------

@@ -10,7 +10,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+
+from api.auth import require_role
 from fastapi.middleware.cors import CORSMiddleware
 
 # Sentry error tracking (no-op if SENTRY_DSN not set)
@@ -426,10 +428,9 @@ def get_api_key_status():
 
 
 @app.put("/api/v1/config/providers", tags=["System"])
-def update_providers(body: dict):
+def update_providers(body: dict, user: dict = Depends(require_role("admin"))):
     """Update default/fallback provider selection (saves to config.yaml)."""
     import yaml
-    from api.auth import require_role
     config_path = _PROJECT_ROOT / "config.yaml"
     if not config_path.exists():
         return {"status": "error", "detail": "config.yaml not found"}

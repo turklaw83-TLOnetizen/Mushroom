@@ -4,11 +4,10 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
-from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
-from api.websockets.connection_manager import manager
+from api.websockets.connection_manager import manager, verify_ws_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WebSocket"])
@@ -23,13 +22,15 @@ IDLE_TIMEOUT = 120  # seconds before marking user as idle
 @router.websocket("/ws/presence/{case_id}")
 async def presence_ws(ws: WebSocket, case_id: str, token: str = Query(default="")):
     """Join a case room for presence updates."""
-    user_id = _extract_user_id(token)
-    if not user_id:
+    user = await verify_ws_token(token)
+    if not user:
+        await ws.accept()
         await ws.close(code=4001, reason="Unauthorized")
         return
 
-    user_name = _extract_user_name(token)
-    user_role = _extract_user_role(token)
+    user_id = user["id"]
+    user_name = user["name"]
+    user_role = user["role"]
 
     await manager.connect(ws, user_id=user_id, case_id=case_id)
 
@@ -110,30 +111,5 @@ async def _broadcast_viewers(case_id: str):
     })
 
 
-def _extract_user_id(token: str) -> str:
-    if not token:
-        return "anonymous"
-    try:
-        import jwt as pyjwt
-        claims = pyjwt.decode(token, options={"verify_signature": False})
-        return claims.get("sub", "anonymous")
-    except Exception:
-        return "anonymous"
-
-
-def _extract_user_name(token: str) -> str:
-    try:
-        import jwt as pyjwt
-        claims = pyjwt.decode(token, options={"verify_signature": False})
-        return claims.get("name", "Unknown")
-    except Exception:
-        return "Unknown"
-
-
-def _extract_user_role(token: str) -> str:
-    try:
-        import jwt as pyjwt
-        claims = pyjwt.decode(token, options={"verify_signature": False})
-        return claims.get("role", "attorney")
-    except Exception:
-        return "attorney"
+# Legacy export for main.py websocket route registration
+websocket_presence = presence_ws

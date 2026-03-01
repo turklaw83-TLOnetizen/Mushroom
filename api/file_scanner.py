@@ -76,6 +76,28 @@ def scan_file(filepath: str, filename: str) -> ScanResult:
     return ScanResult(True, sha256=file_hash)
 
 
+def scan_bytes(data: bytes, filename: str) -> ScanResult:
+    """
+    Scan in-memory file bytes before writing to disk.
+
+    Use this in upload endpoints to reject dangerous files before saving.
+    """
+    # Check extension
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in BLOCKED_EXTENSIONS:
+        return ScanResult(False, f"Blocked file type: {ext}")
+
+    # Check magic bytes
+    header = data[:8]
+    for sig, desc in BLOCKED_SIGNATURES.items():
+        if header.startswith(sig):
+            return ScanResult(False, f"Blocked content type: {desc}")
+
+    file_hash = hashlib.sha256(data).hexdigest()
+    logger.info("Upload scanned: %s (%d bytes, SHA256: %s)", filename, len(data), file_hash[:16])
+    return ScanResult(True, sha256=file_hash)
+
+
 async def scan_upload(filepath: str, filename: str) -> ScanResult:
     """Async wrapper for file scanning."""
     return scan_file(filepath, filename)

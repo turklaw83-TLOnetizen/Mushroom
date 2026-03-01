@@ -90,3 +90,43 @@ class ConnectionManager:
 
 # Global singleton
 manager = ConnectionManager()
+
+
+# ---- Shared WebSocket Authentication ------------------------------------
+
+async def verify_ws_token(token: str) -> Optional[dict]:
+    """
+    Verify a WebSocket token using the same auth chain as HTTP endpoints.
+
+    Returns a user dict {id, role, name} or None if verification fails.
+    Tries Clerk JWKS first, then falls back to legacy HS256 JWT.
+    Never accepts unverified tokens.
+    """
+    if not token:
+        return None
+
+    try:
+        from api.auth import _verify_clerk_session, _verify_jwt, _get_clerk_secret_key
+
+        # Try Clerk first (RS256 via JWKS)
+        if _get_clerk_secret_key():
+            claims = await _verify_clerk_session(token)
+            if claims:
+                return {
+                    "id": claims.get("sub", ""),
+                    "role": claims.get("role", claims.get("public_metadata", {}).get("role", "attorney")),
+                    "name": claims.get("name", "Unknown"),
+                }
+
+        # Fallback: legacy HS256 JWT with signature verification
+        claims = _verify_jwt(token)
+        if claims:
+            return {
+                "id": claims.get("sub", ""),
+                "role": claims.get("role", "attorney"),
+                "name": claims.get("name", "Unknown"),
+            }
+    except Exception as e:
+        logger.debug("WebSocket token verification failed: %s", e)
+
+    return None

@@ -4,11 +4,10 @@ import asyncio
 import logging
 import time
 from collections import defaultdict
-from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
-from api.websockets.connection_manager import manager
+from api.websockets.connection_manager import manager, verify_ws_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["WebSocket"])
@@ -23,8 +22,14 @@ LOCK_TIMEOUT = 300  # 5 minutes
 @router.websocket("/ws/collab/{case_id}")
 async def collab_ws(ws: WebSocket, case_id: str, token: str = Query(default="")):
     """Collaborative editing WebSocket for a case."""
-    user_id = _extract_user_id(token)
-    user_name = _extract_user_name(token)
+    user = await verify_ws_token(token)
+    if not user:
+        await ws.accept()
+        await ws.close(code=4001, reason="Unauthorized")
+        return
+
+    user_id = user["id"]
+    user_name = user["name"]
 
     await manager.connect(ws, user_id=user_id, case_id=case_id)
 
@@ -113,19 +118,5 @@ def _release_user_locks(case_id: str, user_id: str):
         del _field_locks[k]
 
 
-def _extract_user_id(token: str) -> str:
-    try:
-        import jwt as pyjwt
-        claims = pyjwt.decode(token, options={"verify_signature": False})
-        return claims.get("sub", "anonymous")
-    except Exception:
-        return "anonymous"
-
-
-def _extract_user_name(token: str) -> str:
-    try:
-        import jwt as pyjwt
-        claims = pyjwt.decode(token, options={"verify_signature": False})
-        return claims.get("name", "Unknown")
-    except Exception:
-        return "Unknown"
+# Legacy export for main.py websocket route registration
+websocket_collab = collab_ws

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from api.auth import get_current_user, require_role
 from api.deps import get_case_manager
+from api.file_scanner import scan_bytes
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/files", tags=["Files"])
@@ -85,6 +86,12 @@ async def upload_files(
             raise HTTPException(status_code=400, detail=f"Invalid filename: {f.filename}")
 
         data = await f.read()
+
+        # Security: scan file content before saving
+        scan_result = scan_bytes(data, safe_name)
+        if not scan_result.clean:
+            raise HTTPException(status_code=400, detail=f"File rejected: {scan_result.reason}")
+
         path = cm.save_file(case_id, data, safe_name)
         uploaded.append(FileInfo(filename=safe_name, size=len(data), path=path))
 
