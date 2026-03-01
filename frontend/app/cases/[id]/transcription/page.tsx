@@ -67,14 +67,14 @@ export default function TranscriptionPage() {
     const { data: jobs, isLoading } = useQuery({
         queryKey: ["transcription-jobs", caseId],
         queryFn: () =>
-            api.get<TranscriptionJob[]>(`/transcription/cases/${caseId}/jobs`, { getToken }),
+            api.get<TranscriptionJob[]>(`/cases/${caseId}/transcription/jobs`, { getToken }),
     });
 
     const selectedJobData = jobs?.find((j) => j.id === selectedJob);
 
     const addAnnotationMutation = useMutation({
         mutationFn: (payload: { job_id: string; type: string; content: string; timestamp: number }) =>
-            api.post(`/transcription/jobs/${payload.job_id}/annotations`, payload, { getToken }),
+            api.post(`/cases/${caseId}/transcription/jobs/${payload.job_id}/annotations`, payload, { getToken }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["transcription-jobs", caseId] });
             setAnnotationText("");
