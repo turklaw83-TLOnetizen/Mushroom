@@ -91,14 +91,14 @@ def get_ingestion_status(case_id: str) -> dict:
         logger.warning(f"Error reading ingestion status: {e}")
         return {"status": "none", "progress": 0, "message": ""}
 
-    # Stale detection: if "running" but no update in 5 min, the worker thread is dead
+    # Stale detection: if "running" but no update in 90s, the worker thread is dead
     if data.get("status") == "running":
         updated_at = data.get("updated_at", "")
         if updated_at:
             try:
                 last_update = datetime.fromisoformat(updated_at)
                 age_secs = (datetime.now() - last_update).total_seconds()
-                if age_secs > 300:  # 5 minutes
+                if age_secs > 90:  # 90 seconds (heartbeat interval is 15s)
                     logger.warning(
                         f"Ingestion status stale for {case_id} ({int(age_secs)}s). "
                         f"Auto-resetting from 'running' to 'none'."
@@ -473,6 +473,13 @@ def _run_ingestion_thread(case_id: str, case_mgr, model_provider: str, force_ocr
         error_tb = traceback.format_exc()
         logger.warning(f"Ingestion Error: {error_tb}")
         set_ingestion_status(case_id, "error", 100, f"Critical error during ingestion.", error=str(e))
+
+        # Notify assigned users about the failure
+        try:
+            from api.notify import notify_ingestion_failed
+            notify_ingestion_failed(case_id, str(e))
+        except Exception:
+            pass  # best-effort
 
 # --- Active Thread Tracking & Graceful Shutdown ---
 

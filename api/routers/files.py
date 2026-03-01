@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from api.auth import get_current_user, require_role
-from api.deps import get_case_manager
+from api.deps import get_case_manager, validate_path_id
 from api.file_scanner import scan_bytes
 from api.routers.security import append_scan_entry
 
@@ -42,6 +42,7 @@ class UploadResult(BaseModel):
 @router.get("", response_model=List[FileInfo])
 def list_files(case_id: str, user: dict = Depends(get_current_user)):
     """List all source document files for a case."""
+    validate_path_id(case_id, "case_id")
     cm = get_case_manager()
     meta = cm.get_case_metadata(case_id)
     if not meta:
@@ -73,6 +74,7 @@ async def upload_files(
     user: dict = Depends(require_role("admin", "attorney", "paralegal")),
 ):
     """Upload one or more files to a case (async for file I/O)."""
+    validate_path_id(case_id, "case_id")
     cm = get_case_manager()
     meta = cm.get_case_metadata(case_id)
     if not meta:
@@ -129,6 +131,7 @@ def download_file(
     user: dict = Depends(get_current_user),
 ):
     """Download a specific file from a case."""
+    validate_path_id(case_id, "case_id")
     cm = get_case_manager()
     file_path = cm.get_file_path(case_id, filename)
 
@@ -155,6 +158,7 @@ def delete_file(
     user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Delete a file from a case."""
+    validate_path_id(case_id, "case_id")
     cm = get_case_manager()
     if not cm.delete_file(case_id, filename):
         raise HTTPException(status_code=404, detail="File not found")

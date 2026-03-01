@@ -52,7 +52,24 @@ class ConnectionManager:
                 self._case_connections[case_id].discard((user_id, ws))
                 if not self._case_connections[case_id]:
                     del self._case_connections[case_id]
+        # Explicitly close the WebSocket to release resources
+        try:
+            await ws.close()
+        except Exception:
+            pass  # already closed or broken pipe
         logger.info("WS disconnect: user=%s case=%s", user_id, case_id)
+
+    async def sweep_idle(self, max_idle_seconds: int = 3600):
+        """Close connections idle for longer than max_idle_seconds."""
+        now = time.time()
+        stale: list[WebSocket] = []
+        async with self._lock:
+            for ws, meta in list(self._metadata.items()):
+                if now - meta.get("connected_at", now) > max_idle_seconds:
+                    stale.append(ws)
+        for ws in stale:
+            logger.info("Sweeping idle WebSocket (age > %ds)", max_idle_seconds)
+            await self.disconnect(ws)
 
     async def send_personal(self, user_id: str, message: dict):
         conns = list(self._user_connections.get(user_id, []))

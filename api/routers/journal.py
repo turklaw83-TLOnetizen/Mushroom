@@ -4,7 +4,7 @@
 import logging
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from api.auth import get_current_user, require_role
@@ -40,11 +40,14 @@ class UpdateJournalRequest(BaseModel):
 @router.get("", response_model=List[JournalEntry])
 def list_journal(
     case_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
 ):
-    """Get all journal entries for a case (newest first)."""
+    """Get journal entries for a case (newest first, with limit/offset)."""
     cm = get_case_manager()
-    return cm.load_journal(case_id)
+    entries = cm.load_journal(case_id)
+    return entries[offset:offset + limit]
 
 
 @router.post("")

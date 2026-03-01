@@ -106,6 +106,17 @@ def _get_priority_files(case_id: str) -> list:
         return _priority_files.pop(case_id, [])
 
 
+def _get_failed_pages(case_id: str, fname: str, page_num: int, reason: str) -> list:
+    """Accumulate failed page metadata in the OCR status dict."""
+    status = get_ocr_status(case_id)
+    failed = status.get("failed_pages", [])
+    # Cap stored failures to avoid unbounded growth
+    if len(failed) >= 100:
+        failed = failed[-99:]
+    failed.append({"file": fname, "page": page_num, "reason": reason[:200]})
+    return failed
+
+
 # --- Worker Thread ---
 
 def _run_ocr_thread(case_id: str, case_mgr, model_provider: str):
@@ -272,9 +283,13 @@ def _process_single_file(case_id, fpath, fname, file_key, ext,
                         except concurrent.futures.TimeoutError:
                             logger.warning(f"OCR timeout on {fname} page {page_num + 1}")
                             ocr_text = text or "[OCR timeout]"
+                            _set_status(case_id, last_error=f"Timeout on {fname} p{page_num + 1}",
+                                        failed_pages=_get_failed_pages(case_id, fname, page_num, "timeout"))
                         except Exception as e:
                             logger.warning(f"OCR error on {fname} page {page_num + 1}: {e}")
                             ocr_text = text or ""
+                            _set_status(case_id, last_error=f"Error on {fname} p{page_num + 1}: {e}",
+                                        failed_pages=_get_failed_pages(case_id, fname, page_num, str(e)))
 
                         page_text = ocr_text if ocr_text else text
                     else:
@@ -311,9 +326,13 @@ def _process_single_file(case_id, fpath, fname, file_key, ext,
             except concurrent.futures.TimeoutError:
                 logger.warning(f"OCR timeout on image {fname}")
                 text = "[OCR timeout]"
+                _set_status(case_id, last_error=f"Timeout on image {fname}",
+                            failed_pages=_get_failed_pages(case_id, fname, 0, "timeout"))
             except Exception as e:
                 logger.warning(f"OCR error on image {fname}: {e}")
                 text = ""
+                _set_status(case_id, last_error=f"Error on image {fname}: {e}",
+                            failed_pages=_get_failed_pages(case_id, fname, 0, str(e)))
 
             if text and text.strip():
                 ocr_cache.store_text(file_key, text, fname)
@@ -325,6 +344,8 @@ def _process_single_file(case_id, fpath, fname, file_key, ext,
     except Exception as e:
         logger.warning(f"OCR worker failed on {fname}: {e}")
         ocr_cache.set_status(file_key, "error", fname)
+        _set_status(case_id, last_error=f"Failed on {fname}: {e}",
+                    failed_pages=_get_failed_pages(case_id, fname, -1, str(e)))
 
 
 # --- Public API ---

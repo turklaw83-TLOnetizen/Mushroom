@@ -113,7 +113,7 @@ def get_analysis_progress(case_id: str, prep_id: str) -> dict:
             try:
                 last_dt = datetime.fromisoformat(last_update)
                 elapsed = (datetime.now() - last_dt).total_seconds()
-                if elapsed > 300:  # 5 minutes with no update
+                if elapsed > 300:  # 5 min — analysis nodes can take minutes for large LLM calls
                     logger.warning(
                         "Analysis progress stale for %s/%s (%ds). Marking as error.",
                         case_id, prep_id, int(elapsed),
@@ -147,7 +147,7 @@ def is_analysis_running(case_id: str, prep_id: str) -> bool:
         try:
             last_dt = datetime.fromisoformat(last_update)
             elapsed = (datetime.now() - last_dt).total_seconds()
-            if elapsed > 300:  # 5 minutes with no update = crashed
+            if elapsed > 300:  # 5 min — analysis nodes can take minutes for large LLM calls
                 _write_progress(case_id, prep_id, {
                     "status": "error",
                     "error": f"Analysis appears to have crashed (no update for {int(elapsed)}s). Partial results were saved.",
@@ -615,6 +615,13 @@ def _run_analysis_thread(
             "per_node_times": per_node_times if 'per_node_times' in dir() else {},
             "skipped_nodes": skipped_nodes if 'skipped_nodes' in dir() else [],
         })
+
+        # Notify assigned users about the failure
+        try:
+            from api.notify import notify_analysis_failed
+            notify_analysis_failed(case_id, prep_id, str(e))
+        except Exception:
+            pass  # best-effort
 
 
 def start_background_analysis(

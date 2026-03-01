@@ -31,7 +31,9 @@ class DLPEngine:
 
     def _save_rules(self, rules: list[dict]):
         self._rules_file.parent.mkdir(parents=True, exist_ok=True)
-        self._rules_file.write_text(json.dumps(rules, indent=2), encoding="utf-8")
+        tmp = self._rules_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(rules, indent=2), encoding="utf-8")
+        os.replace(tmp, self._rules_file)
 
     def _default_rules(self) -> list[dict]:
         return [
@@ -147,7 +149,9 @@ class DLPEngine:
             # Keep last 10000 entries
             entries = entries[-10000:]
             self._audit_file.parent.mkdir(parents=True, exist_ok=True)
-            self._audit_file.write_text(json.dumps(entries), encoding="utf-8")
+            tmp = self._audit_file.with_suffix(".tmp")
+            tmp.write_text(json.dumps(entries), encoding="utf-8")
+            os.replace(tmp, self._audit_file)
         except Exception as e:
             logger.error("DLP audit log failed: %s", e)
 

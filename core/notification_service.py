@@ -41,7 +41,9 @@ class NotificationService:
 
     def _save(self, user_id: str, notifications: list[dict]):
         p = self._user_file(user_id)
-        p.write_text(json.dumps(notifications, default=str), encoding="utf-8")
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(notifications, default=str), encoding="utf-8")
+        os.replace(tmp, p)
 
     def create_notification(
         self,

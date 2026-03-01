@@ -46,9 +46,20 @@ def get_audit_log(
 
 @router.post("/check")
 def check_action(body: dict, user=Depends(get_current_user)):
+    """Check if an action is allowed by DLP rules.
+
+    Always returns {allowed: bool, reason: str, require_watermark: bool}.
+    """
     action = body.get("action", "download")
     if action == "download":
-        return engine.check_download(user["id"], user.get("role", "attorney"), body.get("filename", ""))
+        result = engine.check_download(user["id"], user.get("role", "attorney"), body.get("filename", ""))
     elif action == "export":
-        return engine.check_export(user["id"], user.get("role", "attorney"), body.get("case_id", ""), body.get("export_type", ""))
-    return {"allowed": True}
+        result = engine.check_export(user["id"], user.get("role", "attorney"), body.get("case_id", ""), body.get("export_type", ""))
+    else:
+        result = {"allowed": True}
+    # Normalize shape — every response includes all three keys
+    return {
+        "allowed": result.get("allowed", True),
+        "reason": result.get("reason", ""),
+        "require_watermark": result.get("require_watermark", False),
+    }

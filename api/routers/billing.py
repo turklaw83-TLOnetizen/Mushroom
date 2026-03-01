@@ -59,13 +59,16 @@ class CreateExpenseRequest(BaseModel):
 @router.get("/time/{case_id}", response_model=List[TimeEntryResponse])
 def list_time_entries(
     case_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
 ):
-    """List time entries for a case."""
+    """List time entries for a case (with limit/offset)."""
     cm = get_case_manager()
     try:
         from core.billing import load_time_entries
-        return load_time_entries(cm.storage, case_id)
+        entries = load_time_entries(cm.storage, case_id)
+        return entries[offset:offset + limit]
     except ImportError:
         return []
 
@@ -138,13 +141,16 @@ def delete_time_entry_route(
 @router.get("/expenses/{case_id}", response_model=List[ExpenseResponse])
 def list_expenses(
     case_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
 ):
-    """List expenses for a case."""
+    """List expenses for a case (with limit/offset)."""
     cm = get_case_manager()
     try:
         from core.billing import load_expenses
-        return load_expenses(cm.storage, case_id)
+        expenses = load_expenses(cm.storage, case_id)
+        return expenses[offset:offset + limit]
     except ImportError:
         return []
 
@@ -259,13 +265,16 @@ class UpdateInvoiceStatusRequest(BaseModel):
 @router.get("/invoices/{case_id}", response_model=List[InvoiceResponse])
 def list_invoices(
     case_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
 ):
-    """List invoices for a case."""
+    """List invoices for a case (with limit/offset)."""
     try:
         from core.billing import load_invoices
         all_invoices = load_invoices()
-        return [inv for inv in all_invoices if inv.get("case_id") == case_id]
+        filtered = [inv for inv in all_invoices if inv.get("case_id") == case_id]
+        return filtered[offset:offset + limit]
     except ImportError:
         return []
 

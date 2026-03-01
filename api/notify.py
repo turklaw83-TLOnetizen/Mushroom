@@ -70,6 +70,71 @@ def notify_analysis_started(
     return notif
 
 
+def notify_analysis_failed(
+    case_id: str,
+    prep_id: str,
+    error: str,
+):
+    """Trigger notification when background analysis fails.
+
+    Notifies all users assigned to the case (looks up from case metadata).
+    Safe to call from background threads — never raises.
+    """
+    try:
+        svc = get_notification_service()
+        from api.deps import get_case_manager
+        cm = get_case_manager()
+        meta = cm.get_case_metadata(case_id) or {}
+        assigned = meta.get("assigned_to", [])
+        if not assigned:
+            return
+        short_error = (error[:120] + "...") if len(error) > 120 else error
+        for uid in assigned:
+            notif = svc.create_notification(
+                user_id=uid,
+                notif_type="analysis_failed",
+                title="Analysis failed",
+                body=f"Analysis for prep {prep_id} failed: {short_error}",
+                case_id=case_id,
+                metadata={"prep_id": prep_id, "error": error},
+            )
+            _ws_broadcast_fire_and_forget(uid, notif)
+    except Exception as e:
+        logger.debug("Failed to send analysis failure notification: %s", e)
+
+
+def notify_ingestion_failed(
+    case_id: str,
+    error: str,
+):
+    """Trigger notification when background ingestion fails.
+
+    Notifies all users assigned to the case.
+    Safe to call from background threads — never raises.
+    """
+    try:
+        svc = get_notification_service()
+        from api.deps import get_case_manager
+        cm = get_case_manager()
+        meta = cm.get_case_metadata(case_id) or {}
+        assigned = meta.get("assigned_to", [])
+        if not assigned:
+            return
+        short_error = (error[:120] + "...") if len(error) > 120 else error
+        for uid in assigned:
+            notif = svc.create_notification(
+                user_id=uid,
+                notif_type="analysis_failed",
+                title="Ingestion failed",
+                body=f"Document ingestion failed: {short_error}",
+                case_id=case_id,
+                metadata={"error": error},
+            )
+            _ws_broadcast_fire_and_forget(uid, notif)
+    except Exception as e:
+        logger.debug("Failed to send ingestion failure notification: %s", e)
+
+
 def notify_phase_changed(
     user_id: str,
     case_id: str,
