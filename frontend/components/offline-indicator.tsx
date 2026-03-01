@@ -10,7 +10,7 @@ export function OfflineIndicator() {
     useEffect(() => {
         setOffline(isOffline());
         const unsub = onOfflineChange(setOffline);
-        return unsub;
+        return () => { unsub(); };
     }, []);
 
     if (!offline) return null;
