@@ -2,7 +2,7 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
-  "/sign-up(.*)",
+  // Sign-up disabled — users are invited through Clerk Dashboard only
   "/api/v1/health",
   "/api/v1/webhooks(.*)",
   "/_next(.*)",
