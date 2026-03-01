@@ -1,6 +1,6 @@
 # Deploying Project Mushroom Cloud for Turklay Law
 
-**Target**: `app.turklaylaw.com`
+**Target**: `turkclaw.net`
 **Authorized user**: daniel@turklaylaw.com (Google OAuth + SMS MFA)
 
 ---
@@ -9,9 +9,9 @@
 
 You need:
 - A Linux VPS (Ubuntu 22.04+ recommended) with Docker + Docker Compose
-  - **Recommended**: 4 vCPUs, 8 GB RAM, 100 GB SSD
-  - Providers: DigitalOcean, Hetzner, Linode, or AWS Lightsail (~$24-48/mo)
-- DNS access to turklaylaw.com (to create an A record for `app.turklaylaw.com`)
+  - **Actual**: Vultr Cloud Compute — 2 vCPUs, 4 GB RAM, 80 GB SSD ($24/mo)
+  - **Server IP**: 45.32.216.52
+- Domain `turkclaw.net` registered via Cloudflare (DNS managed there)
 - A Clerk account (free tier is fine for single user)
 - An Anthropic API key (for Claude analysis engine)
 
@@ -99,16 +99,17 @@ docker compose version
 
 ## Step 3: DNS Setup
 
-In your DNS provider (wherever turklaylaw.com is registered):
+In Cloudflare DNS for turkclaw.net:
 
 1. Create an **A record**:
-   - Name: `app`
-   - Value: `YOUR_SERVER_IP`
-   - TTL: 300 (5 minutes, can increase later)
+   - Name: `@` (root domain)
+   - Value: `45.32.216.52`
+   - Proxy status: Proxied (orange cloud) — gives you free CDN + DDoS protection
+   - TTL: Auto
 
 2. Wait for propagation (usually 1-5 minutes):
    ```bash
-   dig app.turklaylaw.com
+   dig turkclaw.net
    ```
 
 ---
@@ -152,7 +153,7 @@ Fill in:
 
 **Option A: Cloudflare Tunnel (recommended — zero-config HTTPS)**
 
-If turklaylaw.com uses Cloudflare DNS:
+Since turkclaw.net is registered with Cloudflare:
 ```bash
 # Install cloudflared
 curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
@@ -170,13 +171,13 @@ tunnel: YOUR_TUNNEL_ID
 credentials-file: /root/.cloudflared/YOUR_TUNNEL_ID.json
 
 ingress:
-  - hostname: app.turklaylaw.com
+  - hostname: turkclaw.net
     service: http://localhost:80
   - service: http_status:404
 EOF
 
 # Route DNS
-cloudflared tunnel route dns mushroom-cloud app.turklaylaw.com
+cloudflared tunnel route dns mushroom-cloud turkclaw.net
 
 # Start as service
 cloudflared service install
@@ -194,12 +195,12 @@ or use the tunnel to point directly at port 80.
 apt install certbot -y
 
 # Get certificate (stop nginx first)
-certbot certonly --standalone -d app.turklaylaw.com --agree-tos -m daniel@turklaylaw.com
+certbot certonly --standalone -d turkclaw.net --agree-tos -m daniel@turklaylaw.com
 
 # Copy certs where nginx expects them
 mkdir -p nginx/certs
-cp /etc/letsencrypt/live/app.turklaylaw.com/fullchain.pem nginx/certs/
-cp /etc/letsencrypt/live/app.turklaylaw.com/privkey.pem nginx/certs/
+cp /etc/letsencrypt/live/turkclaw.net/fullchain.pem nginx/certs/
+cp /etc/letsencrypt/live/turkclaw.net/privkey.pem nginx/certs/
 
 # Set up auto-renewal (certbot adds a cron/timer automatically)
 certbot renew --dry-run
@@ -222,7 +223,7 @@ curl http://localhost:8000/api/v1/health
 
 ## Step 5: Verify Deployment
 
-1. Open **https://app.turklaylaw.com** in your browser
+1. Open **https://turkclaw.net** in your browser
 2. You should see the Clerk sign-in page
 3. Click **"Continue with Google"**
 4. Sign in with `daniel@turklaylaw.com`
@@ -232,7 +233,7 @@ curl http://localhost:8000/api/v1/health
 ### Verify API health
 
 ```bash
-curl https://app.turklaylaw.com/api/v1/health
+curl https://turkclaw.net/api/v1/health
 ```
 
 Expected:
@@ -270,7 +271,7 @@ This gives you full admin access to all API endpoints.
 # Start monitoring stack (Prometheus + Grafana + Jaeger)
 docker compose -f docker-compose.monitoring.yml up -d
 
-# Grafana: https://app.turklaylaw.com:3001 (or tunnel a separate subdomain)
+# Grafana: https://turkclaw.net:3001 (or tunnel a separate subdomain)
 # Default login: admin / (your GRAFANA_ADMIN_PASSWORD)
 ```
 

@@ -35,7 +35,7 @@ services:
       CLERK_SECRET_KEY: "${CLERK_SECRET_KEY}"
       CLERK_JWKS_URL: "${CLERK_JWKS_URL}"
       JWT_SECRET: "${JWT_SECRET}"
-      CORS_ORIGINS: "${CORS_ORIGINS:-https://app.turklaylaw.com}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-https://turkclaw.net}"
       RATE_LIMIT_REQUESTS: "120"
       RATE_LIMIT_WINDOW_SECONDS: "60"
       MAX_UPLOAD_SIZE_BYTES: "21474836480"  # 20 GB
@@ -59,7 +59,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
-        NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-https://app.turklaylaw.com/api}"
+        NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-https://turkclaw.net/api}"
     restart: unless-stopped
     depends_on:
       api:
