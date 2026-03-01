@@ -71,7 +71,7 @@ export function useWebSocket<T = any>({
     };
 
     ws.onclose = () => {
-      clearInterval(heartbeatTimer.current);
+      if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
 
       if (intentionalClose.current) {
         setState("disconnected");
@@ -98,7 +98,7 @@ export function useWebSocket<T = any>({
     intentionalClose.current = true;
     wsRef.current?.close();
     wsRef.current = null;
-    clearInterval(heartbeatTimer.current);
+    if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
   }, []);
 
   const send = useCallback((data: any) => {
