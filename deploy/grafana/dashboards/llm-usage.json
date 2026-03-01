@@ -1,0 +1,35 @@
+{
+  "dashboard": {
+    "title": "LLM Usage",
+    "uid": "mc-llm-usage",
+    "panels": [
+      {
+        "title": "Token Usage by Model",
+        "type": "timeseries",
+        "targets": [{"expr": "rate(llm_tokens_total[5m])", "legendFormat": "{{model}} {{direction}}"}],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "title": "LLM Request Duration",
+        "type": "timeseries",
+        "targets": [
+          {"expr": "histogram_quantile(0.50, rate(llm_request_duration_seconds_bucket[5m]))", "legendFormat": "p50"},
+          {"expr": "histogram_quantile(0.95, rate(llm_request_duration_seconds_bucket[5m]))", "legendFormat": "p95"}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "title": "LLM Errors",
+        "type": "timeseries",
+        "targets": [{"expr": "rate(llm_errors_total[5m])", "legendFormat": "{{model}} {{error_type}}"}],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "title": "Analysis Runs",
+        "type": "timeseries",
+        "targets": [{"expr": "rate(analysis_runs_total[5m])", "legendFormat": "{{prep_type}} {{status}}"}],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      }
+    ]
+  }
+}

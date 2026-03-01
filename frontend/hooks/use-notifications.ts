@@ -1,105 +1,170 @@
 // ---- useNotifications Hook -----------------------------------------------
-// Real-time notification integration via WebSocket status updates.
-// Converts worker status changes into toast notifications.
+// Full notification center hook — fetches from REST API + real-time via WS.
 "use client";
 
 import { useEffect, useRef, useCallback, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 
-interface NotificationEvent {
-    type: "analysis" | "ingestion" | "ocr";
-    status: "complete" | "error" | "running";
+export interface Notification {
+    id: string;
+    type: string;
+    title: string;
     message: string;
-    timestamp: number;
+    severity: "info" | "warning" | "success" | "error";
+    read: boolean;
+    created_at: string;
+    case_id?: string;
+    link?: string;
 }
 
 interface UseNotificationsOptions {
-    /** Case ID to listen for */
-    caseId: string;
-    /** Auth token for WebSocket */
-    token: string | null;
-    /** Whether notifications are enabled */
     enabled?: boolean;
+    pollInterval?: number;
 }
 
-/**
- * Listens for WebSocket worker status updates and converts them
- * into toast notifications when workers complete or error.
- *
- * Uses the existing /ws/workers/{caseId} endpoint.
- */
-export function useNotifications(options: UseNotificationsOptions) {
-    const { caseId, token, enabled = true } = options;
-    const [events, setEvents] = useState<NotificationEvent[]>([]);
+export function useNotifications(options: UseNotificationsOptions = {}) {
+    const { enabled = true, pollInterval = 30000 } = options;
+    const { getToken } = useAuth();
+    const [notifications, setNotifications] = useState<Notification[]>([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [isLoading, setIsLoading] = useState(true);
     const wsRef = useRef<WebSocket | null>(null);
-    const prevStatusRef = useRef<Record<string, string>>({});
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const connect = useCallback(() => {
-        if (!caseId || !token || !enabled) return;
+    // Fetch notifications from REST API
+    const fetchNotifications = useCallback(async () => {
+        try {
+            const data = await api.get<{ notifications: Notification[]; unread_count: number }>(
+                "/notifications",
+                { getToken },
+            );
+            setNotifications(data.notifications || []);
+            setUnreadCount(data.unread_count || 0);
+        } catch {
+            // Fallback: use empty list on error
+        } finally {
+            setIsLoading(false);
+        }
+    }, [getToken]);
 
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-        const wsUrl = API_BASE.replace(/^http/, "ws");
-        const ws = new WebSocket(`${wsUrl}/api/v1/ws/workers/${caseId}?token=${token}`);
-        wsRef.current = ws;
+    // Mark single as read
+    const markRead = useCallback(async (id: string) => {
+        try {
+            await api.patch(`/notifications/${id}/read`, {}, { getToken });
+            setNotifications((prev) =>
+                prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+            );
+            setUnreadCount((c) => Math.max(0, c - 1));
+        } catch {
+            // silent
+        }
+    }, [getToken]);
 
-        ws.onmessage = (event) => {
+    // Mark all as read
+    const markAllRead = useCallback(async () => {
+        try {
+            await api.post("/notifications/mark-all-read", {}, { getToken });
+            setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+            setUnreadCount(0);
+        } catch {
+            // silent
+        }
+    }, [getToken]);
+
+    // Dismiss
+    const dismiss = useCallback(async (id: string) => {
+        try {
+            await api.delete(`/notifications/${id}`, { getToken });
+            setNotifications((prev) => prev.filter((n) => n.id !== id));
+            setUnreadCount((c) => Math.max(0, c - 1));
+        } catch {
+            // silent
+        }
+    }, [getToken]);
+
+    // WebSocket for real-time push
+    useEffect(() => {
+        if (!enabled) return;
+
+        const connectWs = async () => {
             try {
-                const data = JSON.parse(event.data);
-                if (data._done) return;
+                const token = await getToken();
+                if (!token) return;
 
-                // Check each worker for status transitions
-                for (const [worker, status] of Object.entries(data)) {
-                    const s = (status as Record<string, string>)?.status;
-                    const prev = prevStatusRef.current[worker];
+                const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+                const wsUrl = API_BASE.replace(/^http/, "ws");
+                const ws = new WebSocket(`${wsUrl}/ws/notifications?token=${token}`);
+                wsRef.current = ws;
 
-                    if (prev && prev !== s) {
-                        // Status changed — notify
-                        if (s === "complete") {
-                            const msg = `${worker.charAt(0).toUpperCase() + worker.slice(1)} completed`;
-                            toast.success(msg);
-                            setEvents((e) => [...e, {
-                                type: worker as NotificationEvent["type"],
-                                status: "complete",
-                                message: msg,
-                                timestamp: Date.now(),
-                            }]);
-                        } else if (s === "error") {
-                            const msg = `${worker.charAt(0).toUpperCase() + worker.slice(1)} failed`;
-                            toast.error(msg);
-                            setEvents((e) => [...e, {
-                                type: worker as NotificationEvent["type"],
-                                status: "error",
-                                message: msg,
-                                timestamp: Date.now(),
-                            }]);
-                        } else if (s === "running" && prev !== "running") {
-                            toast.info(`${worker.charAt(0).toUpperCase() + worker.slice(1)} started...`);
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === "notification") {
+                            const newNotif: Notification = {
+                                id: data.id || Date.now().toString(),
+                                type: data.notification_type || "system",
+                                title: data.title || "New Notification",
+                                message: data.message || "",
+                                severity: data.severity || "info",
+                                read: false,
+                                created_at: new Date().toISOString(),
+                                case_id: data.case_id,
+                                link: data.link,
+                            };
+                            setNotifications((prev) => [newNotif, ...prev]);
+                            setUnreadCount((c) => c + 1);
+
+                            // Toast for real-time notifications
+                            if (data.severity === "error") {
+                                toast.error(data.title || data.message);
+                            } else if (data.severity === "warning") {
+                                toast.warning(data.title || data.message);
+                            } else if (data.severity === "success") {
+                                toast.success(data.title || data.message);
+                            } else {
+                                toast.info(data.title || data.message);
+                            }
                         }
+                    } catch {
+                        // ignore parse errors
                     }
+                };
 
-                    prevStatusRef.current[worker] = s;
-                }
+                ws.onclose = () => {
+                    wsRef.current = null;
+                };
             } catch {
-                // Ignore parse errors
+                // silent
             }
         };
 
-        ws.onerror = () => {
-            // Silent — useWorkerStatus handles reconnection
-        };
+        connectWs();
 
-        ws.onclose = () => {
-            wsRef.current = null;
-        };
-    }, [caseId, token, enabled]);
-
-    useEffect(() => {
-        connect();
         return () => {
             wsRef.current?.close();
             wsRef.current = null;
         };
-    }, [connect]);
+    }, [enabled, getToken]);
 
-    return { events };
+    // Initial fetch + polling
+    useEffect(() => {
+        if (!enabled) return;
+        fetchNotifications();
+        pollRef.current = setInterval(fetchNotifications, pollInterval);
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, [enabled, fetchNotifications, pollInterval]);
+
+    return {
+        notifications,
+        unreadCount,
+        isLoading,
+        markRead,
+        markAllRead,
+        dismiss,
+        refresh: fetchNotifications,
+    };
 }

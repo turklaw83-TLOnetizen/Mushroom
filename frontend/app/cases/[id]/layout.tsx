@@ -38,6 +38,9 @@ const tabs = [
     { label: "Negotiations", href: "/negotiations" },
     { label: "Playbook", href: "/playbook" },
     { label: "E-Sign", href: "/esign" },
+    { label: "Transcription", href: "/transcription" },
+    { label: "AI Tools", href: "/ai-tools" },
+    { label: "Security", href: "/security" },
     { label: "Activity", href: "/activity" },
 ];
 

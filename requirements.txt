@@ -84,3 +84,46 @@ anthropic>=0.28.0
 
 # Utilities
 python-dotenv>=1.0.0
+
+# ---- Phase 6-24 New Dependencies ----
+
+# WebSocket support (Phase 12)
+websockets>=12.0
+
+# Push notifications (Phase 14)
+pywebpush>=2.0.0
+py-vapid>=1.9.0
+
+# Email integration (Phase 15)
+imapclient>=3.0.0
+exchangelib>=5.0.0
+
+# Vector search / RAG (Phase 16)
+sentence-transformers>=3.0.0
+numpy>=1.26.0
+rank-bm25>=0.2.2
+
+# Calendar (Phase 17)
+icalendar>=5.0.0
+
+# Transcription (Phase 18)
+# pyannote.audio — optional, requires torch; install separately if GPU available
+
+# Observability (Phase 19+20)
+prometheus-client>=0.21.0
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-instrumentation-fastapi>=0.46b0
+opentelemetry-exporter-otlp>=1.25.0
+
+# Multi-tenancy (Phase 22)
+msal>=1.28.0
+
+# File security (Phase 24)
+pyclamd>=0.4.0
+reportlab>=4.0.0
+PyPDF2>=3.0.0
+cryptography>=42.0.0
+
+# Async testing
+pytest-asyncio>=0.23.0

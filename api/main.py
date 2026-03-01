@@ -96,7 +96,7 @@ def root():
         "status": "running",
         "docs": "/docs",
         "health": "/api/v1/health",
-        "routers": 32,
+        "routers": 39,
     }
 # ---- Middleware (order matters: last added = outermost) -------------------
 
@@ -106,6 +106,22 @@ from api.rate_limit import RateLimitMiddleware
 from api.upload_limit import UploadSizeMiddleware
 from api.input_sanitize import InputSanitizationMiddleware
 from api.metrics import MetricsMiddleware
+
+# Phase 19: Prometheus metrics middleware (graceful if not installed)
+try:
+    from api.metrics_middleware import PrometheusMiddleware
+    app.add_middleware(PrometheusMiddleware)
+except ImportError:
+    pass
+
+# Phase 20: Profiling middleware (opt-in via ENABLE_PROFILING=true)
+try:
+    from api.profiling import ProfilingMiddleware
+    if os.getenv("ENABLE_PROFILING", "").lower() == "true":
+        app.add_middleware(ProfilingMiddleware)
+except ImportError:
+    pass
+
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuditTrailMiddleware)
@@ -177,6 +193,24 @@ from api.routers.snapshots import router as snapshots_router
 from api.metrics import router as metrics_router
 from api.websockets.workers_ws import router as ws_router
 
+# Phase 19+20: Web Vitals / performance metrics router
+try:
+    from api.routers.metrics_router import router as web_vitals_router
+except ImportError:
+    web_vitals_router = None
+
+# Phase 22: Multi-tenancy router
+try:
+    from api.routers.tenants import router as tenants_router
+except ImportError:
+    tenants_router = None
+
+# Phase 24: DLP / file security router
+try:
+    from api.routers.dlp import router as dlp_router
+except ImportError:
+    dlp_router = None
+
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
 app.include_router(files_router, prefix="/api/v1")
@@ -214,6 +248,45 @@ app.include_router(journal_router, prefix="/api/v1")
 app.include_router(snapshots_router, prefix="/api/v1")
 app.include_router(metrics_router, prefix="/api/v1")
 app.include_router(ws_router, prefix="/api/v1")
+
+# Phase 19+20: Web Vitals router
+if web_vitals_router:
+    app.include_router(web_vitals_router, prefix="/api/v1")
+
+# Phase 22: Tenant management
+if tenants_router:
+    app.include_router(tenants_router, prefix="/api/v1")
+
+# Phase 24: DLP / file security
+if dlp_router:
+    app.include_router(dlp_router, prefix="/api/v1")
+
+# Phase 12: WebSocket endpoints for real-time features
+from api.websockets.notifications_ws import websocket_notifications
+from api.websockets.presence import websocket_presence
+from api.websockets.collab import websocket_collab
+
+app.add_api_websocket_route("/ws/notifications", websocket_notifications)
+app.add_api_websocket_route("/ws/presence/{case_id}", websocket_presence)
+app.add_api_websocket_route("/ws/collab/{case_id}", websocket_collab)
+
+# Phase 19: Prometheus /metrics endpoint
+try:
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from fastapi.responses import Response
+
+    @app.get("/metrics", tags=["System"])
+    async def prometheus_metrics():
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+except ImportError:
+    pass
+
+# Phase 20: OpenTelemetry tracing init
+try:
+    from api.tracing import init_tracing
+    init_tracing()
+except ImportError:
+    pass
 
 
 # ---- Health Check (Fix #12: actually pings DB + LLM/disk/data checks) ----
