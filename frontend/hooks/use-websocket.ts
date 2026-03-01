@@ -30,7 +30,7 @@ export function useWebSocket<T = any>({
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectCount = useRef(0);
   const intentionalClose = useRef(false);
-  const heartbeatTimer = useRef<ReturnType<typeof setInterval>>();
+  const heartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const messageQueue = useRef<any[]>([]);
 
   const connect = useCallback(() => {
