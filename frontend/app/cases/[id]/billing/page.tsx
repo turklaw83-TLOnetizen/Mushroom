@@ -9,6 +9,7 @@ import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import type { TimeEntry, Expense } from "@/types/api";
 import { useRole } from "@/hooks/use-role";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
@@ -22,24 +23,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ---- Interfaces ---------------------------------------------------------
-
-interface TimeEntry {
-    id: string;
-    date: string;
-    hours: number;
-    description: string;
-    attorney: string;
-    rate: number;
-    billable: boolean;
-}
-
-interface Expense {
-    id: string;
-    date: string;
-    amount: number;
-    description: string;
-    category: string;
-}
 
 interface Invoice {
     id: string;

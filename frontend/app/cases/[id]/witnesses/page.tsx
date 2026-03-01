@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
 import { api } from "@/lib/api-client";
+import type { Witness } from "@/types/api";
 import { usePrep } from "@/hooks/use-prep";
 import { useRole } from "@/hooks/use-role";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
@@ -20,13 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // ---- Types --------------------------------------------------------------
-
-interface Witness {
-    name: string;
-    type: string;
-    role: string;
-    goal: string;
-}
 
 interface ExamEntry {
     witness?: string;

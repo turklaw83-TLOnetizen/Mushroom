@@ -132,6 +132,11 @@ app.add_middleware(UploadSizeMiddleware, max_size=20 * 1024 * 1024 * 1024)  # 20
 app.add_middleware(InputSanitizationMiddleware)
 app.add_middleware(MetricsMiddleware)
 
+# Domain-specific exception handler (must be registered before the generic one)
+from api.error_handlers import mushroom_cloud_error_handler
+from core.exceptions import MushroomCloudError
+app.add_exception_handler(MushroomCloudError, mushroom_cloud_error_handler)
+
 # Fix #10: Global structured error handler
 app.add_exception_handler(Exception, structured_error_handler)
 

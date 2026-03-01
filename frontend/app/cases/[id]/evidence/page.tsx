@@ -8,6 +8,7 @@ import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import type { EvidenceItem } from "@/types/api";
 import { usePrep } from "@/hooks/use-prep";
 import { useRole } from "@/hooks/use-role";
 import { DataPage } from "@/components/shared/data-page";
@@ -17,15 +18,6 @@ import { DetailPanel, type DetailField } from "@/components/shared/detail-panel"
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-interface EvidenceItem {
-    id: string;
-    description: string;
-    type: string;
-    source: string;
-    foundation: string;
-    tags: string[];
-}
 
 const evidenceSchema = z.object({
     description: z.string().min(1, "Description is required").max(2000),

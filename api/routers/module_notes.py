@@ -36,13 +36,7 @@ class AllNotesResponse(BaseModel):
 
 # ---- Endpoints -----------------------------------------------------------
 
-MODULE_NAMES = [
-    "case_summary", "charges", "timeline", "witnesses",
-    "evidence_foundations", "legal_elements", "consistency_check",
-    "investigation_plan", "cross_examination_plan", "direct_examination_plan",
-    "strategy_notes", "devils_advocate_notes", "entities", "voir_dire",
-    "mock_jury_feedback",
-]
+from core.module_definitions import MODULE_NAMES
 
 
 @router.get("", response_model=AllNotesResponse)

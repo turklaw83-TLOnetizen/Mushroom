@@ -8,6 +8,7 @@ import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import type { TimelineEvent } from "@/types/api";
 import { usePrep } from "@/hooks/use-prep";
 import { useRole } from "@/hooks/use-role";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
@@ -20,14 +21,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // ---- Types --------------------------------------------------------------
-
-interface TimelineEvent {
-    date: string;
-    title: string;
-    description: string;
-    source_ref: string;
-    _custom?: boolean;
-}
 
 interface PrepState {
     timeline?: TimelineEvent[];

@@ -1,27 +1,19 @@
 """AI document summarization — single doc, batch, key facts extraction."""
 
 import logging
-import os
 from typing import Optional
+
+from langchain_core.messages import HumanMessage
+
+from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
 
-def _get_llm_client():
-    """Get the best available LLM client."""
-    if os.getenv("ANTHROPIC_API_KEY"):
-        import anthropic
-        return "anthropic", anthropic.Anthropic()
-    if os.getenv("XAI_API_KEY"):
-        from openai import OpenAI
-        return "xai", OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-    return None, None
-
-
 def summarize_document(text: str, max_length: int = 500) -> str:
     """Summarize a single document."""
-    provider, client = _get_llm_client()
-    if client is None:
+    llm = get_llm()
+    if llm is None:
         return "No LLM provider configured for summarization."
 
     prompt = (
@@ -31,18 +23,8 @@ def summarize_document(text: str, max_length: int = 500) -> str:
     )
 
     try:
-        if provider == "anthropic":
-            resp = client.messages.create(
-                model="claude-sonnet-4-20250514", max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return resp.content[0].text
-        else:
-            resp = client.chat.completions.create(
-                model="grok-2-latest", max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            return resp.choices[0].message.content or ""
+        response = llm.invoke([HumanMessage(content=prompt)])
+        return response.content
     except Exception as e:
         logger.error("Summarization failed: %s", e)
         return f"Summarization error: {e}"
@@ -63,8 +45,8 @@ def summarize_batch(documents: list[dict], max_length: int = 300) -> list[dict]:
 
 def extract_key_facts(text: str) -> list[str]:
     """Extract key facts as bullet points."""
-    provider, client = _get_llm_client()
-    if client is None:
+    llm = get_llm()
+    if llm is None:
         return ["No LLM provider configured."]
 
     prompt = (
@@ -75,18 +57,8 @@ def extract_key_facts(text: str) -> list[str]:
     )
 
     try:
-        if provider == "anthropic":
-            resp = client.messages.create(
-                model="claude-sonnet-4-20250514", max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = resp.content[0].text
-        else:
-            resp = client.chat.completions.create(
-                model="grok-2-latest", max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = resp.choices[0].message.content or ""
+        response = llm.invoke([HumanMessage(content=prompt)])
+        raw = response.content
 
         # Parse bullet points
         facts = []

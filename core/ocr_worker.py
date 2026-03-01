@@ -28,6 +28,7 @@ DATA_DIR = str(_PROJECT_ROOT / "data" / "cases")
 
 # Singleton guard: one worker thread per case
 _active_workers: dict = {}  # {case_id: threading.Thread}
+_workers_lock = threading.Lock()
 _stop_flags: dict = {}  # {case_id: threading.Event}
 
 # Priority queue: files the user wants OCR'd immediately
@@ -211,7 +212,8 @@ def _run_ocr_thread(case_id: str, case_mgr, model_provider: str):
         logger.warning(f"OCR worker error for {case_id}: {e}")
         _set_status(case_id, status="idle", error=str(e))
     finally:
-        _active_workers.pop(case_id, None)
+        with _workers_lock:
+            _active_workers.pop(case_id, None)
         _stop_flags.pop(case_id, None)
 
 
@@ -329,27 +331,28 @@ def _process_single_file(case_id, fpath, fname, file_key, ext,
 
 def start_ocr_worker(case_id: str, case_mgr, model_provider: str) -> bool:
     """Start passive OCR worker for a case. Returns True if started."""
-    # Check if already running
-    existing = _active_workers.get(case_id)
-    if existing and existing.is_alive():
-        return False
+    with _workers_lock:
+        # Check if already running
+        existing = _active_workers.get(case_id)
+        if existing and existing.is_alive():
+            return False
 
-    # Check status for stale detection
-    status = get_ocr_status(case_id)
-    if status.get("status") == "running":
-        return False  # Already running (or stale — get_ocr_status auto-resets after 10 min)
+        # Check status for stale detection
+        status = get_ocr_status(case_id)
+        if status.get("status") == "running":
+            return False  # Already running (or stale — get_ocr_status auto-resets after 10 min)
 
-    stop_event = threading.Event()
-    _stop_flags[case_id] = stop_event
+        stop_event = threading.Event()
+        _stop_flags[case_id] = stop_event
 
-    thread = threading.Thread(
-        target=_run_ocr_thread,
-        args=(case_id, case_mgr, model_provider),
-        daemon=True,
-    )
-    _active_workers[case_id] = thread
-    thread.start()
-    return True
+        thread = threading.Thread(
+            target=_run_ocr_thread,
+            args=(case_id, case_mgr, model_provider),
+            daemon=True,
+        )
+        _active_workers[case_id] = thread
+        thread.start()
+        return True
 
 
 def stop_ocr_worker(case_id: str):
@@ -366,7 +369,9 @@ def _cleanup_ocr_workers():
     """atexit handler: signal all OCR workers to stop."""
     for cid in list(_stop_flags.keys()):
         stop_ocr_worker(cid)
-    for cid, thr in list(_active_workers.items()):
+    with _workers_lock:
+        workers_snapshot = list(_active_workers.items())
+    for cid, thr in workers_snapshot:
         if thr.is_alive():
             logger.info("Waiting for OCR thread %s to finish...", cid)
             thr.join(timeout=5)

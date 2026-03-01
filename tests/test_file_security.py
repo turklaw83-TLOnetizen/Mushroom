@@ -63,6 +63,68 @@ class TestDLPRules:
         assert result["allowed"] is True
 
 
+class TestScanBytes:
+    """Tests for the scan_bytes() in-memory scanner (api/file_scanner.py)."""
+
+    def test_blocks_exe_extension(self):
+        from api.file_scanner import scan_bytes
+        # Even benign content should be blocked if the extension is .exe
+        result = scan_bytes(b"harmless content", "malware.exe")
+        assert not result.clean
+        assert ".exe" in result.reason.lower() or "blocked" in result.reason.lower()
+
+    def test_blocks_mz_magic_bytes_with_pdf_extension(self):
+        from api.file_scanner import scan_bytes
+        # MZ magic bytes (Windows PE) disguised as a .pdf
+        pe_header = b"MZ" + b"\x00" * 100
+        result = scan_bytes(pe_header, "report.pdf")
+        assert not result.clean
+        assert "executable" in result.reason.lower() or "blocked" in result.reason.lower()
+
+    def test_allows_clean_pdf(self):
+        from api.file_scanner import scan_bytes
+        # Real PDF magic: %PDF-
+        pdf_content = b"%PDF-1.4 some pdf content here"
+        result = scan_bytes(pdf_content, "document.pdf")
+        assert result.clean
+        assert result.sha256  # SHA256 hash should be present
+
+    def test_allows_clean_docx(self):
+        from api.file_scanner import scan_bytes
+        # DOCX files are ZIP archives starting with PK magic bytes
+        docx_content = b"PK\x03\x04" + b"\x00" * 100
+        result = scan_bytes(docx_content, "report.docx")
+        assert result.clean
+        assert result.sha256
+
+    def test_returns_sha256_hash(self):
+        from api.file_scanner import scan_bytes
+        import hashlib
+        content = b"test file content for hash verification"
+        result = scan_bytes(content, "test.txt")
+        assert result.clean
+        expected_hash = hashlib.sha256(content).hexdigest()
+        assert result.sha256 == expected_hash
+
+    def test_blocks_elf_magic_bytes(self):
+        from api.file_scanner import scan_bytes
+        # ELF binary disguised as .txt
+        elf_content = b"\x7fELF" + b"\x00" * 100
+        result = scan_bytes(elf_content, "readme.txt")
+        assert not result.clean
+        assert "executable" in result.reason.lower() or "blocked" in result.reason.lower()
+
+    def test_blocks_bat_extension(self):
+        from api.file_scanner import scan_bytes
+        result = scan_bytes(b"echo hello", "script.bat")
+        assert not result.clean
+
+    def test_blocks_ps1_extension(self):
+        from api.file_scanner import scan_bytes
+        result = scan_bytes(b"Get-Process", "script.ps1")
+        assert not result.clean
+
+
 class TestEncryptionManager:
     def test_import(self):
         from core.encryption_manager import EncryptionManager

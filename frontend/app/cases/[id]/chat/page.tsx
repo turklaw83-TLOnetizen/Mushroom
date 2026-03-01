@@ -1,27 +1,19 @@
 // ---- Strategy Chat Tab (SSE streaming) ----------------------------------
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { isDevAuthMode, getDevToken } from "@/lib/dev-auth";
+import type { ChatMessage } from "@/types/api";
 import { usePrep } from "@/hooks/use-prep";
 import { useRole } from "@/hooks/use-role";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-interface ChatMessage {
-    role: "user" | "assistant";
-    content: string;
-    timestamp?: string;
-}
 
 export default function ChatPage() {
     const params = useParams();
@@ -55,16 +47,6 @@ export default function ChatPage() {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, streamingContent]);
 
-    // Resolve auth token for the SSE fetch
-    const resolveToken = useCallback(async (): Promise<string | null> => {
-        let token: string | null = null;
-        token = await getToken();
-        if (!token && isDevAuthMode()) {
-            token = await getDevToken();
-        }
-        return token;
-    }, [getToken]);
-
     const handleSend = async () => {
         const text = input.trim();
         if (!text || !activePrepId || isStreaming) return;
@@ -80,24 +62,10 @@ export default function ChatPage() {
         );
 
         try {
-            const token = await resolveToken();
-            const headers: Record<string, string> = {
-                "Content-Type": "application/json",
-            };
-            if (token) {
-                headers["Authorization"] = `Bearer ${token}`;
-            }
-
-            const response = await fetch(
-                `${API_BASE}/api/v1/cases/${caseId}/chat/stream`,
-                {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify({
-                        message: text,
-                        prep_id: activePrepId,
-                    }),
-                },
+            const response = await api.stream(
+                `/cases/${caseId}/chat/stream`,
+                { message: text, prep_id: activePrepId },
+                { getToken },
             );
 
             if (!response.ok) {

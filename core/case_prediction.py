@@ -2,26 +2,19 @@
 
 import json
 import logging
-import os
 from typing import Optional
+
+from langchain_core.messages import HumanMessage
+
+from core.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
 
-def _get_llm_client():
-    if os.getenv("ANTHROPIC_API_KEY"):
-        import anthropic
-        return "anthropic", anthropic.Anthropic()
-    if os.getenv("XAI_API_KEY"):
-        from openai import OpenAI
-        return "xai", OpenAI(api_key=os.getenv("XAI_API_KEY"), base_url="https://api.x.ai/v1")
-    return None, None
-
-
 def predict_outcome(case_summary: str, evidence_summary: str = "", witness_summary: str = "") -> dict:
     """Predict case outcome probabilities."""
-    provider, client = _get_llm_client()
-    if client is None:
+    llm = get_llm()
+    if llm is None:
         return {"error": "No LLM provider configured"}
 
     prompt = (
@@ -39,18 +32,8 @@ def predict_outcome(case_summary: str, evidence_summary: str = "", witness_summa
         prompt += f"Witnesses:\n{witness_summary[:4000]}\n\n"
 
     try:
-        if provider == "anthropic":
-            resp = client.messages.create(
-                model="claude-sonnet-4-20250514", max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = resp.content[0].text
-        else:
-            resp = client.chat.completions.create(
-                model="grok-2-latest", max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = resp.choices[0].message.content or ""
+        response = llm.invoke([HumanMessage(content=prompt)])
+        raw = response.content
 
         # Extract JSON from response
         start = raw.find("{")
@@ -67,8 +50,8 @@ def predict_settlement_range(
     case_summary: str, damages_info: str = "", jurisdiction: str = ""
 ) -> dict:
     """Estimate settlement value range."""
-    provider, client = _get_llm_client()
-    if client is None:
+    llm = get_llm()
+    if llm is None:
         return {"error": "No LLM provider configured"}
 
     prompt = (
@@ -85,18 +68,8 @@ def predict_settlement_range(
         prompt += f"Jurisdiction: {jurisdiction}\n\n"
 
     try:
-        if provider == "anthropic":
-            resp = client.messages.create(
-                model="claude-sonnet-4-20250514", max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = resp.content[0].text
-        else:
-            resp = client.chat.completions.create(
-                model="grok-2-latest", max_tokens=2048,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            raw = resp.choices[0].message.content or ""
+        response = llm.invoke([HumanMessage(content=prompt)])
+        raw = response.content
 
         start = raw.find("{")
         end = raw.rfind("}") + 1

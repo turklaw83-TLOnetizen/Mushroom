@@ -24,7 +24,7 @@ export class ApiError extends Error {
     }
 }
 
-type RequestOptions = {
+export type RequestOptions = {
     method?: string;
     body?: unknown;
     params?: Record<string, string | number | boolean | undefined>;
@@ -215,5 +215,21 @@ export const api = {
         }
 
         return response.json();
+    },
+
+    // Streaming fetch (returns raw Response for SSE consumption)
+    stream: async (path: string, body: any, options?: RequestOptions): Promise<Response> => {
+        const url = `${API_BASE}/api/v1${path}`;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+        if (options?.getToken) {
+            const token = await options.getToken();
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+        } else if (isDevAuthMode()) {
+            const token = await getDevToken();
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        return fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
     },
 };

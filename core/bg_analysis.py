@@ -293,7 +293,7 @@ def _run_analysis_thread(
         # through re-analysis. They're injected into state so get_case_context()
         # can build the module_notes_block for LLM prompts.
         try:
-            from api.routers.module_notes import MODULE_NAMES as _MODULE_NAMES
+            from core.module_definitions import MODULE_NAMES as _MODULE_NAMES
             _notes = {}
             for _mod in _MODULE_NAMES:
                 _note = case_mgr.load_module_notes(case_id, prep_id, _mod)
