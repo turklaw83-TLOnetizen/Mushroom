@@ -267,8 +267,8 @@ def _run_analysis_thread(
                 progress["streamed_text"] = display_text
                 progress["node_started_at"] = datetime.now().isoformat()
                 _write_progress(case_id, prep_id, progress)
-            except Exception:
-                pass  # Non-critical
+            except Exception as _upd_err:
+                logger.warning("Progress updater failed to write token progress: %s", _upd_err)
             _updater_stop.wait(timeout=1.0)
 
     # Start the progress updater daemon
@@ -287,6 +287,23 @@ def _run_analysis_thread(
             total_nodes = get_node_count(prep_type)
 
         started_at = datetime.now().isoformat()
+
+        # -- Load attorney module notes for AI-aware re-analysis --
+        # Module notes are stored separately from analysis results and persist
+        # through re-analysis. They're injected into state so get_case_context()
+        # can build the module_notes_block for LLM prompts.
+        try:
+            from api.routers.module_notes import MODULE_NAMES as _MODULE_NAMES
+            _notes = {}
+            for _mod in _MODULE_NAMES:
+                _note = case_mgr.load_module_notes(case_id, prep_id, _mod)
+                if _note and _note.strip():
+                    _notes[_mod] = _note
+            if _notes:
+                state["_attorney_module_notes"] = _notes
+                logger.info("Loaded %d attorney module notes for re-analysis", len(_notes))
+        except Exception as _notes_err:
+            logger.warning("Failed to load module notes: %s", _notes_err)
 
         # -- Smart caching: check existing results + fingerprint --
         existing_state = case_mgr.load_prep_state(case_id, prep_id) or {}
@@ -576,8 +593,8 @@ def _run_analysis_thread(
         # Cleanup streaming on error
         try:
             clear_stream_callback()
-        except Exception:
-            pass
+        except Exception as _cb_err:
+            logger.debug("Failed to clear stream callback during error cleanup: %s", _cb_err)
         _updater_stop.set()
 
         # Save partial results on error so work isn't lost
@@ -585,8 +602,8 @@ def _run_analysis_thread(
             _partial = case_mgr.merge_append_only(case_id, prep_id, results)
             _partial["_docs_fingerprint"] = case_mgr.compute_docs_fingerprint(case_id)
             case_mgr.save_prep_state(case_id, prep_id, _partial)
-        except Exception:
-            pass
+        except Exception as _save_err:
+            logger.warning("Failed to save partial results on error: %s", _save_err)
 
         _write_progress(case_id, prep_id, {
             "status": "error",
@@ -621,8 +638,8 @@ def start_background_analysis(
         _storage = JSONStorageBackend(_data_dir)
         case_mgr = CaseManager(_storage)
         case_mgr.save_snapshot(case_id, prep_id, label="Before background analysis")
-    except Exception:
-        pass  # Non-critical
+    except Exception as _snap_err:
+        logger.warning("Pre-analysis snapshot failed: %s", _snap_err)
 
     # -- Write initial progress.json BEFORE starting the thread --
     # This eliminates the race condition where st.rerun() fires before

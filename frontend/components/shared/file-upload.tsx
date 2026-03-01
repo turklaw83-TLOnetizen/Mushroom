@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { isDevAuthMode, getDevToken } from "@/lib/dev-auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -80,7 +81,10 @@ export function FileUpload({
 
     const uploadAll = async () => {
         setIsUploading(true);
-        const token = await getToken();
+        let token = await getToken();
+        if (!token && isDevAuthMode()) {
+            token = await getDevToken();
+        }
 
         const formData = new FormData();
         files.forEach((f) => {
@@ -98,7 +102,7 @@ export function FileUpload({
 
         try {
             const response = await fetch(
-                `${API_BASE}/api/cases/${caseId}/files/upload`,
+                `${API_BASE}/api/v1/cases/${caseId}/files`,
                 {
                     method: "POST",
                     headers: token ? { Authorization: `Bearer ${token}` } : {},

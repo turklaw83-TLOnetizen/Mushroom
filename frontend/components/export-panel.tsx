@@ -9,6 +9,7 @@ import { usePrep } from "@/hooks/use-prep";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { isDevAuthMode, getDevToken } from "@/lib/dev-auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -39,9 +40,12 @@ export function ExportPanel({ caseId }: { caseId: string }) {
 
         setDownloading(exp.endpoint);
         try {
-            const token = await getToken();
+            let token = await getToken();
+            if (!token && isDevAuthMode()) {
+                token = await getDevToken();
+            }
             const response = await fetch(
-                `${API_BASE}/api/cases/${caseId}/export/${exp.endpoint}/${activePrepId}`,
+                `${API_BASE}/api/v1/cases/${caseId}/export/${exp.endpoint}/${activePrepId}`,
                 {
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                 },

@@ -201,6 +201,27 @@ def get_case_context(state: dict) -> dict:
     else:
         context["directives_block"] = ""
 
+    # -- Attorney Module Notes -- persistent notes injected into re-analysis --
+    module_notes = state.get("_attorney_module_notes", {})
+    if module_notes:
+        note_lines = []
+        for module_name, note_text in module_notes.items():
+            if note_text and note_text.strip():
+                label = module_name.replace("_", " ").title()
+                note_lines.append(f"[{label}] {note_text.strip()}")
+        if note_lines:
+            context["module_notes_block"] = (
+                "\n\n[ATTORNEY MODULE NOTES]\n"
+                "The attorney has left the following notes on previous analysis results.\n"
+                "You MUST take these notes into account. They may contain corrections,\n"
+                "additional context, or strategic guidance for this specific module.\n\n"
+                + "\n".join(note_lines) + "\n"
+            )
+        else:
+            context["module_notes_block"] = ""
+    else:
+        context["module_notes_block"] = ""
+
     return context
 
 

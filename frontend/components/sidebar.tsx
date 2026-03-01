@@ -144,6 +144,7 @@ export function Sidebar() {
                         <NavItem href="/portal" label="Client Portal" icon="🌐" active={pathname === "/portal"} collapsed={!sidebarOpen} />
                         <NavItem href="/profile" label="Profile" icon="👤" active={pathname === "/profile"} collapsed={!sidebarOpen} />
                         <NavItem href="/settings" label="Settings" icon="⚙️" active={pathname === "/settings"} collapsed={!sidebarOpen} />
+                        <NavItem href="/settings/backup" label="Backup" icon="💾" active={pathname === "/settings/backup"} collapsed={!sidebarOpen} />
                         <NavItem href="/admin" label="Admin" icon="🛡️" active={pathname === "/admin"} collapsed={!sidebarOpen} />
                     </div>
 

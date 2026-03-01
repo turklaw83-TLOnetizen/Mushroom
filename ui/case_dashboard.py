@@ -90,8 +90,8 @@ def render_dashboard():
             _auto_archived = case_mgr.check_auto_archive_closed_cases()
             if _auto_archived:
                 st.session_state["_dash_cache_ver"] = st.session_state.get("_dash_cache_ver", 0) + 1
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Auto-archive check failed: %s", e)
 
     all_cases_for_metrics = _cached["all_cases"]
     active_cases = _cached["active_cases"]
@@ -156,8 +156,11 @@ def render_dashboard():
             )
         else:
             _bc5.metric("\u2705 Overdue", 0)
-    except Exception:
-        pass
+    except ImportError:
+        pass  # Billing module not installed
+    except Exception as e:
+        logger.warning("Billing metrics failed: %s", e)
+        st.caption("\u26a0\ufe0f Billing data unavailable")
 
     # ===== CRM METRICS + CLIENT DIRECTORY =====
     try:
@@ -339,8 +342,11 @@ def render_dashboard():
             if st.button("\u2795 Add First Client", key="_dash_first_client"):
                 st.session_state["_dash_crm_adding"] = True
                 st.rerun()
-    except Exception:
-        pass
+    except ImportError:
+        pass  # CRM module not installed
+    except Exception as e:
+        logger.warning("CRM section failed: %s", e)
+        st.caption("\u26a0\ufe0f Client directory unavailable")
 
     # ===== CALENDAR METRICS ROW =====
     try:
@@ -361,8 +367,11 @@ def render_dashboard():
                 _ce4.metric("\U0001f534 Past Due", _past)
             else:
                 _ce4.metric("\u2705 Past Due", 0)
-    except Exception:
-        pass
+    except ImportError:
+        pass  # Calendar module not installed
+    except Exception as e:
+        logger.warning("Calendar metrics failed: %s", e)
+        st.caption("\u26a0\ufe0f Calendar data unavailable")
 
     # ===== DEADLINE URGENCY BOARD =====
     try:
@@ -398,8 +407,9 @@ def render_dashboard():
                     st.info(
                         f"\U0001f4c5 {days} days \u2014 {label} | {case_name} | {dl_date} | {category}"
                     )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Deadline urgency board failed: %s", e)
+        st.caption("\u26a0\ufe0f Deadline data unavailable")
 
     # ===== TEAM WORKLOAD =====
     try:
@@ -427,8 +437,9 @@ def render_dashboard():
                         f"{_tw_active} cases",
                         help=_tw_role.title(),
                     )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Team workload section failed: %s", e)
+        st.caption("\u26a0\ufe0f Team workload unavailable")
 
     # ===== CASE OVERVIEW DASHBOARD (sortable table) =====
     _display_cases = active_cases if not _show_archived else all_cases_for_metrics
@@ -559,12 +570,15 @@ def render_dashboard():
                                 )
                             if len(_cross_tasks) > 5:
                                 st.caption(f"... and {len(_cross_tasks) - 5} more")
-            except Exception:
-                pass
+            except ImportError:
+                pass  # Search module not installed
+            except Exception as e:
+                logger.warning("Cross-entity search failed: %s", e)
 
         try:
             all_deadlines = case_mgr.get_all_deadlines()
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to load deadlines: %s", e)
             all_deadlines = []
 
         # Batch-load calendar events for "Next Event" column
@@ -585,7 +599,10 @@ def render_dashboard():
                 _events_by_case.setdefault(_ev_case, []).append(_ev)
             for _ek in _events_by_case:
                 _events_by_case[_ek].sort(key=lambda e: (e.get("date", ""), e.get("time", "")))
-        except Exception:
+        except ImportError:
+            _events_by_case = {}
+        except Exception as e:
+            logger.warning("Failed to load calendar events: %s", e)
             _events_by_case = {}
 
         _dash_rows = []
@@ -637,8 +654,8 @@ def render_dashboard():
                         )
                         _ac_modules_total = len(_fp_bd)
                         _ac_modules_num = _ac_modules_done
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Readiness score failed for case %s: %s", _ac_id, e)
 
             _case_deadlines = [
                 d
@@ -683,7 +700,8 @@ def render_dashboard():
 
             try:
                 _ac_pinned = case_mgr.is_pinned(_ac_id)
-            except Exception:
+            except Exception as e:
+                logger.debug("Pin status check failed for case %s: %s", _ac_id, e)
                 _ac_pinned = False
 
             _dash_rows.append(
@@ -793,8 +811,9 @@ def render_dashboard():
                                 case_mgr.pin_case(_row["_case_id"])
                             st.session_state.pop("_dash_metrics_cache", None)
                             st.session_state["_dash_cache_ver"] = st.session_state.get("_dash_cache_ver", 0) + 1
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("Pin/unpin failed for case %s: %s", _row["_case_id"], e)
+                            st.toast(f"Failed to update pin: {e}", icon="\u26a0\ufe0f")
                         st.rerun()
                 _cols[1].markdown(_row[""])
                 _cols[2].markdown(f"**{_row['Case']}**")
@@ -814,7 +833,8 @@ def render_dashboard():
                             try:
                                 _sub_cfg = case_mgr.get_phase_config()
                                 _cached["_phase_config"] = _sub_cfg
-                            except Exception:
+                            except Exception as e:
+                                logger.warning("Phase config load failed: %s", e)
                                 _sub_cfg = {}
                         _sub_opts = _sub_cfg.get(_row_ctype, _sub_cfg.get("criminal", []))
                         _sel_opts = ["—"] + _sub_opts

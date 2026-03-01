@@ -131,8 +131,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in CORS_ORIGINS],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Accept"],
     expose_headers=["X-Request-ID"],  # Let frontend read request IDs
 )
 
@@ -170,6 +170,10 @@ from api.routers.ai_features import router as ai_features_router
 from api.routers.webhooks import router as webhooks_router
 from api.routers.gdpr import router as gdpr_router
 from api.routers.batch import router as batch_router
+from api.routers.chat import router as chat_router
+from api.routers.module_notes import router as module_notes_router
+from api.routers.journal import router as journal_router
+from api.routers.snapshots import router as snapshots_router
 from api.metrics import router as metrics_router
 from api.websockets.workers_ws import router as ws_router
 
@@ -204,26 +208,34 @@ app.include_router(ai_features_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(gdpr_router, prefix="/api/v1")
 app.include_router(batch_router, prefix="/api/v1")
+app.include_router(chat_router, prefix="/api/v1")
+app.include_router(module_notes_router, prefix="/api/v1")
+app.include_router(journal_router, prefix="/api/v1")
+app.include_router(snapshots_router, prefix="/api/v1")
 app.include_router(metrics_router, prefix="/api/v1")
 app.include_router(ws_router, prefix="/api/v1")
 
 
-# ---- Health Check (Fix #12: actually pings DB) ---------------------------
+# ---- Health Check (Fix #12: actually pings DB + LLM/disk/data checks) ----
 
 @app.get("/api/v1/health", tags=["System"])
 async def health_check():
     """
     Health check endpoint.
 
-    Returns database connectivity status alongside the service status.
+    Returns database connectivity, LLM provider availability, disk space,
+    and data directory status alongside the service status.
     """
+    import shutil
+    import time
+
     db_status = "not_configured"
     db_latency_ms = None
 
+    # ---- Database check ----
     database_url = os.getenv("DATABASE_URL")
     if database_url:
         try:
-            import time
             from api.database import get_engine
             from sqlalchemy import text
 
@@ -239,12 +251,59 @@ async def health_check():
         except Exception as e:
             db_status = f"error: {e}"
 
+    # ---- LLM provider check ----
+    llm_status = (
+        "configured"
+        if os.getenv("ANTHROPIC_API_KEY") or os.getenv("XAI_API_KEY")
+        else "no_api_keys"
+    )
+
+    # ---- Disk space check ----
+    data_dir = _PROJECT_ROOT / "data"
+    disk_free_gb = None
+    try:
+        disk = shutil.disk_usage(str(data_dir) if data_dir.exists() else str(_PROJECT_ROOT))
+        disk_free_gb = round(disk.free / (1024 ** 3), 1)
+    except OSError:
+        pass  # disk_free_gb stays None
+
+    # ---- Data directory check ----
+    if not data_dir.exists():
+        data_dir_status = "missing"
+    else:
+        # Verify writable by attempting to create and remove a temp file
+        try:
+            probe = data_dir / ".health_probe"
+            probe.write_text("ok")
+            probe.unlink()
+            data_dir_status = "ok"
+        except OSError:
+            data_dir_status = "not_writable"
+
+    # ---- Overall status ----
+    degraded = (
+        db_status not in ("connected", "not_configured")
+        or llm_status != "configured"
+        or data_dir_status != "ok"
+    )
+    unhealthy = data_dir_status == "missing"
+
+    if unhealthy:
+        overall = "unhealthy"
+    elif degraded:
+        overall = "degraded"
+    else:
+        overall = "healthy"
+
     return {
-        "status": "healthy" if db_status in ("connected", "not_configured") else "degraded",
+        "status": overall,
         "service": "Project Mushroom Cloud API",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "database": db_status,
         "db_latency_ms": db_latency_ms,
+        "llm": llm_status,
+        "disk_free_gb": disk_free_gb,
+        "data_dir": data_dir_status,
     }
 
 
@@ -263,3 +322,50 @@ def get_providers():
             if isinstance(p, dict) and "model" in p
         },
     }
+
+
+@app.get("/api/v1/config/api-keys", tags=["System"])
+def get_api_key_status():
+    """Return which API keys are configured (boolean status only, no secrets)."""
+    providers = {
+        "anthropic": {
+            "configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "env_var": "ANTHROPIC_API_KEY",
+        },
+        "openai": {
+            "configured": bool(os.getenv("OPENAI_API_KEY")),
+            "env_var": "OPENAI_API_KEY",
+        },
+        "xai": {
+            "configured": bool(os.getenv("XAI_API_KEY")),
+            "env_var": "XAI_API_KEY",
+        },
+        "google": {
+            "configured": bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")),
+            "env_var": "GOOGLE_API_KEY",
+        },
+    }
+    return {"providers": providers}
+
+
+@app.put("/api/v1/config/providers", tags=["System"])
+def update_providers(body: dict):
+    """Update default/fallback provider selection (saves to config.yaml)."""
+    import yaml
+    from api.auth import require_role
+    config_path = _PROJECT_ROOT / "config.yaml"
+    if not config_path.exists():
+        return {"status": "error", "detail": "config.yaml not found"}
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+    llm = config.setdefault("llm", {})
+    if "default_provider" in body:
+        llm["default_provider"] = body["default_provider"]
+    if "fallback_provider" in body:
+        llm["fallback_provider"] = body["fallback_provider"]
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f, default_flow_style=False)
+    # Clear cached config so next request sees updated values
+    from api.deps import get_config
+    get_config.cache_clear()
+    return {"status": "updated"}

@@ -1,9 +1,12 @@
 // ---- Analysis Tab (Full AI Pipeline Integration) ------------------------
 // Connects to real backend analysis endpoints:
-// - POST /cases/{id}/analysis/start → starts bg_analysis
-// - POST /cases/{id}/analysis/stop → stops running analysis
-// - GET  /cases/{id}/analysis/status → progress polling
-// - POST /cases/{id}/analysis/ingestion/start → document ingestion
+// - POST /cases/{id}/analysis/start -> starts bg_analysis
+// - POST /cases/{id}/analysis/stop -> stops running analysis
+// - GET  /cases/{id}/analysis/status -> progress polling (fallback)
+// - POST /cases/{id}/analysis/ingestion/start -> document ingestion
+//
+// Primary progress source: WebSocket (500ms updates via use-worker-status).
+// Falls back to HTTP polling only when WebSocket is disconnected.
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
@@ -24,20 +27,20 @@ import { Button } from "@/components/ui/button";
 // ---- Module Definitions -------------------------------------------------
 
 const analysisModules = [
-    { key: "case_summary", label: "Case Summary", icon: "📋", description: "Overall case narrative and key findings" },
-    { key: "charges", label: "Charges Analysis", icon: "⚖️", description: "Charge elements, statutes, and defenses" },
-    { key: "timeline", label: "Timeline", icon: "📅", description: "Chronological sequence of events" },
-    { key: "witnesses", label: "Witness Analysis", icon: "👤", description: "Witness profiles, goals, and credibility" },
-    { key: "evidence_foundations", label: "Evidence", icon: "🔍", description: "Admissibility analysis and foundations" },
-    { key: "legal_elements", label: "Legal Elements", icon: "📜", description: "Elements of each charge and element-by-element analysis" },
-    { key: "consistency_check", label: "Consistency Check", icon: "✓", description: "Cross-reference witness statements and evidence" },
-    { key: "investigation_plan", label: "Investigation Plan", icon: "🔬", description: "Action items for further investigation" },
-    { key: "cross_examination_plan", label: "Cross Examination", icon: "❓", description: "Question strategies for opposing witnesses" },
-    { key: "direct_examination_plan", label: "Direct Examination", icon: "💬", description: "Question outlines for friendly witnesses" },
-    { key: "strategy_notes", label: "Strategy", icon: "🎯", description: "Defense strategy recommendations" },
-    { key: "devils_advocate_notes", label: "Devil's Advocate", icon: "😈", description: "Prosecution's strongest arguments" },
-    { key: "entities", label: "Entities", icon: "🏷️", description: "People, places, and organizations mentioned" },
-    { key: "voir_dire", label: "Voir Dire", icon: "🗳️", description: "Jury selection strategy and questions" },
+    { key: "case_summary", label: "Case Summary", icon: "\u{1F4CB}", description: "Overall case narrative and key findings" },
+    { key: "charges", label: "Charges Analysis", icon: "\u2696\uFE0F", description: "Charge elements, statutes, and defenses" },
+    { key: "timeline", label: "Timeline", icon: "\u{1F4C5}", description: "Chronological sequence of events" },
+    { key: "witnesses", label: "Witness Analysis", icon: "\u{1F464}", description: "Witness profiles, goals, and credibility" },
+    { key: "evidence_foundations", label: "Evidence", icon: "\u{1F50D}", description: "Admissibility analysis and foundations" },
+    { key: "legal_elements", label: "Legal Elements", icon: "\u{1F4DC}", description: "Elements of each charge and element-by-element analysis" },
+    { key: "consistency_check", label: "Consistency Check", icon: "\u2713", description: "Cross-reference witness statements and evidence" },
+    { key: "investigation_plan", label: "Investigation Plan", icon: "\u{1F52C}", description: "Action items for further investigation" },
+    { key: "cross_examination_plan", label: "Cross Examination", icon: "\u2753", description: "Question strategies for opposing witnesses" },
+    { key: "direct_examination_plan", label: "Direct Examination", icon: "\u{1F4AC}", description: "Question outlines for friendly witnesses" },
+    { key: "strategy_notes", label: "Strategy", icon: "\u{1F3AF}", description: "Defense strategy recommendations" },
+    { key: "devils_advocate_notes", label: "Devil's Advocate", icon: "\u{1F608}", description: "Prosecution's strongest arguments" },
+    { key: "entities", label: "Entities", icon: "\u{1F3F7}\uFE0F", description: "People, places, and organizations mentioned" },
+    { key: "voir_dire", label: "Voir Dire", icon: "\u{1F5F3}\uFE0F", description: "Jury selection strategy and questions" },
 ];
 
 // ---- Helpers ------------------------------------------------------------
@@ -66,6 +69,119 @@ function ProgressBar({ percent, label }: { percent: number; label?: string }) {
     );
 }
 
+// ---- Connection Indicator -----------------------------------------------
+
+function ConnectionDot({ connected }: { connected: boolean }) {
+    return (
+        <span
+            className={`inline-block w-2 h-2 rounded-full ${
+                connected ? "bg-emerald-400" : "bg-zinc-500"
+            }`}
+            title={connected ? "WebSocket connected" : "WebSocket disconnected"}
+        />
+    );
+}
+
+// ---- Module Notes (persistent through re-analysis) ---------------------
+
+function ModuleNotes({
+    caseId,
+    prepId,
+    moduleKey,
+}: {
+    caseId: string;
+    prepId: string;
+    moduleKey: string;
+}) {
+    const { getToken } = useAuth();
+    const [isEditing, setIsEditing] = useState(false);
+    const [draft, setDraft] = useState("");
+
+    const { data: noteData } = useQuery({
+        queryKey: ["module-notes", caseId, prepId, moduleKey],
+        queryFn: () =>
+            api.get<{ module_name: string; content: string }>(
+                `/cases/${caseId}/preparations/${prepId}/notes/${moduleKey}`,
+                { getToken },
+            ),
+        enabled: !!prepId,
+    });
+
+    const saveNote = useMutationWithToast({
+        mutationFn: () =>
+            api.put(
+                `/cases/${caseId}/preparations/${prepId}/notes/${moduleKey}`,
+                { content: draft },
+                { getToken },
+            ),
+        successMessage: "Note saved \u2014 will be used in next analysis",
+        errorMessage: "Failed to save note",
+        invalidateKeys: [["module-notes", caseId, prepId, moduleKey]],
+        onSuccess: () => setIsEditing(false),
+    });
+
+    const noteContent = noteData?.content || "";
+
+    return (
+        <div className="border-t border-border mt-4 pt-4">
+            <div className="flex items-center justify-between mb-2">
+                <h4 className="text-sm font-semibold text-muted-foreground">
+                    Attorney Notes
+                    <span className="text-xs font-normal ml-2">(persists through re-analysis, visible to AI)</span>
+                </h4>
+                {!isEditing && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                            setDraft(noteContent);
+                            setIsEditing(true);
+                        }}
+                    >
+                        {noteContent ? "Edit" : "+ Add Note"}
+                    </Button>
+                )}
+            </div>
+            {isEditing ? (
+                <div className="space-y-2">
+                    <textarea
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        placeholder="Add corrections, context, or strategic guidance for this module. These notes will be injected into the AI context on the next analysis run."
+                        className="w-full min-h-[100px] text-sm bg-muted border border-border rounded-md p-3 resize-y focus:outline-none focus:ring-1 focus:ring-primary"
+                        autoFocus
+                    />
+                    <div className="flex gap-2">
+                        <Button
+                            size="sm"
+                            onClick={() => saveNote.mutate({})}
+                            disabled={saveNote.isPending}
+                        >
+                            {saveNote.isPending ? "Saving..." : "Save Note"}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setIsEditing(false)}
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                </div>
+            ) : noteContent ? (
+                <div className="text-sm bg-amber-500/10 border border-amber-500/20 rounded-md p-3 whitespace-pre-wrap">
+                    {noteContent}
+                </div>
+            ) : (
+                <p className="text-xs text-muted-foreground italic">
+                    No notes. Add notes to guide AI analysis for this module.
+                </p>
+            )}
+        </div>
+    );
+}
+
 // ---- Module Detail Modal ------------------------------------------------
 
 interface ModuleDetailProps {
@@ -74,10 +190,12 @@ interface ModuleDetailProps {
     icon: string;
     description: string;
     data: unknown;
+    caseId: string;
+    prepId: string;
     onClose: () => void;
 }
 
-function ModuleDetail({ label, icon, description, data, onClose }: ModuleDetailProps) {
+function ModuleDetail({ moduleKey, label, icon, description, data, caseId, prepId, onClose }: ModuleDetailProps) {
     const renderValue = (val: unknown): React.ReactNode => {
         if (val === null || val === undefined || val === "")
             return <p className="text-sm text-muted-foreground italic">Analysis not yet run for this module.</p>;
@@ -146,9 +264,14 @@ function ModuleDetail({ label, icon, description, data, onClose }: ModuleDetailP
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">{description}</p>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">✕</Button>
+                    <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">{"\u2715"}</Button>
                 </CardHeader>
-                <CardContent className="pt-4">{renderValue(data)}</CardContent>
+                <CardContent className="pt-4">
+                    {renderValue(data)}
+                    {prepId && (
+                        <ModuleNotes caseId={caseId} prepId={prepId} moduleKey={moduleKey} />
+                    )}
+                </CardContent>
             </Card>
         </div>
     );
@@ -162,14 +285,37 @@ export default function AnalysisPage() {
     const { getToken } = useAuth();
     const { activePrepId, preparations, isLoading: prepLoading } = usePrep();
     const { canEdit } = useRole();
-    const { status: workerStatus, reconnect } = useWorkerStatus(caseId);
+    const { status: workerStatus, connected: wsConnected, reconnect, reconnectAttempts } = useWorkerStatus(caseId);
     const [selectedModule, setSelectedModule] = useState<string | null>(null);
+    const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
+    const [selectedModules, setSelectedModules] = useState<Set<string>>(new Set());
 
     const isAnalysisRunning = workerStatus.analysis.status === "running";
     const isIngestionRunning = workerStatus.ingestion.status === "running";
 
-    // Poll progress while analysis is running
-    const { progress } = useAnalysisProgress(caseId, activePrepId, isAnalysisRunning);
+    // Use WebSocket data as primary progress source.
+    // Fall back to HTTP polling only when the WebSocket is disconnected.
+    const usePollingFallback = isAnalysisRunning && !wsConnected;
+    const { progress: polledProgress } = useAnalysisProgress(caseId, activePrepId, usePollingFallback);
+
+    // Derive the progress data: prefer WebSocket, fall back to polling
+    const progress = useMemo(() => {
+        if (wsConnected && isAnalysisRunning) {
+            const ws = workerStatus.analysis;
+            return {
+                status: ws.status as "idle" | "running" | "complete" | "error" | "stopping",
+                progress: ws.progress ?? 0,
+                current_module: ws.current_module ?? "",
+                module_description: ws.module_description,
+                error: ws.error ?? "",
+                elapsed_seconds: ws.elapsed_seconds,
+                completed_modules: ws.completed_modules,
+                total_modules: ws.total_modules,
+                tokens_used: ws.tokens_used,
+            };
+        }
+        return polledProgress;
+    }, [wsConnected, isAnalysisRunning, workerStatus.analysis, polledProgress]);
 
     // Load analysis state (the actual results)
     const stateQuery = useQuery({
@@ -202,7 +348,7 @@ export default function AnalysisPage() {
                 prep_id: activePrepId,
                 force_rerun: false,
             }, { getToken }),
-        successMessage: "Analysis started — modules will update as they complete",
+        successMessage: "Analysis started \u2014 modules will update as they complete",
         errorMessage: "Failed to start analysis",
         onSuccess: () => reconnect(),
     });
@@ -214,6 +360,45 @@ export default function AnalysisPage() {
         successMessage: "Analysis stopping...",
         errorMessage: "Failed to stop analysis",
     });
+
+    // Re-analyze (selected modules) mutation
+    const startReanalyze = useMutationWithToast({
+        mutationFn: () =>
+            api.post(`/cases/${caseId}/analysis/start`, {
+                prep_id: activePrepId,
+                active_modules: [...selectedModules],
+                force_rerun: true,
+            }, { getToken }),
+        successMessage: `Re-analysis started for ${selectedModules.size} module(s)`,
+        errorMessage: "Failed to start re-analysis",
+        onSuccess: () => {
+            setReanalyzeOpen(false);
+            reconnect();
+        },
+    });
+
+    // Re-analyze panel helpers
+    const openReanalyzePanel = useCallback(() => {
+        // Pre-check modules that already have data
+        const preChecked = new Set<string>();
+        analysisModules.forEach((mod) => {
+            const data = analysisState[mod.key];
+            const hasData = data !== undefined && data !== null && data !== "" &&
+                (Array.isArray(data) ? data.length > 0 : true);
+            if (hasData) preChecked.add(mod.key);
+        });
+        setSelectedModules(preChecked);
+        setReanalyzeOpen(true);
+    }, [analysisState]);
+
+    const toggleModule = useCallback((key: string) => {
+        setSelectedModules((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    }, []);
 
     // Start Ingestion mutation
     const startIngestion = useMutationWithToast({
@@ -241,9 +426,20 @@ export default function AnalysisPage() {
                     <CardTitle className="text-base flex items-center justify-between">
                         <span>AI Analysis Engine</span>
                         <div className="flex items-center gap-2">
+                            <ConnectionDot connected={wsConnected} />
                             <Badge variant="outline" className={statusColor(workerStatus.analysis.status)}>
                                 {workerStatus.analysis.status}
                             </Badge>
+                            {!wsConnected && isAnalysisRunning && (
+                                <span className="text-xs text-amber-400" title="Using HTTP polling as fallback">
+                                    polling
+                                </span>
+                            )}
+                            {reconnectAttempts > 0 && !wsConnected && (
+                                <span className="text-xs text-zinc-500">
+                                    retry {reconnectAttempts}/5
+                                </span>
+                            )}
                         </div>
                     </CardTitle>
                 </CardHeader>
@@ -261,7 +457,8 @@ export default function AnalysisPage() {
                             {progress.completed_modules && (
                                 <p className="text-xs text-muted-foreground">
                                     {progress.completed_modules.length}/{progress.total_modules || "?"} modules complete
-                                    {progress.tokens_used ? ` · ${progress.tokens_used.toLocaleString()} tokens` : ""}
+                                    {progress.tokens_used ? ` \u00B7 ${progress.tokens_used.toLocaleString()} tokens` : ""}
+                                    {progress.elapsed_seconds != null ? ` \u00B7 ${Math.round(progress.elapsed_seconds)}s elapsed` : ""}
                                 </p>
                             )}
                         </div>
@@ -290,13 +487,25 @@ export default function AnalysisPage() {
                             ) : (
                                 <>
                                     {!isAnalysisRunning ? (
-                                        <Button
-                                            size="sm"
-                                            onClick={() => startAnalysis.mutate({})}
-                                            disabled={startAnalysis.isPending || !activePrepId}
-                                        >
-                                            {startAnalysis.isPending ? "Starting..." : "▶ Run Analysis"}
-                                        </Button>
+                                        <>
+                                            <Button
+                                                size="sm"
+                                                onClick={() => startAnalysis.mutate({})}
+                                                disabled={startAnalysis.isPending || !activePrepId}
+                                            >
+                                                {startAnalysis.isPending ? "Starting..." : "\u25B6 Run Analysis"}
+                                            </Button>
+                                            {activePrepId && (
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={openReanalyzePanel}
+                                                    disabled={startReanalyze.isPending}
+                                                >
+                                                    {reanalyzeOpen ? "\u25BC Re-analyze" : "\u25B6 Re-analyze"}
+                                                </Button>
+                                            )}
+                                        </>
                                     ) : (
                                         <Button
                                             size="sm"
@@ -304,7 +513,7 @@ export default function AnalysisPage() {
                                             onClick={() => stopAnalysis.mutate({})}
                                             disabled={stopAnalysis.isPending}
                                         >
-                                            {stopAnalysis.isPending ? "Stopping..." : "⏹ Stop"}
+                                            {stopAnalysis.isPending ? "Stopping..." : "\u23F9 Stop"}
                                         </Button>
                                     )}
 
@@ -314,10 +523,91 @@ export default function AnalysisPage() {
                                         onClick={() => startIngestion.mutate({})}
                                         disabled={isIngestionRunning || startIngestion.isPending}
                                     >
-                                        {isIngestionRunning ? "Ingesting..." : startIngestion.isPending ? "Starting..." : "📥 Ingest Documents"}
+                                        {isIngestionRunning ? "Ingesting..." : startIngestion.isPending ? "Starting..." : "\u{1F4E5} Ingest Documents"}
                                     </Button>
                                 </>
                             )}
+                        </div>
+                    )}
+
+                    {/* Re-analyze Module Selector Panel */}
+                    {reanalyzeOpen && canEdit && (
+                        <div className="border border-border rounded-lg p-4 bg-accent/10 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold">Select modules to re-analyze</h4>
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 text-xs"
+                                        onClick={() =>
+                                            setSelectedModules(new Set(analysisModules.map((m) => m.key)))
+                                        }
+                                    >
+                                        Select All
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-7 text-xs"
+                                        onClick={() => setSelectedModules(new Set())}
+                                    >
+                                        Deselect All
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                {analysisModules.map((mod) => {
+                                    const data = analysisState[mod.key];
+                                    const hasData = data !== undefined && data !== null && data !== "" &&
+                                        (Array.isArray(data) ? data.length > 0 : true);
+                                    return (
+                                        <label
+                                            key={mod.key}
+                                            className={`flex items-center gap-2 text-sm p-2 rounded-md cursor-pointer transition-colors ${
+                                                selectedModules.has(mod.key)
+                                                    ? "bg-primary/10 border border-primary/30"
+                                                    : "bg-accent/20 border border-transparent hover:bg-accent/40"
+                                            }`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedModules.has(mod.key)}
+                                                onChange={() => toggleModule(mod.key)}
+                                                className="rounded border-border accent-primary"
+                                            />
+                                            <span>{mod.icon}</span>
+                                            <span className="truncate">{mod.label}</span>
+                                            {hasData && (
+                                                <span className="ml-auto text-xs text-emerald-400 shrink-0">
+                                                    {"\u2713"}
+                                                </span>
+                                            )}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex items-center gap-2 pt-1">
+                                <Button
+                                    size="sm"
+                                    onClick={() => startReanalyze.mutate({})}
+                                    disabled={selectedModules.size === 0 || startReanalyze.isPending}
+                                >
+                                    {startReanalyze.isPending
+                                        ? "Starting..."
+                                        : `\u25B6 Run Selected (${selectedModules.size})`}
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setReanalyzeOpen(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <span className="text-xs text-muted-foreground ml-auto">
+                                    {selectedModules.size} of {analysisModules.length} selected
+                                </span>
+                            </div>
                         </div>
                     )}
                 </CardContent>
@@ -362,7 +652,7 @@ export default function AnalysisPage() {
                                             <span className="ml-auto text-xs text-blue-400">processing</span>
                                         )}
                                         {hasData && !isCurrentlyProcessing && (
-                                            <span className="ml-auto text-xs text-emerald-400">✓</span>
+                                            <span className="ml-auto text-xs text-emerald-400">{"\u2713"}</span>
                                         )}
                                     </div>
                                     <p className="text-xs text-muted-foreground">
@@ -391,6 +681,8 @@ export default function AnalysisPage() {
                     icon={selectedMod.icon}
                     description={selectedMod.description}
                     data={analysisState[selectedMod.key]}
+                    caseId={caseId}
+                    prepId={activePrepId || ""}
                     onClose={() => setSelectedModule(null)}
                 />
             )}

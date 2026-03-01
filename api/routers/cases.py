@@ -312,3 +312,28 @@ def add_directive(
     cm = get_case_manager()
     directive_id = cm.save_directive(case_id, body.text, body.category)
     return {"directive_id": directive_id}
+
+
+@router.put("/{case_id}/directives/{directive_id}")
+def update_directive(
+    case_id: str,
+    directive_id: str,
+    body: AddDirectiveRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Update an attorney directive."""
+    cm = get_case_manager()
+    cm.update_directive(case_id, directive_id, body.text)
+    return {"status": "updated", "directive_id": directive_id}
+
+
+@router.delete("/{case_id}/directives/{directive_id}")
+def delete_directive(
+    case_id: str,
+    directive_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Delete an attorney directive."""
+    cm = get_case_manager()
+    cm.delete_directive(case_id, directive_id)
+    return {"status": "deleted", "directive_id": directive_id}

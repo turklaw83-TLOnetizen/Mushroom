@@ -85,8 +85,8 @@ def get_ocr_status(case_id: str) -> dict:
                 if age > 600:  # 10 minutes with no update = dead thread
                     logger.warning(f"OCR worker stale for {case_id} ({int(age)}s). Resetting.")
                     data["status"] = "idle"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to parse OCR status timestamp for stale detection: %s", e)
 
     return data
 

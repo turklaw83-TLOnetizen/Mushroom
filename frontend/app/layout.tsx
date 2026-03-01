@@ -4,12 +4,16 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { Toaster } from "sonner";
 
+import { initSentry } from "@/lib/sentry";
 import { QueryProvider } from "@/lib/query-provider";
 import { Sidebar } from "@/components/sidebar";
 import { CommandPalette } from "@/components/command-palette";
+
+initSentry();
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { NotificationBell } from "@/components/notification-bell";
 import { ShortcutsPanel } from "@/components/shortcuts-panel";
+import { ServiceWorkerRegistrar } from "@/components/sw-registrar";
 import "./globals.css";
 
 const inter = Inter({
@@ -37,6 +41,11 @@ export default function RootLayout({
       }}
     >
       <html lang="en" className="dark">
+        <head>
+          <link rel="manifest" href="/manifest.json" />
+          <meta name="theme-color" content="#6366f1" />
+          <link rel="apple-touch-icon" href="/icon-192.png" />
+        </head>
         <body className={`${inter.variable} font-sans antialiased`}>
           <QueryProvider>
             <div className="flex h-screen overflow-hidden bg-background text-foreground">
@@ -53,6 +62,7 @@ export default function RootLayout({
             </div>
             <CommandPalette />
             <ShortcutsPanel />
+            <ServiceWorkerRegistrar />
             <Toaster
               theme="dark"
               position="bottom-right"

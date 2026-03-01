@@ -1,6 +1,8 @@
 // ---- API Client ---------------------------------------------------------
 // Typed fetch wrapper with Clerk auth, retry logic, and offline detection.
 
+import { isDevAuthMode, getDevToken } from "./dev-auth";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ---- Retry Configuration ------------------------------------------------
@@ -73,12 +75,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         });
     }
 
-    // Attach Clerk token if available
+    // Attach auth token: Clerk first, then dev fallback
+    let token: string | null = null;
     if (getToken) {
-        const token = await getToken();
-        if (token) {
-            headers["Authorization"] = `Bearer ${token}`;
-        }
+        token = await getToken();
+    }
+    if (!token && isDevAuthMode()) {
+        token = await getDevToken();
+    }
+    if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
     }
 
     const fetchOptions: RequestInit = {
@@ -109,8 +115,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
                 return response.json();
             }
 
-            // Auto-redirect to sign-in on 401
-            if (response.status === 401 && typeof window !== "undefined") {
+            // Auto-redirect to sign-in on 401 (skip in dev auth mode)
+            if (response.status === 401 && typeof window !== "undefined" && !isDevAuthMode()) {
                 window.location.href = "/sign-in";
                 return new Promise<T>(() => { });
             }
@@ -182,9 +188,15 @@ export const api = {
         files.forEach((f) => formData.append("files", f));
 
         const headers: Record<string, string> = {};
+        let uploadToken: string | null = null;
         if (getToken) {
-            const token = await getToken();
-            if (token) headers["Authorization"] = `Bearer ${token}`;
+            uploadToken = await getToken();
+        }
+        if (!uploadToken && isDevAuthMode()) {
+            uploadToken = await getDevToken();
+        }
+        if (uploadToken) {
+            headers["Authorization"] = `Bearer ${uploadToken}`;
         }
 
         const response = await fetch(url.toString(), {

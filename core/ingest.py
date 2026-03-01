@@ -118,8 +118,8 @@ class OCRCache:
             with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(full_text)
             os.replace(tmp_path, txt_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to write OCR text file for %s: %s", file_key, e)
         word_count = len(full_text.split()) if full_text else 0
         self.set_status(file_key, "done", filename, word_count)
 
@@ -169,8 +169,8 @@ class OCRCache:
             with open(tmp_path, "w", encoding="utf-8") as f:
                 f.write(text)
             os.replace(tmp_path, page_path)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to write OCR page text for %s page %d: %s", file_key, page_num, e)
 
     def get_page_text(self, file_key: str, page_num: int) -> Optional[str]:
         """Retrieve text for a single page."""
@@ -201,8 +201,8 @@ class OCRCache:
             try:
                 if os.path.exists(page_path):
                     os.remove(page_path)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to remove temp page file %s: %s", page_path, e)
 
     # ── Full-text search ─────────────────────────────────────────────
     def search(self, query: str, max_snippets_per_file: int = 3, context_chars: int = 120) -> List[Dict]:
@@ -340,8 +340,8 @@ class DocumentIngester:
                     # Drop the existing empty collection to prevent dimension mismatch
                     try:
                         vectorstore.delete_collection()
-                    except Exception:
-                        pass
+                    except Exception as del_err:
+                        logger.debug("Failed to delete empty vector collection during fallback: %s", del_err)
 
                     # Write a flag so future retrievals for this case know to use local embeddings
                     case_dir = os.path.join(_DATA_DIR, "cases", case_id)

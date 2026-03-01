@@ -1,0 +1,14 @@
+[Unit]
+Description=Project Mushroom Cloud — Automated Backup
+After=network.target
+
+[Service]
+Type=oneshot
+User=mushroom
+ExecStart=/opt/mushroom-cloud/deploy/backup.sh
+Environment="TLO_DATA_DIR=/opt/mushroom-cloud/data"
+Environment="DROPBOX_BACKUP_DIR=/home/mushroom/Dropbox/Mushroom-Cloud-Backups"
+Environment="B2_BUCKET=mushroom-cloud-backups"
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mushroom-backup

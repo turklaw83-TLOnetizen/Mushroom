@@ -13,6 +13,7 @@ const cspDirectives = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   headers: async () => [
     {
       source: "/(.*)",

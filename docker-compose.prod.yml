@@ -29,16 +29,26 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: "postgresql+asyncpg://mushroom:${DB_PASSWORD}@db:5432/mushroom_cloud"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      XAI_API_KEY: "${XAI_API_KEY:-}"
       CLERK_SECRET_KEY: "${CLERK_SECRET_KEY}"
       CORS_ORIGINS: "${CORS_ORIGINS:-https://yourdomain.com}"
       RATE_LIMIT_REQUESTS: "120"
       RATE_LIMIT_WINDOW_SECONDS: "60"
-      MAX_UPLOAD_SIZE_BYTES: "21474836480" # 20GB
+      MAX_UPLOAD_SIZE_BYTES: "21474836480"  # 20 GB
+      SENTRY_DSN: "${SENTRY_DSN:-}"
     expose:
       - "8000"
     volumes:
       - appdata:/app/data
+      - applogs:/app/logs
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/health" ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
 
   frontend:
     build:
@@ -46,19 +56,33 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
-        NEXT_PUBLIC_API_URL: "https://yourdomain.com/api"
+        NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-https://yourdomain.com/api}"
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      NEXT_TELEMETRY_DISABLED: "1"
     expose:
       - "3000"
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/" ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
 
   nginx:
     image: nginx:alpine
     restart: unless-stopped
     depends_on:
-      - api
-      - frontend
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
@@ -74,3 +98,4 @@ services:
 volumes:
   pgdata:
   appdata:
+  applogs:

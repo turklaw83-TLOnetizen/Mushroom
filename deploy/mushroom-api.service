@@ -1,0 +1,42 @@
+[Unit]
+Description=Project Mushroom Cloud — FastAPI Backend
+Documentation=https://github.com/your-org/project-mushroom-cloud
+After=network.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mushroom
+Group=mushroom
+WorkingDirectory=/opt/mushroom-cloud
+Environment="PATH=/opt/mushroom-cloud/venv/bin:/usr/local/bin:/usr/bin"
+Environment="DATABASE_URL=postgresql+asyncpg://mushroom:changeme@localhost:5432/mushroom_cloud"
+Environment="CORS_ORIGINS=https://yourdomain.com"
+Environment="RATE_LIMIT_REQUESTS=120"
+Environment="RATE_LIMIT_WINDOW_SECONDS=60"
+Environment="MAX_UPLOAD_SIZE_BYTES=21474836480"
+EnvironmentFile=-/opt/mushroom-cloud/.env
+
+ExecStart=/opt/mushroom-cloud/venv/bin/uvicorn api.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --workers 4
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mushroom-api
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/mushroom-cloud/data
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

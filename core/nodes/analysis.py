@@ -34,7 +34,7 @@ def analyze_case(state: AgentState):
     {context_text}
     """
 
-    response = invoke_with_retry(llm, [SystemMessage(content=f"You are a helpful legal assistant.{ctx['directives_block']}"), HumanMessage(content=prompt)])
+    response = invoke_with_retry(llm, [SystemMessage(content=f"You are a helpful legal assistant.{ctx['directives_block']}{ctx.get('module_notes_block', '')}"), HumanMessage(content=prompt)])
     return {"case_summary": response.content}
 
 
@@ -95,7 +95,7 @@ def develop_strategy(state: AgentState):
 
     prompt = f"""
     Based on the case summary, develop a preliminary hearing defense strategy.
-    {ctx['directives_block']}
+    {ctx['directives_block']}{ctx.get('module_notes_block', '')}
     CRITICAL STEP: Identify and classify ALL potential witnesses.
     For each witness, determine if they are likely:
     - "State": Prosecution witness (Hostile).
@@ -219,7 +219,7 @@ def generate_timeline(state: AgentState):
     ctx = get_case_context(state)
     prompt = f"""
     Based on the case documents, create a chronological timeline of ALL relevant events.
-    {ctx['directives_block']}
+    {ctx['directives_block']}{ctx.get('module_notes_block', '')}
     Extract specific dates and times.
 
     {CITATION_INSTRUCTION}
@@ -259,7 +259,7 @@ def generate_devils_advocate(state: AgentState):
     ctx = get_case_context(state)
     prompt = f"""
     {ctx['devil_role']}
-    {ctx['directives_block']}
+    {ctx['directives_block']}{ctx.get('module_notes_block', '')}
     1. Anticipate their arguments.
     2. Explain how you would counter them.
     3. Point out gaps in their evidence.
@@ -297,7 +297,7 @@ def generate_evidence_foundations(state: AgentState):
 
     ctx = get_case_context(state)
     prompt = f'''You are a seasoned trial attorney conducting an exhaustive evidence audit.
-{ctx['directives_block']}
+{ctx['directives_block']}{ctx.get('module_notes_block', '')}
 Identify ALL potential PHYSICAL and DOCUMENTARY exhibits mentioned in the case materials.
 Be EXHAUSTIVE — list every piece of physical evidence, every document, every digital item,
 every photo, every recording, every lab report, every receipt mentioned anywhere in the case.
@@ -371,7 +371,7 @@ def generate_elements_map(state: AgentState):
     prompt = f'''
     Analyze the case evidence against the specific LEGAL ELEMENTS of the provided {ctx['claims_label']}.
     The standard of proof is: {ctx['burden']}.
-    {ctx['directives_block']}
+    {ctx['directives_block']}{ctx.get('module_notes_block', '')}
 
     {legal_context}
 
@@ -414,7 +414,7 @@ def generate_investigation_plan(state: AgentState):
     prompt = f'''
     Act as a Lead Detective for the Defense.
     Create a TARGETED Investigation Plan to win this case.
-    {ctx['directives_block']}
+    {ctx['directives_block']}{ctx.get('module_notes_block', '')}
 
     {CITATION_INSTRUCTION}
 
@@ -464,7 +464,7 @@ def generate_voir_dire(state: AgentState):
     prompt = f"""
     You are a Jury Consultant.
     Develop a Voir Dire strategy for this case.
-    {ctx['directives_block']}
+    {ctx['directives_block']}{ctx.get('module_notes_block', '')}
 
     DEFENSE STRATEGY:
     {strategy}
@@ -514,7 +514,7 @@ def generate_mock_jury(state: AgentState):
 
     prompt = f"""
     You are a Focus Group Moderator simulating a diverse jury.
-    {ctx['directives_block']}
+    {ctx['directives_block']}{ctx.get('module_notes_block', '')}
 
     CASE SUMMARY:
     {case_summary}
@@ -606,7 +606,7 @@ def generate_consistency_check(state: AgentState):
     ctx = get_case_context(state)
     prompt = f'''
     You are an expert impartial investigator.
-    {ctx['directives_block']}
+    {ctx['directives_block']}{ctx.get('module_notes_block', '')}
     Review the provided Evidence Snippets (retrieved via search for contradictions).
     Identify FACTUAL CONTRADICTIONS or INCONSISTENCIES (e.g., mismatched times, descriptions, sequences).
 

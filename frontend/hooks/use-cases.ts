@@ -23,6 +23,10 @@ export interface CaseItem {
     assigned_to: string[];
     created_at: string;
     last_updated: string;
+    readiness_score?: number;
+    readiness_grade?: string;
+    next_deadline?: string;
+    next_event?: string;
 }
 
 export interface PaginatedCases {
