@@ -11,6 +11,12 @@ from core.storage.encrypted_backend import (
     encrypt_existing_data,
 )
 
+# PostgresStorageBackend is imported lazily to avoid requiring
+# SQLAlchemy when only using JSON/Encrypted backends.
+def get_postgres_backend_class():
+    from core.storage.postgres_backend import PostgresStorageBackend
+    return PostgresStorageBackend
+
 __all__ = [
     "StorageBackend",
     "JSONStorageBackend",
@@ -22,4 +28,6 @@ __all__ = [
     "verify_passphrase",
     "write_verification_token",
     "encrypt_existing_data",
+    "get_postgres_backend_class",
 ]
+

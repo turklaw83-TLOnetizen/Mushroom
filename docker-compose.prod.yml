@@ -1,0 +1,76 @@
+# ---- Production Docker Compose -------------------------------------------
+# Usage: docker compose -f docker-compose.prod.yml up -d
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mushroom_cloud
+      POSTGRES_USER: mushroom
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U mushroom -d mushroom_cloud" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No exposed ports in production — only accessible via internal network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://mushroom:${DB_PASSWORD}@db:5432/mushroom_cloud"
+      CLERK_SECRET_KEY: "${CLERK_SECRET_KEY}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-https://yourdomain.com}"
+      RATE_LIMIT_REQUESTS: "120"
+      RATE_LIMIT_WINDOW_SECONDS: "60"
+      MAX_UPLOAD_SIZE_BYTES: "21474836480" # 20GB
+    expose:
+      - "8000"
+    volumes:
+      - appdata:/app/data
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
+        NEXT_PUBLIC_API_URL: "https://yourdomain.com/api"
+    restart: unless-stopped
+    depends_on:
+      - api
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pgdata:
+  appdata:

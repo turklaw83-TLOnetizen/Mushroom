@@ -14,6 +14,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+# Set test environment variables BEFORE importing app code (Fix #5)
+os.environ.setdefault("JWT_SECRET", "test-secret-key")
+os.environ.setdefault("CLERK_SECRET_KEY", "")  # Disable Clerk in tests
+
 from core.storage.json_backend import JSONStorageBackend
 
 
@@ -93,3 +97,30 @@ def sample_state():
         "case_type": "criminal",
         "raw_documents": [],
     }
+
+
+# ---- API Test Fixtures (Fix #5: merged from test_api_conftest.py) --------
+
+@pytest.fixture
+def auth_token():
+    """Generate a valid JWT token for testing."""
+    from api.auth import _create_jwt
+    return _create_jwt(user_id="test_admin", role="admin", name="Test Admin")
+
+
+@pytest.fixture
+def auth_headers(auth_token):
+    """Return authorization headers for API requests."""
+    return {"Authorization": f"Bearer {auth_token}"}
+
+
+@pytest.fixture
+def attorney_token():
+    """Generate a JWT token with attorney role."""
+    from api.auth import _create_jwt
+    return _create_jwt(user_id="test_attorney", role="attorney", name="Test Attorney")
+
+
+@pytest.fixture
+def attorney_headers(attorney_token):
+    return {"Authorization": f"Bearer {attorney_token}"}
