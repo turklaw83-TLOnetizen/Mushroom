@@ -62,6 +62,7 @@ export default function TranscriptionPage() {
     const [selectedJob, setSelectedJob] = useState<string | null>(null);
     const [annotationType, setAnnotationType] = useState<DepositionAnnotation["type"]>("note");
     const [annotationText, setAnnotationText] = useState("");
+    const [selectedTimestamp, setSelectedTimestamp] = useState<number>(0);
 
     const { data: jobs, isLoading } = useQuery({
         queryKey: ["transcription-jobs", caseId],
@@ -162,7 +163,15 @@ export default function TranscriptionPage() {
                                     </CardHeader>
                                     <CardContent className="max-h-[500px] overflow-y-auto space-y-2">
                                         {selectedJobData.transcript?.map((seg, i) => (
-                                            <div key={i} className="flex gap-3 group">
+                                            <div
+                                                key={i}
+                                                className={`flex gap-3 group cursor-pointer rounded px-1 -mx-1 transition-colors ${
+                                                    selectedTimestamp === seg.start_time
+                                                        ? "bg-primary/10"
+                                                        : "hover:bg-accent/30"
+                                                }`}
+                                                onClick={() => setSelectedTimestamp(seg.start_time)}
+                                            >
                                                 <span className="text-xs text-muted-foreground w-14 shrink-0 pt-0.5 font-mono">
                                                     {formatTime(seg.start_time)}
                                                 </span>
@@ -208,6 +217,10 @@ export default function TranscriptionPage() {
 
                                         {/* Add Annotation */}
                                         <div className="pt-3 border-t border-border space-y-2">
+                                            <p className="text-xs text-muted-foreground">
+                                                Timestamp: <span className="font-mono">{formatTime(selectedTimestamp)}</span>
+                                                <span className="ml-1 italic">(click a transcript segment to change)</span>
+                                            </p>
                                             <div className="flex gap-2">
                                                 <select
                                                     value={annotationType}
@@ -237,7 +250,7 @@ export default function TranscriptionPage() {
                                                             job_id: selectedJobData.id,
                                                             type: annotationType,
                                                             content: annotationText,
-                                                            timestamp: 0,
+                                                            timestamp: selectedTimestamp,
                                                         })
                                                     }
                                                 >
