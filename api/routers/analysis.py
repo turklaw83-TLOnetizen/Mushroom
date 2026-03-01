@@ -71,6 +71,10 @@ async def start_analysis(
             active_modules=body.active_modules,
         )
 
+        # Trigger notification
+        from api.notify import notify_analysis_started
+        notify_analysis_started(user["id"], case_id, body.prep_id, body.active_modules)
+
         return {"status": "started", "case_id": case_id, "prep_id": body.prep_id}
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"Analysis module not available: {e}")

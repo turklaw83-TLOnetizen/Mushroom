@@ -203,10 +203,17 @@ def set_phase(
 ):
     """Set case phase (active/closed/archived) and optional sub-phase."""
     cm = get_case_manager()
+    old_phase, _ = cm.get_phase(case_id)
     try:
         cm.set_phase(case_id, body.phase, body.sub_phase)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Trigger notification on phase change
+    if old_phase != body.phase:
+        from api.notify import notify_phase_changed
+        notify_phase_changed(user["id"], case_id, old_phase, body.phase)
+
     return PhaseResponse(phase=body.phase, sub_phase=body.sub_phase)
 
 

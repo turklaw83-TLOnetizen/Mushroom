@@ -4,6 +4,7 @@
 # Upload/download use `async def` (they do async file reads via UploadFile).
 # All other endpoints use sync `def` for thread-pooled Postgres safety.
 
+import datetime
 import logging
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 from api.auth import get_current_user, require_role
 from api.deps import get_case_manager
 from api.file_scanner import scan_bytes
+from api.routers.security import append_scan_entry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/files", tags=["Files"])
@@ -90,10 +92,32 @@ async def upload_files(
         # Security: scan file content before saving
         scan_result = scan_bytes(data, safe_name)
         if not scan_result.clean:
+            append_scan_entry(case_id, {
+                "file_name": safe_name,
+                "status": "threat",
+                "scanned_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "sha256": "",
+                "threats": [scan_result.reason],
+            })
             raise HTTPException(status_code=400, detail=f"File rejected: {scan_result.reason}")
+
+        # Log successful scan
+        append_scan_entry(case_id, {
+            "file_name": safe_name,
+            "status": "clean",
+            "scanned_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "sha256": scan_result.sha256,
+            "threats": [],
+        })
 
         path = cm.save_file(case_id, data, safe_name)
         uploaded.append(FileInfo(filename=safe_name, size=len(data), path=path))
+
+    # Trigger notification for uploads
+    if uploaded:
+        from api.notify import notify_file_uploaded
+        first_name = uploaded[0].filename
+        notify_file_uploaded(user["id"], case_id, first_name, len(uploaded))
 
     return UploadResult(uploaded=uploaded, count=len(uploaded))
 

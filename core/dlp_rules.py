@@ -151,13 +151,15 @@ class DLPEngine:
         except Exception as e:
             logger.error("DLP audit log failed: %s", e)
 
-    def get_audit_log(self, limit: int = 100, user_id: Optional[str] = None) -> list[dict]:
+    def get_audit_log(self, limit: int = 100, user_id: Optional[str] = None, case_id: Optional[str] = None) -> list[dict]:
         if not self._audit_file.exists():
             return []
         try:
             entries = json.loads(self._audit_file.read_text(encoding="utf-8"))
             if user_id:
                 entries = [e for e in entries if e.get("user_id") == user_id]
+            if case_id:
+                entries = [e for e in entries if e.get("case_id") == case_id]
             return entries[-limit:]
         except Exception:
             return []

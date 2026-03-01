@@ -35,8 +35,13 @@ def delete_rule(rule_id: str, user=Depends(require_role("admin"))):
 
 
 @router.get("/audit-log")
-def get_audit_log(limit: int = 100, user_id: str = "", user=Depends(require_role("admin"))):
-    return {"entries": engine.get_audit_log(limit=limit, user_id=user_id or None)}
+def get_audit_log(
+    limit: int = 100,
+    user_id: str = "",
+    case_id: str = "",
+    user=Depends(require_role("admin")),
+):
+    return {"entries": engine.get_audit_log(limit=limit, user_id=user_id or None, case_id=case_id or None)}
 
 
 @router.post("/check")

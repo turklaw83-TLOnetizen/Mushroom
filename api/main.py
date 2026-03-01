@@ -199,6 +199,7 @@ from api.routers.journal import router as journal_router
 from api.routers.snapshots import router as snapshots_router
 from api.routers.research import router as research_router
 from api.routers.predict import router as predict_router
+from api.routers.security import router as security_router
 from api.metrics import router as metrics_router
 from api.websockets.workers_ws import router as ws_router
 
@@ -257,6 +258,7 @@ app.include_router(journal_router, prefix="/api/v1")
 app.include_router(snapshots_router, prefix="/api/v1")
 app.include_router(research_router, prefix="/api/v1")
 app.include_router(predict_router, prefix="/api/v1")
+app.include_router(security_router, prefix="/api/v1")
 app.include_router(metrics_router, prefix="/api/v1")
 app.include_router(ws_router, prefix="/api/v1")
 

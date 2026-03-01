@@ -95,6 +95,10 @@ services:
       timeout: 5s
       retries: 3
 
+networks:
+  default:
+    name: mushroom
+
 volumes:
   pgdata:
   appdata:
