@@ -25,6 +25,7 @@ const exports: ExportOption[] = [
     { label: "Word Report", endpoint: "word", icon: "📘", description: "Editable analysis report" },
     { label: "IRAC Brief", endpoint: "brief", icon: "📗", description: "Issue-Rule-Application-Conclusion" },
     { label: "Trial Binder", endpoint: "trial-binder", icon: "📙", description: "Complete 13-tab trial binder" },
+    { label: "Export All (ZIP)", endpoint: "zip", icon: "📦", description: "All formats in one download" },
 ];
 
 export function ExportPanel({ caseId }: { caseId: string }) {
@@ -64,7 +65,8 @@ export function ExportPanel({ caseId }: { caseId: string }) {
 
             // Extract filename from Content-Disposition header
             const disposition = response.headers.get("Content-Disposition");
-            const filename = disposition?.match(/filename="(.+)"/)?.[1] || `export.${exp.endpoint === "pdf" || exp.endpoint === "trial-binder" ? "pdf" : "docx"}`;
+            const fallbackExt = exp.endpoint === "zip" ? "zip" : (exp.endpoint === "pdf" || exp.endpoint === "trial-binder") ? "pdf" : "docx";
+            const filename = disposition?.match(/filename="(.+)"/)?.[1] || `export.${fallbackExt}`;
             a.download = filename;
             document.body.appendChild(a);
             a.click();

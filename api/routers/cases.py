@@ -300,6 +300,46 @@ def delete_preparation(
     return {"status": "deleted", "prep_id": prep_id}
 
 
+class RenamePrepRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=CASE_NAME_MAX)
+
+
+class ClonePrepRequest(BaseModel):
+    name: str = Field(default="", max_length=CASE_NAME_MAX)
+
+
+@router.patch("/{case_id}/preparations/{prep_id}")
+def rename_preparation(
+    case_id: str,
+    prep_id: str,
+    body: RenamePrepRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Rename a preparation."""
+    cm = get_case_manager()
+    try:
+        cm.rename_preparation(case_id, prep_id, body.name)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "renamed", "prep_id": prep_id, "name": body.name}
+
+
+@router.post("/{case_id}/preparations/{prep_id}/clone", status_code=status.HTTP_201_CREATED)
+def clone_preparation(
+    case_id: str,
+    prep_id: str,
+    body: ClonePrepRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Deep-copy a preparation with all analysis results."""
+    cm = get_case_manager()
+    try:
+        new_prep_id = cm.clone_preparation(case_id, prep_id, body.name)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"prep_id": new_prep_id}
+
+
 # ---- Directives ---------------------------------------------------------
 
 @router.get("/{case_id}/directives")

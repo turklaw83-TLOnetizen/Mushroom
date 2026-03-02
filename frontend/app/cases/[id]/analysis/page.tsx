@@ -5,16 +5,25 @@
 // - GET  /cases/{id}/analysis/status -> progress polling (fallback)
 // - POST /cases/{id}/analysis/ingestion/start -> document ingestion
 //
+// Features ported from Streamlit:
+// - Prep selector with create/clone/rename/delete
+// - Model selector + Max Context toggle
+// - Node grid with per-node status badges
+// - Attorney directives quick access
+// - Module notes per tab
+// - Re-analyze with module selection
+//
 // Primary progress source: WebSocket (500ms updates via use-worker-status).
 // Falls back to HTTP polling only when WebSocket is disconnected.
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { usePrep } from "@/hooks/use-prep";
+import { usePrep, type Preparation } from "@/hooks/use-prep";
 import { useRole } from "@/hooks/use-role";
 import { useWorkerStatus } from "@/hooks/use-worker-status";
 import { useAnalysisProgress } from "@/hooks/use-analysis-progress";
@@ -24,7 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-// ---- Model Options -------------------------------------------------------
+// ---- Constants ----------------------------------------------------------
 
 const MODEL_OPTIONS = [
     { value: "claude-opus-4.6", label: "Claude Opus 4.6", provider: "anthropic" },
@@ -34,7 +43,11 @@ const MODEL_OPTIONS = [
     { value: "gemini", label: "Gemini Pro", provider: "google" },
 ] as const;
 
-// ---- Module Definitions -------------------------------------------------
+const PREP_TYPES = [
+    { value: "trial", label: "Trial Preparation", modules: 14 },
+    { value: "prelim_hearing", label: "Preliminary Hearing", modules: 12 },
+    { value: "motion_hearing", label: "Motion Hearing", modules: 7 },
+] as const;
 
 const analysisModules = [
     { key: "case_summary", label: "Case Summary", icon: "\u{1F4CB}", description: "Overall case narrative and key findings" },
@@ -79,8 +92,6 @@ function ProgressBar({ percent, label }: { percent: number; label?: string }) {
     );
 }
 
-// ---- Connection Indicator -----------------------------------------------
-
 function ConnectionDot({ connected }: { connected: boolean }) {
     return (
         <span
@@ -92,7 +103,195 @@ function ConnectionDot({ connected }: { connected: boolean }) {
     );
 }
 
-// ---- Module Notes (persistent through re-analysis) ---------------------
+// ---- Prep Management Dialog ---------------------------------------------
+
+function PrepDialog({
+    mode,
+    caseId,
+    sourcePrep,
+    onClose,
+}: {
+    mode: "create" | "clone" | "rename";
+    caseId: string;
+    sourcePrep?: Preparation | null;
+    onClose: () => void;
+}) {
+    const { getToken } = useAuth();
+    const queryClient = useQueryClient();
+    const [name, setName] = useState(mode === "rename" && sourcePrep ? sourcePrep.name : "");
+    const [prepType, setPrepType] = useState("trial");
+    const [saving, setSaving] = useState(false);
+
+    const handleSubmit = async () => {
+        setSaving(true);
+        try {
+            if (mode === "create") {
+                await api.post(`/cases/${caseId}/preparations`, {
+                    prep_type: prepType,
+                    name: name || PREP_TYPES.find(t => t.value === prepType)?.label || "New Preparation",
+                }, { getToken });
+                toast.success("Preparation created");
+            } else if (mode === "clone" && sourcePrep) {
+                await api.post(`/cases/${caseId}/preparations/${sourcePrep.id}/clone`, {
+                    name: name || `${sourcePrep.name} (copy)`,
+                }, { getToken });
+                toast.success("Preparation cloned");
+            } else if (mode === "rename" && sourcePrep) {
+                await api.patch(`/cases/${caseId}/preparations/${sourcePrep.id}`, {
+                    name,
+                }, { getToken });
+                toast.success("Preparation renamed");
+            }
+            queryClient.invalidateQueries({ queryKey: ["cases", caseId, "preparations"] });
+            onClose();
+        } catch (err) {
+            toast.error(`Failed to ${mode} preparation`, {
+                description: err instanceof Error ? err.message : "Unknown error",
+            });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+            <Card className="w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base">
+                        {mode === "create" ? "New Preparation" : mode === "clone" ? "Clone Preparation" : "Rename Preparation"}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {mode === "create" && (
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium text-muted-foreground">Prep Type</label>
+                            <select
+                                value={prepType}
+                                onChange={e => setPrepType(e.target.value)}
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            >
+                                {PREP_TYPES.map(t => (
+                                    <option key={t.value} value={t.value}>
+                                        {t.label} ({t.modules} modules)
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                    <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Name</label>
+                        <input
+                            type="text"
+                            value={name}
+                            onChange={e => setName(e.target.value)}
+                            placeholder={mode === "clone" ? `${sourcePrep?.name} (copy)` : "e.g. Trial Preparation"}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                            autoFocus
+                            onKeyDown={e => e.key === "Enter" && handleSubmit()}
+                        />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                        <Button size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
+                        <Button size="sm" onClick={handleSubmit} disabled={saving || (mode === "rename" && !name.trim())}>
+                            {saving ? "Saving..." : mode === "create" ? "Create" : mode === "clone" ? "Clone" : "Rename"}
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
+// ---- Attorney Directives Inline -----------------------------------------
+
+function DirectivesPanel({ caseId }: { caseId: string }) {
+    const { getToken } = useAuth();
+    const queryClient = useQueryClient();
+    const [isEditing, setIsEditing] = useState(false);
+    const [draft, setDraft] = useState("");
+
+    const { data: directives } = useQuery({
+        queryKey: ["cases", caseId, "directives"],
+        queryFn: () => api.get<Array<{ id: string; text: string; category: string }>>(
+            `/cases/${caseId}/directives`, { getToken }
+        ),
+    });
+
+    const directivesList = Array.isArray(directives) ? directives : [];
+    const combinedText = directivesList.map(d => d.text).join("\n\n");
+
+    const handleSave = async () => {
+        try {
+            // Delete existing directives and create new one from combined text
+            for (const d of directivesList) {
+                await api.delete(`/cases/${caseId}/directives/${d.id}`, { getToken });
+            }
+            if (draft.trim()) {
+                await api.post(`/cases/${caseId}/directives`, {
+                    text: draft.trim(),
+                    category: "instruction",
+                }, { getToken });
+            }
+            queryClient.invalidateQueries({ queryKey: ["cases", caseId, "directives"] });
+            toast.success("Directives saved");
+            setIsEditing(false);
+        } catch (err) {
+            toast.error("Failed to save directives", {
+                description: err instanceof Error ? err.message : "Unknown error",
+            });
+        }
+    };
+
+    return (
+        <Card>
+            <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                        Attorney Directives
+                        <span className="text-xs font-normal text-muted-foreground">(injected into 13/14 analysis nodes)</span>
+                    </span>
+                    {!isEditing && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => { setDraft(combinedText); setIsEditing(true); }}
+                        >
+                            {combinedText ? "Edit" : "+ Add"}
+                        </Button>
+                    )}
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                {isEditing ? (
+                    <div className="space-y-2">
+                        <textarea
+                            value={draft}
+                            onChange={e => setDraft(e.target.value)}
+                            placeholder="Guide the AI's analysis: focus areas, case theory, specific witnesses to scrutinize, legal strategies to explore..."
+                            className="w-full min-h-[100px] text-sm bg-muted border border-border rounded-md p-3 resize-y focus:outline-none focus:ring-1 focus:ring-primary"
+                            autoFocus
+                        />
+                        <div className="flex gap-2">
+                            <Button size="sm" onClick={handleSave}>Save</Button>
+                            <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)}>Cancel</Button>
+                        </div>
+                    </div>
+                ) : combinedText ? (
+                    <div className="text-sm bg-amber-500/10 border border-amber-500/20 rounded-md p-3 whitespace-pre-wrap max-h-32 overflow-auto">
+                        {combinedText}
+                    </div>
+                ) : (
+                    <p className="text-xs text-muted-foreground italic">
+                        No directives set. Add strategic guidance to shape how the AI analyzes this case.
+                    </p>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+// ---- Module Notes (persistent through re-analysis) ----------------------
 
 function ModuleNotes({
     caseId,
@@ -293,13 +492,16 @@ export default function AnalysisPage() {
     const params = useParams();
     const caseId = params.id as string;
     const { getToken } = useAuth();
-    const { activePrepId, preparations, isLoading: prepLoading } = usePrep();
+    const queryClient = useQueryClient();
+    const { activePrepId, activePrep, preparations, setActivePrepId, isLoading: prepLoading } = usePrep();
     const { canEdit } = useRole();
     const { status: workerStatus, connected: wsConnected, reconnect, reconnectAttempts } = useWorkerStatus(caseId);
     const [selectedModule, setSelectedModule] = useState<string | null>(null);
     const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
     const [selectedModules, setSelectedModules] = useState<Set<string>>(new Set());
     const [optionsOpen, setOptionsOpen] = useState(false);
+    const [prepDialogMode, setPrepDialogMode] = useState<"create" | "clone" | "rename" | null>(null);
+    const [prepMenuOpen, setPrepMenuOpen] = useState<string | null>(null);
 
     // ---- Model Selection & Max Context State (persisted in localStorage) ----
     const storageKey = `mc-analysis-opts-${caseId}`;
@@ -400,6 +602,11 @@ export default function AnalysisPage() {
         }).length;
     }, [analysisState]);
 
+    // Build set of completed module keys from progress data
+    const completedModuleKeys = useMemo(() => {
+        return new Set(progress.completed_modules || []);
+    }, [progress.completed_modules]);
+
     // Start Analysis mutation
     const startAnalysis = useMutationWithToast({
         mutationFn: () =>
@@ -442,7 +649,6 @@ export default function AnalysisPage() {
 
     // Re-analyze panel helpers
     const openReanalyzePanel = useCallback(() => {
-        // Pre-check modules that already have data
         const preChecked = new Set<string>();
         analysisModules.forEach((mod) => {
             const data = analysisState[mod.key];
@@ -474,16 +680,129 @@ export default function AnalysisPage() {
         onSuccess: () => reconnect(),
     });
 
+    // Delete prep handler
+    const handleDeletePrep = async (prepId: string) => {
+        if (!confirm("Delete this preparation and all its analysis results? This cannot be undone.")) return;
+        try {
+            await api.delete(`/cases/${caseId}/preparations/${prepId}`, { getToken });
+            queryClient.invalidateQueries({ queryKey: ["cases", caseId, "preparations"] });
+            toast.success("Preparation deleted");
+        } catch (err) {
+            toast.error("Failed to delete preparation", {
+                description: err instanceof Error ? err.message : "Unknown error",
+            });
+        }
+    };
+
     // Keyboard shortcuts
     useKeyboardShortcuts({
-        onEscape: () => setSelectedModule(null),
+        onEscape: () => {
+            if (selectedModule) setSelectedModule(null);
+            else if (prepDialogMode) setPrepDialogMode(null);
+        },
     });
 
     const selectedMod = analysisModules.find((m) => m.key === selectedModule);
 
+    // Sort preps newest first
+    const sortedPreps = useMemo(() => {
+        return [...preparations].sort((a, b) =>
+            (b.created_at || "").localeCompare(a.created_at || "")
+        );
+    }, [preparations]);
+
     return (
         <div className="space-y-6">
-            {/* Worker Status + Controls */}
+            {/* ---- Preparation Selector ---- */}
+            <Card>
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center justify-between">
+                        <span>Preparation</span>
+                        {canEdit && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setPrepDialogMode("create")}>
+                                + New Prep
+                            </Button>
+                        )}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {prepLoading ? (
+                        <p className="text-sm text-muted-foreground">Loading preparations...</p>
+                    ) : sortedPreps.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">
+                            No preparations yet. Create one to start analysis.
+                        </p>
+                    ) : (
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-3">
+                                <select
+                                    value={activePrepId || ""}
+                                    onChange={e => setActivePrepId(e.target.value)}
+                                    className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                >
+                                    {sortedPreps.map(p => (
+                                        <option key={p.id} value={p.id}>
+                                            {p.name || p.id} ({PREP_TYPES.find(t => t.value === p.type)?.label || p.type})
+                                        </option>
+                                    ))}
+                                </select>
+                                {activePrep && canEdit && (
+                                    <div className="relative">
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="h-8 w-8 p-0"
+                                            onClick={() => setPrepMenuOpen(prepMenuOpen ? null : activePrep.id)}
+                                        >
+                                            {"\u22EE"}
+                                        </Button>
+                                        {prepMenuOpen === activePrep.id && (
+                                            <div className="absolute right-0 top-full mt-1 z-10 w-36 rounded-md border border-border bg-popover shadow-md py-1">
+                                                <button
+                                                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+                                                    onClick={() => { setPrepMenuOpen(null); setPrepDialogMode("rename"); }}
+                                                >
+                                                    Rename
+                                                </button>
+                                                <button
+                                                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+                                                    onClick={() => { setPrepMenuOpen(null); setPrepDialogMode("clone"); }}
+                                                >
+                                                    Clone
+                                                </button>
+                                                <button
+                                                    className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-accent transition-colors"
+                                                    onClick={() => { setPrepMenuOpen(null); handleDeletePrep(activePrep.id); }}
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            {activePrep && (
+                                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                    <Badge variant="outline" className="text-xs">
+                                        {PREP_TYPES.find(t => t.value === activePrep.type)?.label || activePrep.type}
+                                    </Badge>
+                                    {activePrep.created_at && (
+                                        <span>Created {new Date(activePrep.created_at).toLocaleDateString()}</span>
+                                    )}
+                                    {activePrep.last_updated && (
+                                        <span>Updated {new Date(activePrep.last_updated).toLocaleDateString()}</span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* ---- Attorney Directives ---- */}
+            <DirectivesPanel caseId={caseId} />
+
+            {/* ---- AI Analysis Engine ---- */}
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center justify-between">
@@ -744,15 +1063,7 @@ export default function AnalysisPage() {
                 </CardContent>
             </Card>
 
-            {/* Preparation Info */}
-            {preparations.length > 0 && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>Active preparation:</span>
-                    <Badge variant="secondary">{preparations.find(p => p.id === activePrepId)?.name || activePrepId}</Badge>
-                </div>
-            )}
-
-            {/* Module Grid */}
+            {/* ---- Module Grid ---- */}
             <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                     Analysis Modules ({completedCount}/{analysisModules.length})
@@ -763,6 +1074,7 @@ export default function AnalysisPage() {
                         const hasData = data !== undefined && data !== null && data !== "" &&
                             (Array.isArray(data) ? data.length > 0 : true);
                         const isCurrentlyProcessing = isAnalysisRunning && progress.current_module === mod.key;
+                        const wasCompletedThisRun = completedModuleKeys.has(mod.key);
 
                         return (
                             <Card
@@ -780,9 +1092,16 @@ export default function AnalysisPage() {
                                         <span>{mod.icon}</span>
                                         <span className="text-sm font-medium">{mod.label}</span>
                                         {isCurrentlyProcessing && (
-                                            <span className="ml-auto text-xs text-blue-400">processing</span>
+                                            <Badge variant="outline" className="ml-auto text-[10px] bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse">
+                                                running
+                                            </Badge>
                                         )}
-                                        {hasData && !isCurrentlyProcessing && (
+                                        {!isCurrentlyProcessing && wasCompletedThisRun && isAnalysisRunning && (
+                                            <Badge variant="outline" className="ml-auto text-[10px] bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
+                                                done
+                                            </Badge>
+                                        )}
+                                        {hasData && !isCurrentlyProcessing && !isAnalysisRunning && (
                                             <span className="ml-auto text-xs text-emerald-400">{"\u2713"}</span>
                                         )}
                                     </div>
@@ -804,7 +1123,7 @@ export default function AnalysisPage() {
                 </div>
             </div>
 
-            {/* Module Detail Modal */}
+            {/* ---- Module Detail Modal ---- */}
             {selectedMod && (
                 <ModuleDetail
                     moduleKey={selectedMod.key}
@@ -815,6 +1134,16 @@ export default function AnalysisPage() {
                     caseId={caseId}
                     prepId={activePrepId || ""}
                     onClose={() => setSelectedModule(null)}
+                />
+            )}
+
+            {/* ---- Prep Management Dialog ---- */}
+            {prepDialogMode && (
+                <PrepDialog
+                    mode={prepDialogMode}
+                    caseId={caseId}
+                    sourcePrep={activePrep}
+                    onClose={() => setPrepDialogMode(null)}
                 />
             )}
         </div>
