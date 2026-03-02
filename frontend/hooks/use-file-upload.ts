@@ -6,6 +6,7 @@ import { useState, useCallback, useRef, type DragEvent } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { extractFilesFromDrop } from "@/lib/stores/upload-store";
 
 interface UploadProgress {
     /** 0 to 100 */
@@ -25,14 +26,14 @@ interface UseFileUploadOptions {
     invalidateKeys?: unknown[][];
     /** Accepted file types (e.g. [".pdf", ".docx"]) */
     accept?: string[];
-    /** Max file size in bytes (default 50MB) */
+    /** Max file size in bytes (default 20GB) */
     maxSize?: number;
     /** Called on successful upload */
     onSuccess?: () => void;
 }
 
 export function useFileUpload(options: UseFileUploadOptions) {
-    const { uploadPath, invalidateKeys = [], accept, maxSize = 50 * 1024 * 1024, onSuccess } = options;
+    const { uploadPath, invalidateKeys = [], accept, maxSize = 20 * 1024 * 1024 * 1024, onSuccess } = options;
     const { getToken } = useAuth();
     const queryClient = useQueryClient();
 
@@ -129,11 +130,12 @@ export function useFileUpload(options: UseFileUploadOptions) {
     }, []);
 
     const onDrop = useCallback(
-        (e: DragEvent) => {
+        async (e: DragEvent) => {
             e.preventDefault();
             e.stopPropagation();
             setIsDragOver(false);
-            const files = Array.from(e.dataTransfer.files);
+            // Support folder drops via webkitGetAsEntry
+            const files = await extractFilesFromDrop(e.dataTransfer);
             uploadFiles(files);
         },
         [uploadFiles],

@@ -33,7 +33,8 @@ interface FileItem {
 function formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 // ---- Bulk Actions Bar ---------------------------------------------------
@@ -353,21 +354,19 @@ export default function FilesPage() {
                 />
             )}
 
-            {/* Upload Dialog */}
-            <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-                <DialogContent className="sm:max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle>Upload Files</DialogTitle>
-                    </DialogHeader>
+            {/* Inline Upload Zone (toggleable, not a modal) */}
+            {uploadOpen && (
+                <div className="mb-4">
                     <FileUpload
                         caseId={caseId}
                         onUploadComplete={() => {
-                            setUploadOpen(false);
+                            // Don't close — user can keep adding files.
+                            // Upload happens in background via global queue.
                             queryClient.invalidateQueries({ queryKey: ["cases", caseId, "files"] });
                         }}
                     />
-                </DialogContent>
-            </Dialog>
+                </div>
+            )}
 
             {/* Single Delete Confirmation Dialog */}
             <ConfirmDialog

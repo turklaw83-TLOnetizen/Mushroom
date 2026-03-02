@@ -14,6 +14,7 @@ import { Breadcrumbs } from "@/components/breadcrumbs";
 import { NotificationBell } from "@/components/notification-bell";
 import { ShortcutsPanel } from "@/components/shortcuts-panel";
 import { ServiceWorkerRegistrar } from "@/components/sw-registrar";
+import { UploadIndicator } from "@/components/upload-indicator";
 import "./globals.css";
 
 const inter = Inter({
@@ -63,6 +64,7 @@ export default function RootLayout({
             <CommandPalette />
             <ShortcutsPanel />
             <ServiceWorkerRegistrar />
+            <UploadIndicator />
             <Toaster
               theme="dark"
               position="bottom-right"
