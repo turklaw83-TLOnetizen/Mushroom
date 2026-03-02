@@ -1,7 +1,7 @@
 // ---- Client Hooks -------------------------------------------------------
-// TanStack Query hook for fetching CRM clients (used by client combobox).
+// TanStack Query hooks for CRM client operations.
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api-client";
 
@@ -10,10 +10,13 @@ export interface ClientItem {
     name: string;
     first_name?: string;
     last_name?: string;
+    middle_name?: string;
+    suffix?: string;
     email?: string;
     phone?: string;
     intake_status?: string;
     client_type?: string;
+    home_address?: string;
 }
 
 export interface ClientListResponse {
@@ -21,10 +24,23 @@ export interface ClientListResponse {
     total: number;
 }
 
-/** Display name: prefer first+last, fall back to name field. */
+export interface CreateClientInput {
+    first_name?: string;
+    last_name?: string;
+    middle_name?: string;
+    suffix?: string;
+    email?: string;
+    phone?: string;
+    home_address?: string;
+}
+
+/** Display name: prefer first+middle+last+suffix, fall back to name field. */
 export function clientDisplayName(c: ClientItem): string {
     if (c.first_name || c.last_name) {
-        return [c.first_name, c.last_name].filter(Boolean).join(" ");
+        const parts = [c.first_name, c.middle_name, c.last_name].filter(Boolean);
+        let display = parts.join(" ");
+        if (c.suffix) display += `, ${c.suffix}`;
+        return display || "Unnamed Client";
     }
     return c.name || "Unnamed Client";
 }
@@ -38,6 +54,20 @@ export function useClients(enabled = true) {
         queryFn: () =>
             api.get<ClientListResponse>("/crm/clients", { getToken }),
         enabled,
-        staleTime: 30_000, // Cache for 30s — clients don't change often
+        staleTime: 30_000,
+    });
+}
+
+/** Create a new client via POST /crm/clients. */
+export function useCreateClient() {
+    const { getToken } = useAuth();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (input: CreateClientInput) =>
+            api.post<{ id: string; status: string }>("/crm/clients", input, { getToken }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["crm-clients"] });
+        },
     });
 }

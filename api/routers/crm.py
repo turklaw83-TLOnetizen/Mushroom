@@ -19,6 +19,8 @@ router = APIRouter(prefix="/crm", tags=["CRM"])
 class ClientCreate(BaseModel):
     first_name: str = ""
     last_name: str = ""
+    middle_name: str = ""
+    suffix: str = ""
     name: str = ""  # Legacy fallback
     email: str = ""
     phone: str = ""
@@ -33,6 +35,8 @@ class ClientCreate(BaseModel):
 class ClientUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    suffix: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     mailing_address: Optional[str] = None
@@ -101,6 +105,8 @@ def create_client(
         client_id = add_client(
             first_name=body.first_name,
             last_name=body.last_name,
+            middle_name=body.middle_name,
+            suffix=body.suffix,
             name=body.name,
             email=body.email,
             phone=body.phone,
