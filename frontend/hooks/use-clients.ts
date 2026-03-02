@@ -31,7 +31,7 @@ export interface CreateClientInput {
     suffix?: string;
     email?: string;
     phone?: string;
-    home_address?: string;
+    mailing_address?: string;
 }
 
 /** Display name: prefer first+middle+last+suffix, fall back to name field. */

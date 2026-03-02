@@ -53,7 +53,7 @@ export function ClientCombobox({
     const [newSuffix, setNewSuffix] = useState("");
     const [newPhone, setNewPhone] = useState("");
     const [newEmail, setNewEmail] = useState("");
-    const [newAddress, setNewAddress] = useState("");
+    const [newMailingAddress, setNewMailingAddress] = useState("");
 
     // ---- Filter clients by typed text ----
     const query = value.toLowerCase().trim();
@@ -124,7 +124,7 @@ export function ClientCombobox({
         setNewSuffix("");
         setNewPhone("");
         setNewEmail("");
-        setNewAddress("");
+        setNewMailingAddress("");
         setAddDialogOpen(true);
     }, [value]);
 
@@ -141,7 +141,7 @@ export function ClientCombobox({
                 suffix: newSuffix.trim(),
                 phone: newPhone.trim(),
                 email: newEmail.trim(),
-                home_address: newAddress.trim(),
+                mailing_address: newMailingAddress.trim(),
             });
 
             // Build display name for the case form
@@ -299,8 +299,19 @@ export function ClientCombobox({
                     </DialogHeader>
 
                     <form onSubmit={handleCreateClient} className="space-y-4">
-                        {/* Name row */}
+                        {/* Name row 1: First + Last */}
                         <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">
+                                    First Name
+                                </label>
+                                <Input
+                                    value={newFirst}
+                                    onChange={(e) => setNewFirst(e.target.value)}
+                                    placeholder="First name"
+                                    autoFocus
+                                />
+                            </div>
                             <div className="space-y-1">
                                 <label className="text-sm font-medium">
                                     Last Name{" "}
@@ -311,30 +322,20 @@ export function ClientCombobox({
                                     onChange={(e) => setNewLast(e.target.value)}
                                     placeholder="Last name"
                                     required
-                                    autoFocus
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-sm font-medium">
-                                    First Name
-                                </label>
-                                <Input
-                                    value={newFirst}
-                                    onChange={(e) => setNewFirst(e.target.value)}
-                                    placeholder="First name"
                                 />
                             </div>
                         </div>
 
+                        {/* Name row 2: Middle + Suffix */}
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
                                 <label className="text-sm font-medium">
-                                    Middle Name
+                                    Middle Name / Initial
                                 </label>
                                 <Input
                                     value={newMiddle}
                                     onChange={(e) => setNewMiddle(e.target.value)}
-                                    placeholder="Middle name"
+                                    placeholder="Middle name or initial"
                                 />
                             </div>
                             <div className="space-y-1">
@@ -349,22 +350,11 @@ export function ClientCombobox({
                             </div>
                         </div>
 
-                        {/* Contact info */}
+                        {/* Contact: Email + Phone */}
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
                                 <label className="text-sm font-medium">
-                                    Cell Phone
-                                </label>
-                                <Input
-                                    value={newPhone}
-                                    onChange={(e) => setNewPhone(e.target.value)}
-                                    placeholder="(615) 555-1234"
-                                    type="tel"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-sm font-medium">
-                                    Email
+                                    Email Address
                                 </label>
                                 <Input
                                     value={newEmail}
@@ -373,16 +363,27 @@ export function ClientCombobox({
                                     type="email"
                                 />
                             </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium">
+                                    Phone Number
+                                </label>
+                                <Input
+                                    value={newPhone}
+                                    onChange={(e) => setNewPhone(e.target.value)}
+                                    placeholder="(615) 555-1234"
+                                    type="tel"
+                                />
+                            </div>
                         </div>
 
-                        {/* Address */}
+                        {/* Mailing Address */}
                         <div className="space-y-1">
                             <label className="text-sm font-medium">
-                                Home Address
+                                Mailing Address
                             </label>
                             <Input
-                                value={newAddress}
-                                onChange={(e) => setNewAddress(e.target.value)}
+                                value={newMailingAddress}
+                                onChange={(e) => setNewMailingAddress(e.target.value)}
                                 placeholder="123 Main St, Nashville, TN 37201"
                             />
                         </div>
