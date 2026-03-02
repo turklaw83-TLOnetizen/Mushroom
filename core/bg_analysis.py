@@ -276,8 +276,11 @@ def _run_analysis_thread(
 
     try:
         # Reset token usage accumulator for accurate cost tracking
-        from core.llm import reset_usage_accumulator
+        from core.llm import reset_usage_accumulator, set_max_context_mode
         reset_usage_accumulator()
+        # Set thread-local max context mode so all get_llm() calls in this thread
+        # automatically pick it up (avoids changing 40+ call sites in node files)
+        set_max_context_mode(max_context_mode)
 
         # Build graph
         if active_modules and active_modules != set(NODE_LABELS.keys()):

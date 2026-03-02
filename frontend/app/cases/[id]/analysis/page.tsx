@@ -9,7 +9,7 @@
 // Falls back to HTTP polling only when WebSocket is disconnected.
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
@@ -23,6 +23,16 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+
+// ---- Model Options -------------------------------------------------------
+
+const MODEL_OPTIONS = [
+    { value: "claude-opus-4.6", label: "Claude Opus 4.6", provider: "anthropic" },
+    { value: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", provider: "anthropic" },
+    { value: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", provider: "anthropic" },
+    { value: "xai", label: "Grok (xAI)", provider: "xai" },
+    { value: "gemini", label: "Gemini Pro", provider: "google" },
+] as const;
 
 // ---- Module Definitions -------------------------------------------------
 
@@ -289,6 +299,55 @@ export default function AnalysisPage() {
     const [selectedModule, setSelectedModule] = useState<string | null>(null);
     const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
     const [selectedModules, setSelectedModules] = useState<Set<string>>(new Set());
+    const [optionsOpen, setOptionsOpen] = useState(false);
+
+    // ---- Model Selection & Max Context State (persisted in localStorage) ----
+    const storageKey = `mc-analysis-opts-${caseId}`;
+    const [selectedModel, setSelectedModel] = useState<string>(() => {
+        if (typeof window === "undefined") return "claude-opus-4.6";
+        try {
+            const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+            return saved.model || "claude-opus-4.6";
+        } catch { return "claude-opus-4.6"; }
+    });
+    const [maxContextMode, setMaxContextMode] = useState<boolean>(() => {
+        if (typeof window === "undefined") return true;
+        try {
+            const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+            return saved.maxContext !== undefined ? saved.maxContext : true;
+        } catch { return true; }
+    });
+
+    // Persist to localStorage when changed
+    useEffect(() => {
+        try {
+            localStorage.setItem(storageKey, JSON.stringify({
+                model: selectedModel,
+                maxContext: maxContextMode,
+            }));
+        } catch { /* ignore */ }
+    }, [selectedModel, maxContextMode, storageKey]);
+
+    // Fetch API key configuration status
+    const { data: apiKeyStatus } = useQuery({
+        queryKey: ["config", "api-keys"],
+        queryFn: () =>
+            api.get<{ providers: Record<string, { configured: boolean }> }>(
+                "/config/api-keys",
+                { getToken },
+            ),
+        staleTime: 60_000,
+    });
+
+    // Determine which providers have API keys configured
+    const configuredProviders = useMemo(() => {
+        const providers = apiKeyStatus?.providers || {};
+        return new Set(
+            Object.entries(providers)
+                .filter(([, v]) => v.configured)
+                .map(([k]) => k),
+        );
+    }, [apiKeyStatus]);
 
     const isAnalysisRunning = workerStatus.analysis.status === "running";
     const isIngestionRunning = workerStatus.ingestion.status === "running";
@@ -347,6 +406,8 @@ export default function AnalysisPage() {
             api.post(`/cases/${caseId}/analysis/start`, {
                 prep_id: activePrepId,
                 force_rerun: false,
+                model: selectedModel,
+                max_context_mode: maxContextMode,
             }, { getToken }),
         successMessage: "Analysis started \u2014 modules will update as they complete",
         errorMessage: "Failed to start analysis",
@@ -368,6 +429,8 @@ export default function AnalysisPage() {
                 prep_id: activePrepId,
                 active_modules: [...selectedModules],
                 force_rerun: true,
+                model: selectedModel,
+                max_context_mode: maxContextMode,
             }, { getToken }),
         successMessage: `Re-analysis started for ${selectedModules.size} module(s)`,
         errorMessage: "Failed to start re-analysis",
@@ -476,6 +539,74 @@ export default function AnalysisPage() {
                             {completedCount}/{analysisModules.length} modules populated
                         </span>
                     </div>
+
+                    {/* Analysis Options (Model + Max Context) */}
+                    {canEdit && !isAnalysisRunning && (
+                        <div className="space-y-2">
+                            <button
+                                onClick={() => setOptionsOpen(!optionsOpen)}
+                                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                <span className="text-[10px]">{optionsOpen ? "\u25BC" : "\u25B6"}</span>
+                                Analysis Options
+                            </button>
+                            {optionsOpen && (
+                                <div className="flex items-center gap-4 p-3 rounded-lg border border-border bg-accent/10">
+                                    {/* Model Selector */}
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">AI Model</label>
+                                        <select
+                                            value={selectedModel}
+                                            onChange={(e) => setSelectedModel(e.target.value)}
+                                            className="w-48 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                                        >
+                                            {MODEL_OPTIONS.map((opt) => {
+                                                const isConfigured = configuredProviders.has(opt.provider);
+                                                return (
+                                                    <option
+                                                        key={opt.value}
+                                                        value={opt.value}
+                                                        disabled={!isConfigured}
+                                                    >
+                                                        {opt.label}{!isConfigured ? " (no API key)" : ""}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                    </div>
+
+                                    {/* Max Context Toggle */}
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Context Window</label>
+                                        <label
+                                            className="flex items-center gap-2 cursor-pointer"
+                                            title="Send ALL document text without truncation. Enables 1M token context for Opus/Sonnet 4.6."
+                                        >
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={maxContextMode}
+                                                onClick={() => setMaxContextMode(!maxContextMode)}
+                                                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent transition-colors ${
+                                                    maxContextMode ? "bg-primary" : "bg-zinc-600"
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                                                        maxContextMode ? "translate-x-4" : "translate-x-0.5"
+                                                    }`}
+                                                />
+                                            </button>
+                                            <span className="text-sm">
+                                                Max Context
+                                                {maxContextMode ? " (1M tokens)" : " (off)"}
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Action Buttons */}
                     {canEdit && (

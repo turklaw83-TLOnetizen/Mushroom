@@ -412,26 +412,93 @@ def get_providers():
 
 @app.get("/api/v1/config/api-keys", tags=["System"])
 def get_api_key_status():
-    """Return which API keys are configured (boolean status only, no secrets)."""
+    """Return which API keys are configured (boolean status only, no secrets).
+
+    Checks env vars first, then config.yaml api_keys section.
+    """
+    from api.deps import get_config
+    config = get_config()
+    config_keys = config.get("api_keys", {})
+
     providers = {
         "anthropic": {
-            "configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "configured": bool(
+                os.getenv("ANTHROPIC_API_KEY") or config_keys.get("anthropic")
+            ),
             "env_var": "ANTHROPIC_API_KEY",
         },
         "openai": {
-            "configured": bool(os.getenv("OPENAI_API_KEY")),
+            "configured": bool(
+                os.getenv("OPENAI_API_KEY") or config_keys.get("openai")
+            ),
             "env_var": "OPENAI_API_KEY",
         },
         "xai": {
-            "configured": bool(os.getenv("XAI_API_KEY")),
+            "configured": bool(
+                os.getenv("XAI_API_KEY") or config_keys.get("xai")
+            ),
             "env_var": "XAI_API_KEY",
         },
         "google": {
-            "configured": bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")),
+            "configured": bool(
+                os.getenv("GOOGLE_API_KEY")
+                or os.getenv("GEMINI_API_KEY")
+                or config_keys.get("google")
+            ),
             "env_var": "GOOGLE_API_KEY",
         },
     }
     return {"providers": providers}
+
+
+@app.put("/api/v1/config/api-keys", tags=["System"])
+def update_api_keys(body: dict, user: dict = Depends(require_role("admin"))):
+    """Save API keys to config.yaml (never echoes keys back).
+
+    Accepts: { "anthropic": "sk-ant-...", "xai": "xai-...", ... }
+    Also sets them as environment variables for the running process.
+    Returns updated boolean status per provider.
+    """
+    import yaml
+
+    valid_providers = {"anthropic", "openai", "xai", "google"}
+    env_var_map = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "xai": "XAI_API_KEY",
+        "google": "GOOGLE_API_KEY",
+    }
+
+    config_path = _PROJECT_ROOT / "config.yaml"
+    if not config_path.exists():
+        return {"status": "error", "detail": "config.yaml not found"}
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+
+    api_keys = config.setdefault("api_keys", {})
+    updated = []
+
+    for provider, key_value in body.items():
+        if provider not in valid_providers:
+            continue
+        if not isinstance(key_value, str) or not key_value.strip():
+            continue
+        api_keys[provider] = key_value.strip()
+        # Also set as env var for the running process
+        os.environ[env_var_map[provider]] = key_value.strip()
+        updated.append(provider)
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+    # Clear cached config so next request sees updated values
+    from api.deps import get_config
+    get_config.cache_clear()
+
+    logger.info("API keys updated for providers: %s", updated)
+    # Return fresh boolean status (never echo keys)
+    return get_api_key_status()
 
 
 @app.put("/api/v1/config/providers", tags=["System"])

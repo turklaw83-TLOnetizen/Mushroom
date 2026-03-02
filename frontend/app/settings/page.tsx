@@ -92,6 +92,8 @@ export default function SettingsPage() {
     const queryClient = useQueryClient();
     const [backingUp, setBackingUp] = useState(false);
     const [savingProvider, setSavingProvider] = useState(false);
+    const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
+    const [savingKeys, setSavingKeys] = useState<Record<string, boolean>>({});
 
     // ---- Queries ----------------------------------------------------------
 
@@ -134,6 +136,26 @@ export default function SettingsPage() {
             toast.error("Failed to update provider");
         } finally {
             setSavingProvider(false);
+        }
+    };
+
+    const handleSaveApiKey = async (provider: string) => {
+        const key = apiKeyInputs[provider]?.trim();
+        if (!key) {
+            toast.error("Please enter an API key");
+            return;
+        }
+        setSavingKeys((prev) => ({ ...prev, [provider]: true }));
+        try {
+            await api.put("/config/api-keys", { [provider]: key }, { getToken });
+            queryClient.invalidateQueries({ queryKey: ["config-api-keys"] });
+            // Clear the input after successful save
+            setApiKeyInputs((prev) => ({ ...prev, [provider]: "" }));
+            toast.success(`${PROVIDER_META[provider]?.label ?? provider} API key saved`);
+        } catch {
+            toast.error("Failed to save API key");
+        } finally {
+            setSavingKeys((prev) => ({ ...prev, [provider]: false }));
         }
     };
 
@@ -181,7 +203,7 @@ export default function SettingsPage() {
                                 </Badge>
                             </CardTitle>
                             <CardDescription>
-                                Shows which LLM provider API keys are available. Keys are set via environment variables.
+                                Manage LLM provider API keys. Keys are stored securely in config.yaml and override environment variables.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-0">
@@ -197,33 +219,63 @@ export default function SettingsPage() {
                                     const status = keyStatuses[key];
                                     const provConfig = configuredProviders[key];
                                     const isConfigured = status?.configured ?? false;
+                                    const isSaving = savingKeys[key] ?? false;
+                                    const inputValue = apiKeyInputs[key] ?? "";
 
                                     return (
-                                        <div key={key} className="flex items-center justify-between py-3 border-b last:border-0">
-                                            <div className="flex items-center gap-3">
-                                                {/* Status indicator */}
-                                                <div className={`h-3 w-3 rounded-full ${isConfigured ? "bg-emerald-500" : "bg-red-500/60"}`} />
-                                                <div>
-                                                    <p className={`text-sm font-medium ${meta.color}`}>{meta.label}</p>
-                                                    <p className="text-xs text-muted-foreground">{meta.description}</p>
+                                        <div key={key} className="py-3 border-b last:border-0 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    {/* Status indicator */}
+                                                    <div className={`h-3 w-3 rounded-full ${isConfigured ? "bg-emerald-500" : "bg-red-500/60"}`} />
+                                                    <div>
+                                                        <p className={`text-sm font-medium ${meta.color}`}>{meta.label}</p>
+                                                        <p className="text-xs text-muted-foreground">{meta.description}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    {provConfig && (
+                                                        <Badge variant="outline" className="text-xs font-mono">
+                                                            {provConfig.model}
+                                                        </Badge>
+                                                    )}
+                                                    <Badge
+                                                        variant={isConfigured ? "default" : "secondary"}
+                                                        className={`text-xs ${isConfigured
+                                                            ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                                                            : "text-muted-foreground"
+                                                        }`}
+                                                    >
+                                                        {isConfigured ? "Configured" : "Not Set"}
+                                                    </Badge>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                                {provConfig && (
-                                                    <Badge variant="outline" className="text-xs font-mono">
-                                                        {provConfig.model}
-                                                    </Badge>
-                                                )}
-                                                <Badge
-                                                    variant={isConfigured ? "default" : "secondary"}
-                                                    className={`text-xs ${isConfigured
-                                                        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                                        : "text-muted-foreground"
-                                                    }`}
-                                                >
-                                                    {isConfigured ? "Configured" : "Not Set"}
-                                                </Badge>
-                                            </div>
+                                            {/* API Key Input */}
+                                            {canEdit && (
+                                                <div className="flex items-center gap-2 pl-6">
+                                                    <input
+                                                        type="password"
+                                                        value={inputValue}
+                                                        onChange={(e) =>
+                                                            setApiKeyInputs((prev) => ({
+                                                                ...prev,
+                                                                [key]: e.target.value,
+                                                            }))
+                                                        }
+                                                        placeholder={isConfigured ? "Enter new key to update..." : `Enter ${meta.label} API key...`}
+                                                        className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50"
+                                                    />
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleSaveApiKey(key)}
+                                                        disabled={isSaving || !inputValue.trim()}
+                                                        className="shrink-0"
+                                                    >
+                                                        {isSaving ? "Saving..." : "Save"}
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })
