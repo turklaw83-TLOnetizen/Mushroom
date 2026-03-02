@@ -1,12 +1,54 @@
 # Project Mushroom Cloud
 
 > Forked from AllRise Beta (Feb 2026). Independent repo — no shared git history.
+> GitHub: `https://github.com/turklaw83-TLOnetizen/Mushroom.git`
 
 ## Project Overview
-Project Mushroom Cloud — a Streamlit-based legal case management and AI analysis platform.
-Location: `C:\Users\turkl\project-mushroom-cloud`
+Project Mushroom Cloud — a legal case management and AI analysis platform.
+- **Original UI**: Streamlit (still in `app.py`, `ui/`)
+- **Production UI**: Next.js 16 + FastAPI (deployed at https://turkclaw.net)
+- **Local repo**: `C:\Users\turkl\project-mushroom-cloud`
+- **Active branch**: `claude/quizzical-panini`
 
-## Architecture (Two-Tier UI + Clean Core/UI Split)
+## Production Deployment
+- **VPS**: Vultr (2 vCPU / 4 GB RAM / 80 GB SSD) at `45.32.216.52`
+- **Domain**: `turkclaw.net` (Cloudflare DNS + Origin Certificate, Full strict SSL)
+- **Stack**: Docker Compose with 5 containers:
+  - `postgres` — PostgreSQL 16 (port 5432, internal)
+  - `api` — FastAPI via uvicorn (port 8000, internal)
+  - `frontend` — Next.js 16 standalone (port 3000, internal)
+  - `nginx` — reverse proxy (ports 80/443, public)
+- **Auth**: Clerk (Google OAuth) — `proxy.ts` handles auth token forwarding to API
+- **Docker files**: `docker-compose.prod.yml`, `Dockerfile.api`, `frontend/Dockerfile`, `nginx.conf`
+- **Requirements**: `requirements-api.txt` (slim, excludes PyTorch/streamlit/chromadb for fast builds)
+- **Health check**: `GET /api/v1/health` returns DB status, latency, disk free, LLM config
+
+## Architecture — Next.js Frontend (`frontend/`)
+- **Framework**: Next.js 16 App Router + TypeScript + Tailwind CSS
+- **Auth**: Clerk (`@clerk/nextjs`) with Google OAuth SSO
+- **Data fetching**: TanStack React Query via custom hooks in `frontend/hooks/`
+- **API client**: `frontend/lib/api-client.ts` — typed wrapper around fetch with Clerk token injection
+- **UI components**: `frontend/components/ui/` — shadcn/ui primitives (button, dialog, input, card, etc.)
+- **Key pages**:
+  - `app/page.tsx` — Dashboard (case table, widgets, new case dialog)
+  - `app/cases/[id]/` — Case detail with 20+ sub-pages (analysis, documents, billing, calendar, etc.)
+  - `app/admin/` — Admin panel, tenant management
+  - `app/analytics/` — Analytics dashboard
+
+### Key Frontend Components
+- **`components/dashboard/new-case-dialog.tsx`** — Create New Case dialog with ClientCombobox + 5 case sub-types
+- **`components/ui/client-combobox.tsx`** — Searchable client dropdown with "+ Add New Client" dialog
+- **`components/dashboard/case-table.tsx`** — Case list with sorting, filtering, pagination
+- **`components/sidebar.tsx`** — Navigation sidebar with case sub-pages
+
+### Key Frontend Hooks
+- **`hooks/use-cases.ts`** — React Query hook for case CRUD (`GET/POST /cases`)
+- **`hooks/use-clients.ts`** — React Query hooks for CRM clients (`useClients`, `useCreateClient`, `clientDisplayName`)
+- **`hooks/use-prep.tsx`** — Preparation data fetching
+- **`hooks/use-websocket.ts`** — WebSocket connection for real-time updates
+- **`hooks/use-notifications.ts`** — Push notification management
+
+## Architecture — Legacy Streamlit UI (`ui/`)
 - **app.py** (~95 lines) — thin entry: splash -> login -> sidebar -> route
 - **Tier 1**: `ui/case_dashboard.py` — landing when no case selected (metrics, case table, filters, **client directory**)
 - **Tier 2**: `ui/case_view.py` — war room when case open (header, directives, contacts, files, analysis, tabs)
@@ -57,6 +99,11 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 
 ## CRM System
 - **`core/crm.py`** — Client management: add, search, update, delete, link/unlink to cases
+- **Client fields**: first_name, last_name, middle_name, suffix, email, phone, mailing_address, home_address
+- **`add_client()`** accepts: first_name, last_name, middle_name, suffix, name (legacy), email, phone, mailing_address, home_address, home_same_as_mailing, referral_source, tags
+- **Display name**: `clientDisplayName()` builds "First Middle Last, Suffix" — falls back to `name` field
+- **API endpoints**: `GET /crm/clients` (list/search), `POST /crm/clients` (create), `PUT /crm/clients/{id}` (update), `DELETE /crm/clients/{id}` (delete)
+- **Frontend**: `ClientCombobox` component in New Case dialog — autocomplete search + "+ Add New Client" dialog
 - **Dashboard access**: Client Directory expandable on main landing page (no case needed)
 - **In-case access**: Client CRM nav group -> Client Directory, Intake Forms, CRM Dashboard
 - **Stats keys**: `total_clients`, `active`, `prospective`, `former`, `declined` (NOT `active_clients` etc.)
@@ -77,7 +124,9 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 - **Stale detection**: Workers check `updated_at` timestamp; auto-reset stuck "running" states
 - **Heartbeat**: Long-running file processing sends heartbeat every 15s to refresh `updated_at`
 
-## Case Phase Lifecycle
+## Case Types & Phase Lifecycle
+- **Case types** (New Case dialog): `criminal` (Adult), `criminal-juvenile`, `civil-plaintiff`, `civil-defendant`, `civil-juvenile`
+- **CASE_TYPES constant** in `new-case-dialog.tsx` — maps value→label for the 5 types
 - **Phases**: Active (with customizable sub-phases) -> Closed -> Archived -> Purge (optional)
 - **Sub-phases per case type**: criminal (9 stages), criminal-juvenile (8), civil-plaintiff (9), civil-defendant (8), civil-juvenile (7)
 - **Phase config**: `data/phase_config.json` (global, editable via sidebar settings)
@@ -131,18 +180,41 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 
 ## Config
 - `config.yaml` — LLM providers (anthropic/xai), models, storage paths
-- `.env` — API keys (XAI_API_KEY, ANTHROPIC_API_KEY)
-- `.streamlit/config.toml` — theme, server, upload limits
-- `.streamlit/secrets.toml` — OAuth secrets (gitignored)
+- `.env` — API keys (XAI_API_KEY, ANTHROPIC_API_KEY), DATABASE_URL, CLERK keys
+- `.streamlit/config.toml` — theme, server, upload limits (legacy Streamlit)
+- `.streamlit/secrets.toml` — OAuth secrets (gitignored, legacy Streamlit)
+- `frontend/.env.local` — NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY, NEXT_PUBLIC_API_URL
+- `docker-compose.prod.yml` — production Docker Compose with env vars for all services
+
+## Docker & Dependencies
+- **`requirements.txt`** — Full dependency list (includes streamlit, torch, chromadb — for local/Streamlit use)
+- **`requirements-api.txt`** — Slim API-only dependencies (excludes PyTorch 916MB, streamlit, chromadb, pywebview, sentence-transformers, pytest). Used by `Dockerfile.api`
+- **`Dockerfile.api`** — Two-stage build: builder installs from `requirements-api.txt`, runtime copies packages + app code
+- **`frontend/Dockerfile`** — Next.js standalone build with Clerk env vars
+- **`nginx.conf`** — Reverse proxy: `/api/` → api:8000, `/` → frontend:3000, SSL termination via Cloudflare Origin Cert
 
 ## User Info
 - Default users: Daniel Joseph Turklay (DJT, admin), Cody Ryan Johnson (CRJ, admin)
-- Users authenticate via PIN or Google OAuth
+- **Clerk auth**: Google OAuth via Clerk (production)
+- **Legacy auth**: PIN or Google OAuth (Streamlit UI)
+- **User email**: daniel@turklaylaw.com
 
 ## Known Issues (Inherited from AllRise Beta)
 - **clone_preparation null deref**: Fixed — `source_prep.get(...)` guarded with `if source_prep else` fallback
 - **delete_major_draft**: Fixed — uses storage API instead of raw `os.remove()`
 - **encrypted_backend.py**: Magic bytes `b"TLO_ALLRISE_ENCRYPTION_VERIFIED"` retained for backward compat — changing would break existing encrypted data
+
+## Deployment Commands (VPS)
+```bash
+ssh root@45.32.216.52
+cd /opt/mushroom-cloud
+git pull origin claude/quizzical-panini
+docker compose build --no-cache api        # rebuild API (uses requirements-api.txt)
+docker compose build --no-cache frontend   # rebuild frontend
+docker compose up -d                       # restart all services
+docker compose logs -f api                 # tail API logs
+docker compose logs -f frontend            # tail frontend logs
+```
 
 ## Branding Note
 Source files still reference "AllRise Beta" in many places. These should be updated to "Project Mushroom Cloud" / "mushroom-cloud" as the project evolves. The `core/storage/encrypted_backend.py` magic bytes must NOT be changed (would break encryption verification).
