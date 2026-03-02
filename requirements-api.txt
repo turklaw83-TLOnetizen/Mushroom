@@ -1,0 +1,102 @@
+# Project Mushroom Cloud — API Server Dependencies (slim)
+# Excludes heavy packages not needed at API runtime:
+#   - streamlit (UI framework, not used by API)
+#   - sentence-transformers / torch (916MB, Phase 16 RAG — lazily imported)
+#   - chromadb (vector store — lazily imported)
+#   - pywebview (desktop wrapper)
+#   - pytesseract (OCR — requires system tesseract, lazily imported)
+#   - pytest (testing only)
+
+# API Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.9
+
+# Database
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.30.0
+psycopg2-binary>=2.9.0
+alembic>=1.14.0
+
+# Auth
+clerk-backend-api>=1.0.0
+PyJWT>=2.9.0
+
+# HTTP client (Clerk token verification, etc.)
+httpx>=0.27.0
+
+# Configuration & environment
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# LLM providers (used by core/ analysis nodes)
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-anthropic>=0.3.0
+langchain-xai>=0.2.0
+langchain-google-genai>=2.0.0
+langchain-community>=0.3.0
+langgraph>=0.2.0
+langchain-openai>=0.2.0
+anthropic>=0.28.0
+
+# Document processing (used by core/ ingest + export)
+pypdf>=4.0.0
+python-docx>=1.0.0
+fpdf2>=2.8.0
+openpyxl>=3.1.0
+Pillow>=10.0.0
+
+# Token counting
+tiktoken>=0.7.0
+
+# Data validation
+pydantic>=2.0.0
+
+# Web search
+duckduckgo-search>=6.0.0
+
+# Google integration (auth + calendar)
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+
+# Error tracking
+sentry-sdk[fastapi]>=2.0.0
+
+# Cloud backup
+b2sdk>=2.0.0
+
+# WebSocket support (Phase 12)
+websockets>=12.0
+
+# Push notifications (Phase 14)
+pywebpush>=2.0.0
+py-vapid>=1.9.0
+
+# Email integration (Phase 15)
+imapclient>=3.0.0
+exchangelib>=5.0.0
+
+# Numerical (needed by langchain, not torch)
+numpy>=1.26.0
+rank-bm25>=0.2.2
+
+# Calendar (Phase 17)
+icalendar>=5.0.0
+
+# Observability (Phase 19+20)
+prometheus-client>=0.21.0
+opentelemetry-api>=1.25.0
+opentelemetry-sdk>=1.25.0
+opentelemetry-instrumentation-fastapi>=0.46b0
+opentelemetry-exporter-otlp>=1.25.0
+
+# Multi-tenancy (Phase 22)
+msal>=1.28.0
+
+# File security (Phase 24)
+pyclamd>=0.4.0
+reportlab>=4.0.0
+PyPDF2>=3.0.0
+cryptography>=42.0.0
