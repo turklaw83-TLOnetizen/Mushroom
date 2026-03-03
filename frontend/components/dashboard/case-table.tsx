@@ -44,9 +44,12 @@ export function CaseTable({
     if (cases.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16">
-                <p className="text-lg font-medium text-muted-foreground">No cases found</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Create your first case to get started.
+                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4 text-xl">
+                    ⚖️
+                </div>
+                <p className="text-lg font-medium">No cases found</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-sm text-center">
+                    Create your first case to start managing your legal practice with AI-powered analysis.
                 </p>
             </div>
         );

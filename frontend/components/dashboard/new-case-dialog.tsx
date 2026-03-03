@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface NewCaseDialogProps {
     open: boolean;
@@ -93,16 +94,17 @@ export function NewCaseDialog({
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Type</label>
-                            <select
-                                value={caseType}
-                                onChange={(e) => setCaseType(e.target.value)}
-                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                            >
-                                <option value="criminal">Criminal</option>
-                                <option value="civil">Civil</option>
-                                <option value="family">Family</option>
-                                <option value="other">Other</option>
-                            </select>
+                            <Select value={caseType} onValueChange={setCaseType}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="criminal">Criminal</SelectItem>
+                                    <SelectItem value="civil">Civil</SelectItem>
+                                    <SelectItem value="family">Family</SelectItem>
+                                    <SelectItem value="other">Other</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Jurisdiction</label>

@@ -134,10 +134,25 @@ export function DataPage<T>({
                     renderEmpty()
                 ) : (
                     <Card className="border-dashed">
-                        <CardContent className="py-12 text-center">
-                            <p className="text-muted-foreground">
-                                {search ? "No results match your search." : `No ${title.toLowerCase()} yet.`}
+                        <CardContent className="py-16 text-center">
+                            <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4 text-xl">
+                                {search ? "🔍" : "📂"}
+                            </div>
+                            <p className="text-base font-medium text-foreground">
+                                {search ? "No results found" : `No ${title.toLowerCase()} yet`}
                             </p>
+                            <p className="text-sm text-muted-foreground mt-1.5 max-w-sm mx-auto">
+                                {search
+                                    ? "Try adjusting your search terms or clearing the filter."
+                                    : createLabel && onCreateClick
+                                        ? "Get started by creating your first entry."
+                                        : "Items will appear here once added."}
+                            </p>
+                            {!search && createLabel && onCreateClick && (
+                                <Button onClick={onCreateClick} size="sm" className="mt-4 gap-1.5">
+                                    <span>+</span> {createLabel}
+                                </Button>
+                            )}
                         </CardContent>
                     </Card>
                 )

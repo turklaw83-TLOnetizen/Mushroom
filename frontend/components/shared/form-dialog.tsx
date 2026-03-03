@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // ---- Field Config -------------------------------------------------------
 
@@ -101,16 +102,21 @@ export function FormDialog<T extends FieldValues>({
                                 </label>
 
                                 {field.type === "select" ? (
-                                    <select
-                                        {...form.register(field.name)}
-                                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    <Select
+                                        value={form.watch(field.name) as string}
+                                        onValueChange={(val) => form.setValue(field.name, val as never)}
                                     >
-                                        {field.options?.map((opt) => (
-                                            <option key={opt.value} value={opt.value}>
-                                                {opt.label}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {field.options?.map((opt) => (
+                                                <SelectItem key={opt.value} value={opt.value}>
+                                                    {opt.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 ) : field.type === "textarea" ? (
                                     <textarea
                                         {...form.register(field.name)}

@@ -1,6 +1,7 @@
+"use client";
 // ---- Admin Health Dashboard ---------------------------------------------
 // System health, router counts, running jobs, email queue stats.
-"use client";
+export const dynamic = "force-dynamic";
 
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";

@@ -34,12 +34,12 @@ export default function CaseOverviewPage() {
         <div className="space-y-6">
             {/* Metadata Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <MetricCard label="Type" value={caseData.case_type || "—"} />
-                <MetricCard label="Category" value={caseData.case_category || "—"} />
-                <MetricCard label="Client" value={caseData.client_name || "—"} />
-                <MetricCard label="Jurisdiction" value={caseData.jurisdiction || "—"} />
-                <MetricCard label="Phase" value={`${caseData.phase}${caseData.sub_phase ? ` / ${caseData.sub_phase}` : ""}`} />
-                <MetricCard label="Status" value={caseData.status || "active"} />
+                <MetricCard label="Type" value={caseData.case_type || "—"} delay={0} />
+                <MetricCard label="Category" value={caseData.case_category || "—"} delay={0.06} />
+                <MetricCard label="Client" value={caseData.client_name || "—"} delay={0.12} />
+                <MetricCard label="Jurisdiction" value={caseData.jurisdiction || "—"} delay={0.18} />
+                <MetricCard label="Phase" value={`${caseData.phase}${caseData.sub_phase ? ` / ${caseData.sub_phase}` : ""}`} delay={0.24} />
+                <MetricCard label="Status" value={caseData.status || "active"} delay={0.30} />
             </div>
 
             {/* Description */}
@@ -62,15 +62,16 @@ export default function CaseOverviewPage() {
     );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({ label, value, delay = 0 }: { label: string; value: string; delay?: number }) {
     return (
-        <Card>
-            <CardContent className="pt-4 pb-3">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                    {label}
-                </p>
-                <p className="text-lg font-semibold mt-1 truncate">{value}</p>
-            </CardContent>
-        </Card>
+        <div
+            className="glass-card px-5 py-4"
+            style={{ animationDelay: `${delay}s` }}
+        >
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                {label}
+            </p>
+            <p className="text-lg font-semibold mt-1 truncate">{value}</p>
+        </div>
     );
 }

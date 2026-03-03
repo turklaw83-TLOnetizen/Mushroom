@@ -65,32 +65,30 @@ export function DashboardStats() {
     const activeCases = cases?.items?.filter((c) => c.status === "active").length ?? 0;
     const alerts = notifications?.total ?? 0;
 
+    const stats = [
+        { label: "Total Cases", value: totalCases, icon: "📁", color: "text-foreground" },
+        { label: "Active", value: activeCases, icon: "⚡", color: "text-emerald-400" },
+        { label: "Alerts", value: alerts, icon: "🔔", color: "text-amber-400" },
+        { label: "Archived", value: totalCases - activeCases, icon: "📦", color: "text-muted-foreground" },
+    ];
+
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-                <CardContent className="pt-4 pb-3">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Cases</p>
-                    <p className="text-2xl font-bold mt-1">{totalCases}</p>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardContent className="pt-4 pb-3">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Active</p>
-                    <p className="text-2xl font-bold mt-1 text-green-400">{activeCases}</p>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardContent className="pt-4 pb-3">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Alerts</p>
-                    <p className="text-2xl font-bold mt-1 text-amber-400">{alerts}</p>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardContent className="pt-4 pb-3">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Archived</p>
-                    <p className="text-2xl font-bold mt-1 text-muted-foreground">{totalCases - activeCases}</p>
-                </CardContent>
-            </Card>
+            {stats.map((stat, i) => (
+                <div
+                    key={stat.label}
+                    className="glass-card px-5 py-4"
+                    style={{ animationDelay: `${i * 0.08}s` }}
+                >
+                    <span className="text-lg">{stat.icon}</span>
+                    <p className={`text-2xl font-extrabold tracking-tight mt-1 ${stat.color}`}>
+                        {stat.value}
+                    </p>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mt-0.5">
+                        {stat.label}
+                    </p>
+                </div>
+            ))}
         </div>
     );
 }

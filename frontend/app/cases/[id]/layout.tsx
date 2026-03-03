@@ -5,17 +5,17 @@
 
 import { useState } from "react";
 import { useParams, usePathname } from "next/navigation";
-import Link from "next/link";
 import { z } from "zod";
 import { useCase } from "@/hooks/use-cases";
 import { PrepProvider, usePrep } from "@/hooks/use-prep";
 import { useCreatePrep } from "@/hooks/use-create-prep";
 import { useTabPrefetch } from "@/hooks/use-tab-prefetch";
 import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
+import { ScrollableTabs } from "@/components/shared/scrollable-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const tabs = [
     { label: "Overview", href: "" },
@@ -130,17 +130,21 @@ function CaseLayoutInner({
                             {/* Prep selector + create */}
                             <div className="flex items-center gap-1.5">
                                 {preparations.length > 0 ? (
-                                    <select
+                                    <Select
                                         value={activePrepId || ""}
-                                        onChange={(e) => setActivePrepId(e.target.value)}
-                                        className="text-xs bg-muted border border-border rounded px-2 py-0.5"
+                                        onValueChange={setActivePrepId}
                                     >
-                                        {preparations.map((p) => (
-                                            <option key={p.id} value={p.id}>
-                                                {p.name || p.type} prep
-                                            </option>
-                                        ))}
-                                    </select>
+                                        <SelectTrigger className="h-7 text-xs w-auto min-w-[140px]">
+                                            <SelectValue placeholder="Select prep" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {preparations.map((p) => (
+                                                <SelectItem key={p.id} value={p.id} className="text-xs">
+                                                    {p.name || p.type} prep
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 ) : (
                                     <span className="text-xs text-muted-foreground">No preps</span>
                                 )}
@@ -161,40 +165,13 @@ function CaseLayoutInner({
                     </div>
                 )}
 
-                {/* Tab Navigation with prefetch on hover — scrollable on mobile */}
-                <div className="relative">
-                    <nav
-                        className="flex gap-0 -mb-px overflow-x-auto scrollbar-none"
-                        style={{
-                            maskImage: "linear-gradient(to right, transparent 0, black 24px, black calc(100% - 24px), transparent 100%)",
-                            WebkitMaskImage: "linear-gradient(to right, transparent 0, black 24px, black calc(100% - 24px), transparent 100%)",
-                        }}
-                    >
-                        {tabs.map((tab) => {
-                            const tabPath = `${basePath}${tab.href}`;
-                            const isActive =
-                                tab.href === ""
-                                    ? pathname === basePath
-                                    : pathname.startsWith(tabPath);
-
-                            return (
-                                <Link
-                                    key={tab.href}
-                                    href={tabPath}
-                                    onMouseEnter={() => prefetch(tab.href)}
-                                    className={cn(
-                                        "px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0",
-                                        isActive
-                                            ? "border-primary text-primary"
-                                            : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
-                                    )}
-                                >
-                                    {tab.label}
-                                </Link>
-                            );
-                        })}
-                    </nav>
-                </div>
+                {/* Tab Navigation — scrollable with arrow indicators */}
+                <ScrollableTabs
+                    tabs={tabs}
+                    basePath={basePath}
+                    activeHref={pathname}
+                    onPrefetch={prefetch}
+                />
             </div>
 
             {/* Tab Content */}

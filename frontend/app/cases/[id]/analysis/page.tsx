@@ -20,6 +20,8 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 // ---- Module Definitions -------------------------------------------------
 
@@ -52,16 +54,18 @@ function statusColor(status: string): string {
 }
 
 function ProgressBar({ percent, label }: { percent: number; label?: string }) {
+    const clamped = Math.min(100, Math.max(0, percent));
     return (
-        <div className="space-y-1">
-            {label && <p className="text-xs text-muted-foreground">{label}</p>}
-            <div className="h-2 rounded-full bg-accent overflow-hidden">
-                <div
-                    className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-500 ease-out rounded-full"
-                    style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-                />
+        <div className="space-y-1.5">
+            {label && (
+                <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground font-medium">{label}</p>
+                    <p className="text-xs font-semibold tabular-nums">{Math.round(clamped)}%</p>
+                </div>
+            )}
+            <div className="analysis-progress">
+                <Progress value={clamped} className="h-2.5" />
             </div>
-            <p className="text-xs text-muted-foreground text-right">{Math.round(percent)}%</p>
         </div>
     );
 }
@@ -346,12 +350,14 @@ export default function AnalysisPage() {
                         return (
                             <Card
                                 key={mod.key}
-                                className={`transition-all cursor-pointer hover:bg-accent/30 hover:shadow-md ${isCurrentlyProcessing
-                                        ? "border-blue-500/50 shadow-blue-500/10 shadow-md animate-pulse"
+                                className={cn(
+                                    "transition-all cursor-pointer hover:shadow-md",
+                                    isCurrentlyProcessing
+                                        ? "border-[oklch(0.55_0.23_264_/_50%)] shadow-[oklch(0.55_0.23_264_/_10%)] shadow-md animate-pulse"
                                         : hasData
-                                            ? "border-emerald-500/20"
-                                            : "border-dashed opacity-60 hover:opacity-100"
-                                    }`}
+                                            ? "glass-card"
+                                            : "border-dashed opacity-60 hover:opacity-100 hover:bg-accent/30",
+                                )}
                                 onClick={() => setSelectedModule(mod.key)}
                             >
                                 <CardContent className="py-4">

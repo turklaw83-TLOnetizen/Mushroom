@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/notification-center";
 
@@ -45,17 +46,18 @@ export function Sidebar() {
             {/* Mobile overlay */}
             {sidebarOpen && (
                 <div
-                    className="fixed inset-0 z-30 bg-black/50 md:hidden"
+                    className="fixed inset-0 z-30 bg-black/50 md:hidden animate-in fade-in duration-200"
                     onClick={() => setSidebarOpen(false)}
                 />
             )}
 
-            {/* Mobile hamburger */}
+            {/* Mobile hamburger — 44px tap target, visible bg */}
             <Button
                 variant="ghost"
                 size="icon"
                 onClick={toggleSidebar}
-                className="fixed top-3 left-3 z-40 h-9 w-9 md:hidden"
+                aria-label="Toggle navigation"
+                className="fixed top-3 left-3 z-40 h-11 w-11 md:hidden rounded-lg bg-card/80 backdrop-blur-sm border border-border shadow-sm"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 12h18M3 6h18M3 18h18" />
@@ -89,6 +91,7 @@ export function Sidebar() {
                         variant="ghost"
                         size="icon"
                         onClick={toggleSidebar}
+                        aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
                         className="h-8 w-8 shrink-0 hidden md:flex"
                     >
                         <svg
@@ -204,7 +207,7 @@ export function Sidebar() {
     );
 }
 
-// ---- Nav Item -----------------------------------------------------------
+// ---- Nav Item with Tooltip for collapsed state --------------------------
 
 function NavItem({
     href,
@@ -221,7 +224,7 @@ function NavItem({
     collapsed: boolean;
     badge?: string;
 }) {
-    return (
+    const linkContent = (
         <Link
             href={href}
             className={cn(
@@ -231,7 +234,6 @@ function NavItem({
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                 collapsed && "justify-center",
             )}
-            title={collapsed ? label : undefined}
         >
             {icon && <span className="text-base">{icon}</span>}
             {!collapsed && (
@@ -246,4 +248,17 @@ function NavItem({
             )}
         </Link>
     );
+
+    if (collapsed) {
+        return (
+            <Tooltip>
+                <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+                <TooltipContent side="right" className="text-xs">
+                    {label}
+                </TooltipContent>
+            </Tooltip>
+        );
+    }
+
+    return linkContent;
 }
