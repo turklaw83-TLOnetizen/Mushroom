@@ -1,10 +1,11 @@
 // ---- Case Table ---------------------------------------------------------
-// Supports bulk selection with floating action bar for batch operations.
+// Sortable columns, pin toggle, bulk actions, readiness badges, deadlines.
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import type { CaseItem } from "@/hooks/use-cases";
 import { useAuth } from "@clerk/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -18,6 +19,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { toast } from "sonner";
 
 const phaseColors: Record<string, string> = {
     active: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
@@ -72,7 +74,6 @@ function formatRelativeDeadline(iso?: string): { text: string; urgency: "overdue
         const deadline = new Date(iso);
         if (isNaN(deadline.getTime())) return null;
         const now = new Date();
-        // Reset to start of day for comparison
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const target = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
         const diffMs = target.getTime() - today.getTime();
@@ -106,6 +107,91 @@ function DeadlineCell({ deadline, event }: { deadline?: string; event?: string }
     const result = formatRelativeDeadline(source);
     if (!result) return <span className="text-muted-foreground">{"\u2014"}</span>;
     return <span className={`text-sm font-medium ${deadlineColors[result.urgency]}`}>{result.text}</span>;
+}
+
+// ---- Sorting ------------------------------------------------------------
+
+type SortKey = "name" | "client_name" | "case_category" | "phase" | "readiness_score" | "next_deadline" | "last_updated" | "pinned";
+type SortDir = "asc" | "desc";
+
+function SortableHeader({
+    label,
+    sortKey,
+    currentSort,
+    currentDir,
+    onSort,
+    className,
+}: {
+    label: string;
+    sortKey: SortKey;
+    currentSort: SortKey;
+    currentDir: SortDir;
+    onSort: (key: SortKey) => void;
+    className?: string;
+}) {
+    const isActive = currentSort === sortKey;
+    const arrow = isActive ? (currentDir === "asc" ? " \u25B2" : " \u25BC") : "";
+    return (
+        <TableHead
+            className={`font-semibold cursor-pointer select-none hover:text-foreground transition-colors ${className || ""}`}
+            onClick={() => onSort(sortKey)}
+        >
+            {label}{arrow}
+        </TableHead>
+    );
+}
+
+function sortCases(cases: CaseItem[], sortKey: SortKey, sortDir: SortDir): CaseItem[] {
+    const sorted = [...cases].sort((a, b) => {
+        let aVal: string | number | boolean;
+        let bVal: string | number | boolean;
+
+        switch (sortKey) {
+            case "name":
+                aVal = a.name.toLowerCase();
+                bVal = b.name.toLowerCase();
+                break;
+            case "client_name":
+                aVal = (a.client_name || "").toLowerCase();
+                bVal = (b.client_name || "").toLowerCase();
+                break;
+            case "case_category":
+                aVal = (a.case_category || a.case_type || "").toLowerCase();
+                bVal = (b.case_category || b.case_type || "").toLowerCase();
+                break;
+            case "phase":
+                aVal = a.phase;
+                bVal = b.phase;
+                break;
+            case "readiness_score":
+                aVal = a.readiness_score ?? -1;
+                bVal = b.readiness_score ?? -1;
+                break;
+            case "next_deadline":
+                aVal = a.next_deadline || a.next_event || "9999";
+                bVal = b.next_deadline || b.next_event || "9999";
+                break;
+            case "last_updated":
+                aVal = a.last_updated || "";
+                bVal = b.last_updated || "";
+                break;
+            case "pinned":
+                aVal = a.pinned ? 1 : 0;
+                bVal = b.pinned ? 1 : 0;
+                break;
+            default:
+                return 0;
+        }
+
+        if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+        if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+        return 0;
+    });
+
+    // Always put pinned cases first regardless of sort
+    const pinned = sorted.filter((c) => c.pinned);
+    const unpinned = sorted.filter((c) => !c.pinned);
+    return [...pinned, ...unpinned];
 }
 
 // ---- Floating Action Bar ------------------------------------------------
@@ -204,8 +290,24 @@ export function CaseTable({
     onDelete?: (c: CaseItem) => void;
 }) {
     const { getToken } = useAuth();
+    const queryClient = useQueryClient();
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+    const [sortKey, setSortKey] = useState<SortKey>("last_updated");
+    const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+    const handleSort = useCallback((key: SortKey) => {
+        setSortKey((prev) => {
+            if (prev === key) {
+                setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                return key;
+            }
+            setSortDir(key === "last_updated" || key === "readiness_score" ? "desc" : "asc");
+            return key;
+        });
+    }, []);
+
+    const sortedCases = useMemo(() => sortCases(cases, sortKey, sortDir), [cases, sortKey, sortDir]);
 
     const allSelected = cases.length > 0 && selectedIds.size === cases.length;
     const someSelected = selectedIds.size > 0 && selectedIds.size < cases.length;
@@ -228,6 +330,17 @@ export function CaseTable({
     }, []);
 
     const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+    const togglePin = useCallback(async (c: CaseItem, e: React.MouseEvent) => {
+        e.stopPropagation();
+        try {
+            await api.patch(`/cases/${c.id}`, { pinned: !c.pinned }, { getToken });
+            queryClient.invalidateQueries({ queryKey: ["cases"] });
+            toast.success(c.pinned ? "Unpinned" : "Pinned", { description: c.name });
+        } catch {
+            toast.error("Failed to update pin status");
+        }
+    }, [getToken, queryClient]);
 
     const selectedCaseIds = Array.from(selectedIds);
 
@@ -255,7 +368,7 @@ export function CaseTable({
         onSuccess: () => clearSelection(),
     });
 
-    // Bulk archive (used for delete since the batch API has archive)
+    // Bulk archive
     const bulkDelete = useMutationWithToast({
         mutationFn: () =>
             api.post("/batch/cases/archive", {
@@ -301,18 +414,19 @@ export function CaseTable({
                                     aria-label="Select all cases"
                                 />
                             </TableHead>
-                            <TableHead className="font-semibold">Case Name</TableHead>
-                            <TableHead className="font-semibold hidden md:table-cell">Client</TableHead>
-                            <TableHead className="font-semibold hidden lg:table-cell">Category</TableHead>
-                            <TableHead className="font-semibold">Phase</TableHead>
-                            <TableHead className="font-semibold hidden md:table-cell">Readiness</TableHead>
-                            <TableHead className="font-semibold hidden lg:table-cell">Next Deadline</TableHead>
-                            <TableHead className="font-semibold text-right hidden sm:table-cell">Updated</TableHead>
+                            <TableHead className="w-8" />
+                            <SortableHeader label="Case Name" sortKey="name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                            <SortableHeader label="Client" sortKey="client_name" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
+                            <SortableHeader label="Category" sortKey="case_category" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} className="hidden lg:table-cell" />
+                            <SortableHeader label="Phase" sortKey="phase" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                            <SortableHeader label="Readiness" sortKey="readiness_score" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} className="hidden md:table-cell" />
+                            <SortableHeader label="Next Deadline" sortKey="next_deadline" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} className="hidden lg:table-cell" />
+                            <SortableHeader label="Updated" sortKey="last_updated" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} className="text-right hidden sm:table-cell" />
                             {onDelete && <TableHead className="w-10" />}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {cases.map((c) => {
+                        {sortedCases.map((c) => {
                             const isSelected = selectedIds.has(c.id);
                             return (
                                 <TableRow
@@ -336,6 +450,15 @@ export function CaseTable({
                                             className="rounded border-border accent-primary cursor-pointer"
                                             aria-label={`Select ${c.name}`}
                                         />
+                                    </TableCell>
+                                    <TableCell className="px-0">
+                                        <button
+                                            onClick={(e) => togglePin(c, e)}
+                                            className={`text-base transition-colors ${c.pinned ? "text-amber-400" : "text-muted-foreground/30 hover:text-muted-foreground"}`}
+                                            title={c.pinned ? "Unpin case" : "Pin case"}
+                                        >
+                                            {c.pinned ? "\u2605" : "\u2606"}
+                                        </button>
                                     </TableCell>
                                     <TableCell className="font-medium">{c.name}</TableCell>
                                     <TableCell className="text-muted-foreground hidden md:table-cell">

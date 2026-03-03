@@ -10,6 +10,7 @@ import { usePageTitle } from "@/hooks/use-page-title";
 const tabLabels: Record<string, string> = {
     files: "Files",
     analysis: "Analysis",
+    chat: "Co-Counsel Chat",
     witnesses: "Witnesses",
     evidence: "Evidence",
     strategy: "Strategy",

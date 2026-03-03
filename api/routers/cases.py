@@ -73,6 +73,7 @@ class UpdateCaseRequest(BaseModel):
     case_subcategory: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
     client_name: Optional[str] = Field(default=None, max_length=CASE_NAME_MAX)
     jurisdiction: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+    pinned: Optional[bool] = None
 
 
 class SetPhaseRequest(BaseModel):
