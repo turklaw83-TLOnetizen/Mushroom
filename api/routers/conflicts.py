@@ -53,7 +53,9 @@ def check_conflicts(
             })
 
         # Search across all cases for opposing parties / witnesses
-        case_hits = global_search(body.party_name)
+        from api.deps import get_case_manager
+        cm = get_case_manager()
+        case_hits = global_search(body.party_name, cm)
         for hit in case_hits:
             if hit.get("type") in ("witness", "opposing_party", "case"):
                 matches.append({

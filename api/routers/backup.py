@@ -32,8 +32,8 @@ def backup_status(
         dropbox = DropboxSyncBackup()
         b2 = B2Backup()
         return {
-            "dropbox": {"available": dropbox.is_available()},
-            "b2": {"available": b2.is_available()},
+            "dropbox": {"available": dropbox.is_available},
+            "b2": {"available": b2.is_available},
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -52,7 +52,7 @@ def run_backup(
         if body.target == "b2":
             from core.cloud_backup import B2Backup
             b2 = B2Backup()
-            if not b2.is_available():
+            if not b2.is_available:
                 raise HTTPException(status_code=400, detail="B2 not configured")
             if body.case_id:
                 result = b2.backup_case_archive(
@@ -64,7 +64,7 @@ def run_backup(
         else:
             from core.cloud_backup import DropboxSyncBackup
             dropbox = DropboxSyncBackup()
-            if not dropbox.is_available():
+            if not dropbox.is_available:
                 raise HTTPException(status_code=400, detail="Dropbox folder not found")
             if body.case_id:
                 result = dropbox.backup_case(data_dir, body.case_id)

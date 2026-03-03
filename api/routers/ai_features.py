@@ -30,7 +30,7 @@ def generate_summary(
         from core.llm import get_llm
 
         cm = get_case_manager()
-        case_data = cm.get_case(case_id)
+        case_data = cm.get_case_metadata(case_id)
         if not case_data:
             raise HTTPException(status_code=404, detail="Case not found")
 
@@ -91,7 +91,7 @@ def deposition_prep(
         from core.llm import get_llm
 
         cm = get_case_manager()
-        case_data = cm.get_case(case_id)
+        case_data = cm.get_case_metadata(case_id)
         if not case_data:
             raise HTTPException(status_code=404, detail="Case not found")
 

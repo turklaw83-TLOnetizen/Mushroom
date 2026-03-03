@@ -43,7 +43,7 @@ def get_sol_deadline(
     try:
         from api.deps import get_case_manager
         cm = get_case_manager()
-        case_meta = cm.get_case(case_id)
+        case_meta = cm.get_case_metadata(case_id)
         if not case_meta:
             raise HTTPException(status_code=404, detail="Case not found")
 

@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from api.auth import get_current_user, require_role
-from api.deps import get_case_manager
 from api.schemas import PaginatedResponse, paginate
 
 logger = logging.getLogger(__name__)
@@ -62,10 +61,9 @@ def list_time_entries(
     user: dict = Depends(get_current_user),
 ):
     """List time entries for a case."""
-    cm = get_case_manager()
     try:
         from core.billing import load_time_entries
-        return load_time_entries(cm.storage, case_id)
+        return load_time_entries(case_id)
     except ImportError:
         return []
 
@@ -77,17 +75,15 @@ def add_time_entry(
     user: dict = Depends(require_role("admin", "attorney", "paralegal")),
 ):
     """Add a time entry."""
-    cm = get_case_manager()
     try:
         from core.billing import add_time_entry as core_add
         entry_id = core_add(
-            cm.storage, case_id,
-            date=body.date,
-            hours=body.hours,
+            case_id,
+            duration_hours=body.hours,
             description=body.description,
-            attorney=user.get("name", user.get("id", "")),
             rate=body.rate,
             billable=body.billable,
+            date_str=body.date,
         )
         return {"status": "added", "id": entry_id}
     except ImportError:
@@ -101,16 +97,17 @@ def update_time_entry(
     body: CreateTimeEntryRequest,
     user: dict = Depends(require_role("admin", "attorney", "paralegal")),
 ):
-    """Update a time entry (delete + recreate with same ID)."""
-    cm = get_case_manager()
+    """Update a time entry (delete + recreate)."""
     try:
         from core.billing import delete_time_entry, add_time_entry as core_add
-        delete_time_entry(cm.storage, case_id, entry_id)
+        delete_time_entry(case_id, entry_id)
         new_id = core_add(
-            cm.storage, case_id,
-            date=body.date, hours=body.hours, description=body.description,
-            attorney=user.get("name", user.get("id", "")),
-            rate=body.rate, billable=body.billable, entry_id=entry_id,
+            case_id,
+            duration_hours=body.hours,
+            description=body.description,
+            rate=body.rate,
+            billable=body.billable,
+            date_str=body.date,
         )
         return {"status": "updated", "id": new_id}
     except ImportError:
@@ -124,10 +121,9 @@ def delete_time_entry_route(
     user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Delete a time entry."""
-    cm = get_case_manager()
     try:
         from core.billing import delete_time_entry
-        delete_time_entry(cm.storage, case_id, entry_id)
+        delete_time_entry(case_id, entry_id)
         return {"status": "deleted", "id": entry_id}
     except ImportError:
         return {"status": "billing_module_not_available"}
@@ -141,10 +137,9 @@ def list_expenses(
     user: dict = Depends(get_current_user),
 ):
     """List expenses for a case."""
-    cm = get_case_manager()
     try:
         from core.billing import load_expenses
-        return load_expenses(cm.storage, case_id)
+        return load_expenses(case_id)
     except ImportError:
         return []
 
@@ -156,15 +151,14 @@ def add_expense(
     user: dict = Depends(require_role("admin", "attorney", "paralegal")),
 ):
     """Add an expense."""
-    cm = get_case_manager()
     try:
         from core.billing import add_expense as core_add
         entry_id = core_add(
-            cm.storage, case_id,
-            date=body.date,
+            case_id,
             amount=body.amount,
             description=body.description,
             category=body.category,
+            date_str=body.date,
         )
         return {"status": "added", "id": entry_id}
     except ImportError:
@@ -179,15 +173,15 @@ def update_expense(
     user: dict = Depends(require_role("admin", "attorney", "paralegal")),
 ):
     """Update an expense."""
-    cm = get_case_manager()
     try:
         from core.billing import delete_expense, add_expense as core_add
-        delete_expense(cm.storage, case_id, expense_id)
+        delete_expense(case_id, expense_id)
         new_id = core_add(
-            cm.storage, case_id,
-            date=body.date, amount=body.amount,
-            description=body.description, category=body.category,
-            expense_id=expense_id,
+            case_id,
+            amount=body.amount,
+            description=body.description,
+            category=body.category,
+            date_str=body.date,
         )
         return {"status": "updated", "id": new_id}
     except ImportError:
@@ -201,10 +195,9 @@ def delete_expense_route(
     user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Delete an expense."""
-    cm = get_case_manager()
     try:
         from core.billing import delete_expense
-        delete_expense(cm.storage, case_id, expense_id)
+        delete_expense(case_id, expense_id)
         return {"status": "deleted", "id": expense_id}
     except ImportError:
         return {"status": "billing_module_not_available"}
@@ -218,9 +211,8 @@ def billing_summary(
     user: dict = Depends(get_current_user),
 ):
     """Get billing summary for a case."""
-    cm = get_case_manager()
     try:
         from core.billing import get_case_billing_summary
-        return get_case_billing_summary(cm.storage, case_id)
+        return get_case_billing_summary(case_id)
     except ImportError:
         return {"total_hours": 0, "total_expenses": 0, "total_billable": 0}

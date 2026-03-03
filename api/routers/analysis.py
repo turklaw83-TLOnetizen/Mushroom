@@ -61,14 +61,19 @@ async def start_analysis(
                 detail="Analysis is already running for this preparation",
             )
 
+        # Load prep state and metadata for the core function
+        state = cm.load_prep_state(case_id, body.prep_id) or {}
+        prep = cm.get_preparation(case_id, body.prep_id) or {}
+        prep_type = prep.get("type", "trial")
+
         await asyncio.to_thread(
             start_background_analysis,
             case_id,
             body.prep_id,
-            cm,
+            state,
+            set(body.active_modules) if body.active_modules else None,
+            prep_type,
             provider,
-            force_rerun=body.force_rerun,
-            active_modules=body.active_modules,
         )
 
         return {"status": "started", "case_id": case_id, "prep_id": body.prep_id}
