@@ -17,11 +17,13 @@
 // Falls back to HTTP polling only when WebSocket is disconnected.
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api } from "@/lib/api-client";
 import { usePrep, type Preparation } from "@/hooks/use-prep";
 import { useRole } from "@/hooks/use-role";
@@ -101,6 +103,90 @@ function ConnectionDot({ connected }: { connected: boolean }) {
             title={connected ? "WebSocket connected" : "WebSocket disconnected"}
         />
     );
+}
+
+// ---- Markdown Renderer --------------------------------------------------
+
+function MarkdownContent({ text }: { text: string }) {
+    return (
+        <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+                h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2 border-b border-border pb-1">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-lg font-semibold mt-4 mb-2">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-1">{children}</h3>,
+                h4: ({ children }) => <h4 className="text-sm font-semibold mt-2 mb-1">{children}</h4>,
+                p: ({ children }) => <p className="text-sm leading-relaxed mb-2">{children}</p>,
+                ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-0.5 text-sm">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-0.5 text-sm">{children}</ol>,
+                li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+                strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                em: ({ children }) => <em className="italic">{children}</em>,
+                blockquote: ({ children }) => (
+                    <blockquote className="border-l-2 border-primary/40 pl-3 my-2 text-sm italic text-muted-foreground">
+                        {children}
+                    </blockquote>
+                ),
+                code: ({ children, className }) => {
+                    const isBlock = className?.includes("language-");
+                    if (isBlock) {
+                        return (
+                            <pre className="bg-muted rounded-md p-3 my-2 overflow-x-auto text-xs">
+                                <code>{children}</code>
+                            </pre>
+                        );
+                    }
+                    return <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>;
+                },
+                table: ({ children }) => (
+                    <div className="overflow-x-auto my-2">
+                        <table className="min-w-full text-sm border border-border">{children}</table>
+                    </div>
+                ),
+                thead: ({ children }) => <thead className="bg-muted/50">{children}</thead>,
+                th: ({ children }) => <th className="border border-border px-3 py-1.5 text-left font-semibold text-xs">{children}</th>,
+                td: ({ children }) => <td className="border border-border px-3 py-1.5 text-xs">{children}</td>,
+                hr: () => <hr className="my-3 border-border" />,
+                a: ({ href, children }) => (
+                    <a href={href} className="text-primary underline hover:text-primary/80" target="_blank" rel="noopener noreferrer">
+                        {children}
+                    </a>
+                ),
+            }}
+        >
+            {text}
+        </ReactMarkdown>
+    );
+}
+
+// ---- Data Snippet Helper ------------------------------------------------
+
+function getSnippet(data: unknown, maxLength = 120): string {
+    if (data === null || data === undefined || data === "") return "";
+    if (typeof data === "string") {
+        // Strip markdown formatting for clean preview
+        const clean = data
+            .replace(/#{1,6}\s/g, "")
+            .replace(/[*_]{1,3}/g, "")
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+            .replace(/\n+/g, " ")
+            .trim();
+        return clean.length > maxLength ? clean.slice(0, maxLength) + "..." : clean;
+    }
+    if (Array.isArray(data)) {
+        if (data.length === 0) return "";
+        const first = data[0];
+        if (typeof first === "object" && first !== null) {
+            const name = (first as Record<string, unknown>).name || (first as Record<string, unknown>).title || "";
+            if (name) return `${name}${data.length > 1 ? ` + ${data.length - 1} more` : ""}`;
+        }
+        return `${data.length} items`;
+    }
+    if (typeof data === "object") {
+        const keys = Object.keys(data as object);
+        return keys.length > 0 ? `${keys.length} fields` : "";
+    }
+    return String(data).slice(0, maxLength);
 }
 
 // ---- Prep Management Dialog ---------------------------------------------
@@ -411,7 +497,8 @@ function ModuleDetail({ moduleKey, label, icon, description, data, caseId, prepI
 
         if (typeof val === "string") {
             if (val.length === 0) return <p className="text-sm text-muted-foreground italic">Empty</p>;
-            return <div className="text-sm leading-relaxed whitespace-pre-wrap">{val}</div>;
+            // Use markdown rendering for AI-generated text
+            return <MarkdownContent text={val} />;
         }
 
         if (Array.isArray(val)) {
@@ -711,8 +798,56 @@ export default function AnalysisPage() {
         );
     }, [preparations]);
 
+    // Sticky progress: track when the AI Engine card scrolls out of view
+    const engineCardRef = useRef<HTMLDivElement>(null);
+    const [showStickyProgress, setShowStickyProgress] = useState(false);
+
+    useEffect(() => {
+        if (!engineCardRef.current) return;
+        const observer = new IntersectionObserver(
+            ([entry]) => setShowStickyProgress(!entry.isIntersecting),
+            { threshold: 0.1 },
+        );
+        observer.observe(engineCardRef.current);
+        return () => observer.disconnect();
+    }, []);
+
     return (
         <div className="space-y-6">
+            {/* ---- Sticky Progress Header (appears when AI Engine card scrolls away) ---- */}
+            {isAnalysisRunning && showStickyProgress && (
+                <div className="fixed top-0 left-0 right-0 z-30 bg-card/95 backdrop-blur border-b border-border px-6 py-2 shadow-lg animate-in slide-in-from-top-2 duration-200">
+                    <div className="max-w-7xl mx-auto flex items-center gap-4">
+                        <Badge variant="outline" className="bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse shrink-0">
+                            running
+                        </Badge>
+                        <div className="flex-1 min-w-0">
+                            <div className="h-1.5 rounded-full bg-accent overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 transition-all duration-500 ease-out rounded-full"
+                                    style={{ width: `${Math.min(100, Math.max(0, progress.progress * 100))}%` }}
+                                />
+                            </div>
+                        </div>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                            {progress.current_module
+                                ? progress.module_description || progress.current_module
+                                : "Initializing..."}
+                            {progress.completed_modules && ` \u00B7 ${progress.completed_modules.length}/${progress.total_modules || "?"}`}
+                        </span>
+                        <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 text-xs shrink-0"
+                            onClick={() => stopAnalysis.mutate({})}
+                            disabled={stopAnalysis.isPending}
+                        >
+                            {"\u23F9"} Stop
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             {/* ---- Preparation Selector ---- */}
             <Card>
                 <CardHeader className="pb-2">
@@ -803,7 +938,7 @@ export default function AnalysisPage() {
             <DirectivesPanel caseId={caseId} />
 
             {/* ---- AI Analysis Engine ---- */}
-            <Card>
+            <Card ref={engineCardRef}>
                 <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center justify-between">
                         <span>AI Analysis Engine</span>
@@ -1105,15 +1240,17 @@ export default function AnalysisPage() {
                                             <span className="ml-auto text-xs text-emerald-400">{"\u2713"}</span>
                                         )}
                                     </div>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-muted-foreground line-clamp-2">
                                         {isCurrentlyProcessing
                                             ? progress.module_description || "Processing..."
                                             : hasData
-                                                ? Array.isArray(data)
-                                                    ? `${(data as unknown[]).length} items`
-                                                    : typeof data === "string"
-                                                        ? `${data.length.toLocaleString()} chars`
-                                                        : "Data available"
+                                                ? getSnippet(data) || (
+                                                    Array.isArray(data)
+                                                        ? `${(data as unknown[]).length} items`
+                                                        : typeof data === "string"
+                                                            ? `${data.length.toLocaleString()} chars`
+                                                            : "Data available"
+                                                )
                                                 : mod.description}
                                     </p>
                                 </CardContent>
