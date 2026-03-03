@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.auth import get_current_user, require_role
+from api.deps import get_data_dir
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/tasks", tags=["Tasks"])
@@ -46,8 +47,13 @@ def list_tasks(
 ):
     """List all tasks for a case, optionally filtered."""
     try:
-        from core.tasks import get_tasks
-        tasks = get_tasks(case_id, status_filter=status, assigned_filter=assigned_to)
+        from core.tasks import load_tasks
+        data_dir = get_data_dir()
+        tasks = load_tasks(
+            data_dir, case_id,
+            status_filter=status or None,
+            assigned_to=assigned_to or None,
+        )
         return {"items": tasks, "total": len(tasks)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -61,9 +67,18 @@ def create_task(
 ):
     """Create a new task."""
     try:
-        from core.tasks import create_task as _create
-        task = _create(case_id, body.model_dump())
-        return {"status": "created", "task": task}
+        from core.tasks import add_task
+        data_dir = get_data_dir()
+        task_id = add_task(
+            data_dir, case_id,
+            title=body.title,
+            description=body.description,
+            assigned_to=body.assigned_to,
+            priority=body.priority,
+            due_date=body.due_date,
+            category=body.category,
+        )
+        return {"status": "created", "id": task_id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -76,8 +91,10 @@ def get_task(
 ):
     """Get a specific task."""
     try:
-        from core.tasks import get_task
-        task = get_task(case_id, task_id)
+        from core.tasks import load_tasks
+        data_dir = get_data_dir()
+        tasks = load_tasks(data_dir, case_id)
+        task = next((t for t in tasks if t.get("id") == task_id), None)
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         return task
@@ -97,11 +114,12 @@ def update_task(
     """Update a task."""
     try:
         from core.tasks import update_task as _update
+        data_dir = get_data_dir()
         updates = {k: v for k, v in body.model_dump().items() if v is not None}
-        task = _update(case_id, task_id, updates)
-        if not task:
+        result = _update(data_dir, case_id, task_id, updates)
+        if not result:
             raise HTTPException(status_code=404, detail="Task not found")
-        return task
+        return {"status": "updated", "id": task_id}
     except HTTPException:
         raise
     except Exception as e:
@@ -117,7 +135,8 @@ def delete_task(
     """Delete a task."""
     try:
         from core.tasks import delete_task as _delete
-        if not _delete(case_id, task_id):
+        data_dir = get_data_dir()
+        if not _delete(data_dir, case_id, task_id):
             raise HTTPException(status_code=404, detail="Task not found")
         return {"status": "deleted"}
     except HTTPException:
@@ -135,10 +154,11 @@ def complete_task(
     """Mark a task as complete."""
     try:
         from core.tasks import update_task as _update
-        task = _update(case_id, task_id, {"status": "completed"})
-        if not task:
+        data_dir = get_data_dir()
+        result = _update(data_dir, case_id, task_id, {"status": "completed"})
+        if not result:
             raise HTTPException(status_code=404, detail="Task not found")
-        return task
+        return {"status": "completed", "id": task_id}
     except HTTPException:
         raise
     except Exception as e:

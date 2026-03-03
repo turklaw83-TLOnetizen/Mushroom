@@ -40,7 +40,7 @@ def compliance_dashboard(
     try:
         from core.ethical_compliance import get_compliance_dashboard
         cm = get_case_manager()
-        return get_compliance_dashboard(cm.storage)
+        return get_compliance_dashboard(cm)
     except ImportError:
         return {"conflicts": [], "sol_alerts": [], "trust_alerts": []}
 
@@ -54,7 +54,8 @@ def scan_conflicts(
     try:
         from core.ethical_compliance import scan_conflicts_smart
         cm = get_case_manager()
-        return scan_conflicts_smart(cm.storage, case_id)
+        all_entities = cm.load_all_entities() if hasattr(cm, "load_all_entities") else {}
+        return scan_conflicts_smart(case_id, all_entities)
     except ImportError:
         return {"conflicts": [], "status": "module_not_available"}
 
@@ -67,8 +68,7 @@ def get_trust_ledger(
     """Get trust account ledger for a case."""
     try:
         from core.ethical_compliance import load_trust_ledger
-        cm = get_case_manager()
-        return load_trust_ledger(cm.storage, case_id)
+        return load_trust_ledger(case_id)
     except ImportError:
         return []
 
@@ -82,8 +82,13 @@ def add_trust_entry(
     """Add a trust account entry."""
     try:
         from core.ethical_compliance import add_trust_entry as core_add
-        cm = get_case_manager()
-        entry_id = core_add(cm.storage, case_id, **body.model_dump())
+        entry_id = core_add(
+            case_id,
+            entry_type=body.type,
+            amount=body.amount,
+            description=body.description,
+            date_str=body.date,
+        )
         return {"status": "added", "id": entry_id}
     except ImportError:
         return {"status": "compliance_module_not_available"}
@@ -97,8 +102,7 @@ def get_sol_tracking(
     """Get statute of limitations tracking for a case."""
     try:
         from core.ethical_compliance import load_sol_tracking
-        cm = get_case_manager()
-        return load_sol_tracking(cm.storage, case_id)
+        return load_sol_tracking(case_id)
     except ImportError:
         return []
 
@@ -111,6 +115,6 @@ def get_sol_alerts(
     try:
         from core.ethical_compliance import get_sol_alerts
         cm = get_case_manager()
-        return get_sol_alerts(cm.storage)
+        return get_sol_alerts(cm)
     except ImportError:
         return []

@@ -1,14 +1,16 @@
 # ---- E-Sign Router -------------------------------------------------------
 # Dropbox Sign integration: send documents for signature, track status.
-# Wraps core/esign.py
+# Wraps core/esign.py (class-based ESignManager API)
 
 import logging
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.auth import get_current_user, require_role
+from api.deps import get_case_manager, get_data_dir
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/esign", tags=["E-Signature"])
@@ -25,6 +27,14 @@ class SignatureRequest(BaseModel):
     message: str = ""
 
 
+def _get_esign_manager(case_id: str):
+    """Get an ESignManager instance for a case."""
+    from core.esign import ESignManager
+    data_dir = get_data_dir()
+    case_dir = os.path.join(data_dir, "cases", case_id)
+    return ESignManager(case_dir)
+
+
 # ---- Endpoints -----------------------------------------------------------
 
 @router.post("/send")
@@ -35,12 +45,14 @@ def send_for_signature(
 ):
     """Send a document for e-signature via Dropbox Sign."""
     try:
-        from core.esign import create_signature_request
-        result = create_signature_request(
-            case_id,
-            file_key=body.file_key,
-            signer_name=body.signer_name,
-            signer_email=body.signer_email,
+        mgr = _get_esign_manager(case_id)
+        cm = get_case_manager()
+        # Resolve file path from case files
+        data_dir = get_data_dir()
+        file_path = os.path.join(data_dir, "cases", case_id, "source_docs", body.file_key)
+        result = mgr.send_request(
+            file_path=file_path,
+            signers=[{"name": body.signer_name, "email_address": body.signer_email}],
             title=body.title,
             subject=body.subject,
             message=body.message,
@@ -57,8 +69,8 @@ def list_signature_requests(
 ):
     """List all signature requests for a case."""
     try:
-        from core.esign import list_requests
-        return {"items": list_requests(case_id)}
+        mgr = _get_esign_manager(case_id)
+        return {"items": mgr.list_requests()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -71,8 +83,8 @@ def check_signature_status(
 ):
     """Check status of a signature request."""
     try:
-        from core.esign import get_request_status
-        status = get_request_status(case_id, request_id)
+        mgr = _get_esign_manager(case_id)
+        status = mgr.get_request_status(request_id)
         if not status:
             raise HTTPException(status_code=404, detail="Request not found")
         return status
@@ -90,15 +102,15 @@ def download_signed(
 ):
     """Download a signed document."""
     try:
-        from core.esign import download_signed_document
-        from fastapi.responses import StreamingResponse
-        data = download_signed_document(case_id, request_id)
-        if not data:
+        from fastapi.responses import FileResponse
+        mgr = _get_esign_manager(case_id)
+        file_path = mgr.download_signed(request_id)
+        if not file_path or not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="Signed document not available")
-        return StreamingResponse(
-            iter([data]),
+        return FileResponse(
+            file_path,
             media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=signed_{request_id}.pdf"},
+            filename=f"signed_{request_id}.pdf",
         )
     except HTTPException:
         raise
