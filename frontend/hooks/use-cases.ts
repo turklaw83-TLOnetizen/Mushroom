@@ -59,6 +59,9 @@ export function useCases(page = 1, perPage = 25, includeArchived = false) {
                 },
                 getToken,
             }),
+        staleTime: 30_000,            // Don't refetch for 30 seconds
+        retry: 1,                     // Only retry once on failure
+        refetchOnWindowFocus: false,   // Don't refetch when tab gains focus
     });
 }
 

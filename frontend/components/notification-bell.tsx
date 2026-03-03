@@ -48,7 +48,10 @@ export function NotificationBell() {
         queryKey: ["notifications"],
         queryFn: () =>
             api.get<{ items: Notification[]; total: number }>("/notifications", { getToken }),
-        refetchInterval: 60000, // Re-poll every minute
+        refetchInterval: 60000,
+        staleTime: 55000,
+        retry: false,
+        refetchOnWindowFocus: false,
     });
 
     const items = data?.items ?? [];

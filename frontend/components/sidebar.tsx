@@ -1,27 +1,45 @@
 // ---- Sidebar Component (Responsive) ------------------------------------
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, memo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/stores/ui-store";
-import { useCases, type CaseItem } from "@/hooks/use-cases";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { NotificationCenter } from "@/components/notification-center";
+
+// Memoized user button — only re-renders when Clerk auth state actually changes
+const StableUserButton = memo(function StableUserButton() {
+    const { isLoaded, isSignedIn } = useUser();
+
+    // Fixed-size container prevents layout shift during Clerk loading
+    return (
+        <div className="h-8 w-8 shrink-0">
+            {isLoaded && isSignedIn ? (
+                <UserButton
+                    afterSignOutUrl="/sign-in"
+                    appearance={{
+                        elements: { avatarBox: "h-8 w-8" },
+                    }}
+                />
+            ) : (
+                <div className="h-8 w-8 rounded-full bg-white/10 animate-pulse" />
+            )}
+        </div>
+    );
+});
 
 export function Sidebar() {
     const pathname = usePathname();
     const sidebarOpen = useUIStore((s) => s.sidebarOpen);
     const toggleSidebar = useUIStore((s) => s.toggleSidebar);
     const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
-    const { data: casesData, isLoading } = useCases();
 
     // Auto-collapse on mobile
     useEffect(() => {
@@ -158,48 +176,21 @@ export function Sidebar() {
                                     Cases
                                 </span>
                             </div>
-                            <div className="space-y-0.5">
-                                {isLoading ? (
-                                    Array.from({ length: 3 }).map((_, i) => (
-                                        <Skeleton key={i} className="h-8 w-full rounded-md" />
-                                    ))
-                                ) : casesData?.items?.length ? (
-                                    casesData.items.slice(0, 15).map((c: CaseItem) => (
-                                        <NavItem
-                                            key={c.id}
-                                            href={`/cases/${c.id}`}
-                                            label={c.name}
-                                            active={pathname.startsWith(`/cases/${c.id}`)}
-                                            collapsed={false}
-                                            badge={c.phase}
-                                        />
-                                    ))
-                                ) : (
-                                    <p className="px-2 text-xs text-muted-foreground">
-                                        No cases yet
-                                    </p>
-                                )}
-                            </div>
+                            <NavItem href="/" label="All Cases" icon="📁" active={false} collapsed={false} />
                         </>
                     )}
                 </nav>
 
                 <Separator />
 
-                {/* User + Theme + Notifications */}
+                {/* User + Theme */}
                 <div className="flex items-center gap-2 p-4">
-                    <UserButton
-                        afterSignOutUrl="/sign-in"
-                        appearance={{
-                            elements: { avatarBox: "h-8 w-8" },
-                        }}
-                    />
+                    <StableUserButton />
                     {sidebarOpen && (
                         <span className="text-sm text-muted-foreground truncate flex-1">
                             Account
                         </span>
                     )}
-                    <NotificationCenter />
                     <ThemeToggle />
                 </div>
             </aside>

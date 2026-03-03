@@ -33,20 +33,34 @@ export function NotificationCenter() {
     };
 
     useEffect(() => {
-        const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/api/v1/ws/notifications";
+        // Only connect WebSocket if explicitly configured
+        const wsUrl = process.env.NEXT_PUBLIC_WS_URL;
+        if (!wsUrl) return;
+
         let ws: WebSocket | null = null;
-        try {
-            ws = new WebSocket(wsUrl);
-            ws.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === "notification") {
-                        setNotifications((prev) => [{ id: Date.now().toString(), type: data.severity || "info", title: data.title, message: data.message, timestamp: new Date(), read: false }, ...prev]);
-                    }
-                } catch {}
-            };
-        } catch {}
-        return () => ws?.close();
+        let retryTimeout: NodeJS.Timeout;
+
+        function connect() {
+            try {
+                ws = new WebSocket(wsUrl!);
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === "notification") {
+                            setNotifications((prev) => [{ id: Date.now().toString(), type: data.severity || "info", title: data.title, message: data.message, timestamp: new Date(), read: false }, ...prev]);
+                        }
+                    } catch {}
+                };
+                ws.onclose = () => {
+                    // Backoff retry — don't spam reconnect
+                    retryTimeout = setTimeout(connect, 30000);
+                };
+                ws.onerror = () => ws?.close();
+            } catch {}
+        }
+
+        connect();
+        return () => { ws?.close(); clearTimeout(retryTimeout); };
     }, []);
 
     return (

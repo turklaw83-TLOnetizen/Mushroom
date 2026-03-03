@@ -109,10 +109,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
                 return response.json();
             }
 
-            // Auto-redirect to sign-in on 401
+            // On 401, let middleware handle the redirect on next navigation.
+            // Only redirect from client-side if not already on an auth page.
             if (response.status === 401 && typeof window !== "undefined") {
-                window.location.href = "/sign-in";
-                return new Promise<T>(() => { });
+                const onAuthPage = window.location.pathname.startsWith("/sign-in")
+                    || window.location.pathname.startsWith("/sign-up");
+                if (!onAuthPage) {
+                    window.location.href = "/sign-in";
+                    return new Promise<T>(() => { });
+                }
+                // Already on auth page — surface the error instead of looping
+                throw new ApiError(401, "Unauthenticated");
             }
 
             // Retry on transient errors

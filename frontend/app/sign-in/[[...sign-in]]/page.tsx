@@ -40,6 +40,7 @@ export default function SignInPage() {
                         </p>
                     </div>
                     <SignIn
+                        fallbackRedirectUrl="/"
                         appearance={{
                             elements: {
                                 rootBox: "mx-auto w-full",

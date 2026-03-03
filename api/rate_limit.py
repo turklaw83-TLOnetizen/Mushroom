@@ -15,11 +15,14 @@ from starlette.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 # Configuration
-MAX_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "120"))  # per window
+MAX_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "600"))  # per window (generous for dev)
 WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 
 # Paths exempt from rate limiting
-EXEMPT_PATHS = {"/health", "/api/v1/ws/workers", "/api/v1/health"}
+EXEMPT_PATHS = {"/health", "/api/v1/ws/workers", "/api/v1/health", "/docs", "/redoc", "/openapi.json", "/"}
+
+# IPs exempt from rate limiting (localhost in dev)
+EXEMPT_IPS = {"127.0.0.1", "::1", "localhost"}
 
 
 class _SlidingWindow:
@@ -76,6 +79,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if request.client
             else "unknown"
         )
+
+        # Skip rate limiting for exempt IPs (localhost in dev)
+        if client_ip in EXEMPT_IPS:
+            return await call_next(request)
 
         now = time.time()
 

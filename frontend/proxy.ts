@@ -1,17 +1,20 @@
-// ---- Proxy Config (Next.js 16) ------------------------------------------
-// Replaces the deprecated middleware.ts for Clerk auth routing.
-// See: https://nextjs.org/docs/messages/middleware-to-proxy
+// ---- Clerk Auth Proxy (Next.js 16) --------------------------------------
+// Protects all routes except sign-in, sign-up, and API.
+// Unauthenticated users are redirected to /sign-in.
 
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isPublicRoute = createRouteMatcher([
     "/sign-in(.*)",
     "/sign-up(.*)",
+    "/api(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, request) => {
     if (!isPublicRoute(request)) {
-        await auth.protect();
+        await auth.protect({
+            unauthenticatedUrl: new URL("/sign-in", request.url).toString(),
+        });
     }
 });
 
