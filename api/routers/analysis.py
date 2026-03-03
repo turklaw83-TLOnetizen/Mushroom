@@ -83,7 +83,7 @@ async def start_analysis(
         raise
     except Exception as e:
         logger.exception("Failed to start analysis")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/stop")
@@ -98,7 +98,8 @@ def stop_analysis(
         stop_background_analysis(case_id, prep_id)
         return {"status": "stopped"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to stop analysis")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/status", response_model=AnalysisStatusResponse)
@@ -113,7 +114,8 @@ def analysis_status(
         progress = get_analysis_progress(case_id, prep_id)
         return progress or {"status": "idle"}
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        logger.exception("Analysis status check failed")
+        return {"status": "error", "error": "Failed to check status"}
 
 
 # ---- Ingestion Endpoints -------------------------------------------------
@@ -143,7 +145,7 @@ async def start_ingestion(
         return {"status": "started", "case_id": case_id}
     except Exception as e:
         logger.exception("Failed to start ingestion")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/ingestion/status", response_model=AnalysisStatusResponse)
@@ -156,4 +158,5 @@ def ingestion_status(
         from core.ingestion_worker import get_ingestion_status
         return get_ingestion_status(case_id) or {"status": "idle"}
     except Exception as e:
-        return {"status": "error", "error": str(e)}
+        logger.exception("Analysis status check failed")
+        return {"status": "error", "error": "Failed to check status"}

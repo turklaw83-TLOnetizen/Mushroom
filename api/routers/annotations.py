@@ -47,7 +47,8 @@ def list_annotations(
         items = _list(case_id, file_key=file_key, page=page)
         return {"items": items, "total": len(items)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list annotations")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("")
@@ -70,7 +71,8 @@ def create_annotation(
         )
         return {"id": ann_id, "status": "created"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to create annotation")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/{annotation_id}")
@@ -90,7 +92,8 @@ def update_annotation(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to update annotation")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{annotation_id}")
@@ -108,4 +111,5 @@ def delete_annotation(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to delete annotation")
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -7,6 +7,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const RETRY_STATUS_CODES = [429, 500, 502, 503, 504];
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 500;
+const REQUEST_TIMEOUT_MS = 60_000; // 60 seconds
 
 export class ApiError extends Error {
     status: number;
@@ -96,8 +97,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     const maxAttempts = noRetry ? 1 : MAX_RETRIES;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
         try {
-            const response = await fetch(url.toString(), fetchOptions);
+            const response = await fetch(url.toString(), {
+                ...fetchOptions,
+                signal: controller.signal,
+            });
 
             // Success — mark online
             _setOffline(false);
@@ -136,6 +143,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
             throw new ApiError(response.status, detail, requestId);
         } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") {
+                throw new ApiError(0, "Request timed out");
+            }
+
             // Network error (offline, DNS, etc.)
             if (err instanceof ApiError) throw err;
 
@@ -147,6 +158,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
             _setOffline(true);
             throw new ApiError(0, "Network error — check your connection");
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 

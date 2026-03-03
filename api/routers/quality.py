@@ -22,7 +22,8 @@ def analysis_quality(
         from core.analysis_quality import score_analysis
         return score_analysis(case_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get analysis quality")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/drafts")
@@ -35,7 +36,8 @@ def draft_quality(
         from core.draft_quality import score_drafts
         return score_drafts(case_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get draft quality")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/costs")
@@ -48,7 +50,8 @@ def llm_costs(
         from core.cost_tracker import get_case_costs
         return get_case_costs(case_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get case costs")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/costs/summary")
@@ -60,4 +63,5 @@ def cost_summary(
         from core.cost_tracker import get_global_costs
         return get_global_costs()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get global costs")
+        raise HTTPException(status_code=500, detail="Internal server error")

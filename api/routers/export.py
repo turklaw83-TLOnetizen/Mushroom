@@ -43,7 +43,7 @@ async def export_pdf_report(
         )
     except Exception as e:
         logger.exception("PDF export failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/word/{prep_id}")
@@ -72,7 +72,7 @@ async def export_word_report(
         )
     except Exception as e:
         logger.exception("Word export failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/brief/{prep_id}")
@@ -100,7 +100,7 @@ async def export_irac_brief(
         )
     except Exception as e:
         logger.exception("Brief export failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/trial-binder/{prep_id}")
@@ -133,4 +133,4 @@ async def export_trial_binder(
         )
     except Exception as e:
         logger.exception("Trial binder export failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

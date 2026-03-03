@@ -26,7 +26,6 @@ class FileInfo(BaseModel):
     filename: str
     size: int = 0
     tags: List[str] = []
-    path: str = ""
 
 
 class UploadResult(BaseModel):
@@ -58,7 +57,6 @@ def list_files(case_id: str, user: dict = Depends(get_current_user)):
             filename=basename,
             size=size,
             tags=tags.get(basename, []),
-            path=fp,
         ))
     return files
 
@@ -86,7 +84,7 @@ async def upload_files(
 
         data = await f.read()
         path = cm.save_file(case_id, data, safe_name)
-        uploaded.append(FileInfo(filename=safe_name, size=len(data), path=path))
+        uploaded.append(FileInfo(filename=safe_name, size=len(data)))
 
     return UploadResult(uploaded=uploaded, count=len(uploaded))
 

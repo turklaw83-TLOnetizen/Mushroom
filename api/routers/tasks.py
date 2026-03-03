@@ -56,7 +56,8 @@ def list_tasks(
         )
         return {"items": tasks, "total": len(tasks)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list tasks")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("")
@@ -80,7 +81,8 @@ def create_task(
         )
         return {"status": "created", "id": task_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to create task")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{task_id}")
@@ -101,7 +103,8 @@ def get_task(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get task")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/{task_id}")
@@ -123,7 +126,8 @@ def update_task(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to update task")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/{task_id}")
@@ -142,7 +146,8 @@ def delete_task(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to delete task")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/{task_id}/complete")
@@ -162,4 +167,5 @@ def complete_task(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to complete task")
+        raise HTTPException(status_code=500, detail="Internal server error")

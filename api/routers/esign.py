@@ -59,7 +59,8 @@ def send_for_signature(
         )
         return {"status": "sent", "signature_request_id": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to send for signature")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/requests")
@@ -72,7 +73,8 @@ def list_signature_requests(
         mgr = _get_esign_manager(case_id)
         return {"items": mgr.list_requests()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list signature requests")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/requests/{request_id}/status")
@@ -91,7 +93,8 @@ def check_signature_status(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to check signature status")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/requests/{request_id}/download")
@@ -115,4 +118,5 @@ def download_signed(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to download signed document")
+        raise HTTPException(status_code=500, detail="Internal server error")

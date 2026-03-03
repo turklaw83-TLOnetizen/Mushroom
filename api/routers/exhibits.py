@@ -46,7 +46,8 @@ def assign_bates(
         )
         return {"status": "assigned", "assignments": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to assign Bates numbers")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/bates")
@@ -59,7 +60,8 @@ def list_bates(
         from core.bates import get_bates_registry
         return {"items": get_bates_registry(case_id)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list Bates numbers")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ---- Exhibit Management Endpoints ----------------------------------------
@@ -76,7 +78,8 @@ def assign_exhibits(
         result = assign_exhibit_labels(case_id, body.file_keys)
         return {"status": "assigned", "exhibits": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to assign exhibits")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("")
@@ -89,7 +92,8 @@ def list_exhibits(
         from core.exhibit_manager import get_exhibit_list
         return {"items": get_exhibit_list(case_id)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list exhibits")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/export/pdf")
@@ -107,7 +111,8 @@ def export_exhibit_list_pdf(
             headers={"Content-Disposition": f"attachment; filename=exhibits_{case_id}.pdf"},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to export exhibit list PDF")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ---- Export Endpoints (PDF/Word) -----------------------------------------
@@ -141,7 +146,8 @@ def export_case_report(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to export case report")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/export/court-docs")
@@ -160,4 +166,5 @@ def export_court_docs(
             headers={"Content-Disposition": f"attachment; filename={doc_type}_{case_id}.pdf"},
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to export court docs")
+        raise HTTPException(status_code=500, detail="Internal server error")

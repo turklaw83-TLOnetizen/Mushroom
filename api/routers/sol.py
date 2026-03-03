@@ -78,7 +78,8 @@ def get_sol_deadline(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get SOL deadline")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/calculate")
@@ -107,7 +108,8 @@ def calculate_sol(
             "is_urgent": 0 < days_remaining < 90,
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to calculate SOL")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/reference")

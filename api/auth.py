@@ -36,7 +36,13 @@ def _get_clerk_jwks_url() -> str:
 
 
 def _get_jwt_secret() -> str:
-    return os.getenv("JWT_SECRET", "dev-secret-change-in-production")
+    secret = os.getenv("JWT_SECRET", "")
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET environment variable is required. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
+    return secret
 
 
 # ---- Clerk JWKS Verification (Fix #7) -----------------------------------
@@ -95,14 +101,8 @@ async def _verify_clerk_session(token: str) -> Optional[dict]:
 
         jwks_client = _get_clerk_jwks_client()
         if jwks_client is None:
-            # Fallback: decode without signature verification (dev only)
-            logger.warning("JWKS not configured — decoding Clerk JWT WITHOUT signature verification")
-            claims = pyjwt.decode(
-                token,
-                options={"verify_signature": False},
-                algorithms=["RS256"],
-            )
-            return claims
+            logger.error("JWKS not configured — cannot verify Clerk JWT signature. Set CLERK_JWKS_URL.")
+            return None
 
         # Production: verify signature via JWKS
         signing_key = jwks_client.get_signing_key_from_jwt(token)

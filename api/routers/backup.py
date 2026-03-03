@@ -36,7 +36,8 @@ def backup_status(
             "b2": {"available": b2.is_available},
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to check backup status")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/run")
@@ -75,7 +76,7 @@ def run_backup(
         raise
     except Exception as e:
         logger.exception("Backup failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/list")
@@ -92,4 +93,5 @@ def list_backups(
             from core.cloud_backup import DropboxSyncBackup
             return {"items": DropboxSyncBackup().list_backups()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list backups")
+        raise HTTPException(status_code=500, detail="Internal server error")

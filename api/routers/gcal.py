@@ -25,7 +25,8 @@ def sync_status(user: dict = Depends(get_current_user)):
         from core.google_cal_sync import get_sync_status
         return get_sync_status()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get sync status")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/connect")
@@ -35,7 +36,8 @@ def connect_google_cal(user: dict = Depends(require_role("admin"))):
         from core.google_cal_sync import initiate_oauth
         return {"auth_url": initiate_oauth()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to initiate Google Calendar OAuth")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/sync")
@@ -49,7 +51,8 @@ def trigger_sync(
         result = sync_events(case_id=body.case_id or None, direction=body.direction)
         return {"status": "synced", "result": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to sync events")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/events")
@@ -63,4 +66,5 @@ def list_google_events(
         events = list_upcoming_events(days_ahead=days_ahead)
         return {"items": events, "total": len(events)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list Google Calendar events")
+        raise HTTPException(status_code=500, detail="Internal server error")

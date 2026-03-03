@@ -39,7 +39,8 @@ def list_workflows(user: dict = Depends(get_current_user)):
         items = _list()
         return {"items": items, "total": len(items)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list workflows")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("")
@@ -53,7 +54,8 @@ def create_workflow(
         wf = _create(body.model_dump())
         return {"status": "created", "workflow": wf}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to create workflow")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/{workflow_id}")
@@ -71,7 +73,8 @@ def get_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get workflow")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/trigger")
@@ -85,4 +88,5 @@ def trigger_workflow(
         result = execute_workflow(body.workflow_id, body.case_id, body.params)
         return {"status": "triggered", "result": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to trigger workflow")
+        raise HTTPException(status_code=500, detail="Internal server error")

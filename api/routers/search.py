@@ -32,7 +32,7 @@ def global_search(
         return _search(q, cm)
     except Exception as e:
         logger.exception("Search error")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/case/{case_id}")
@@ -49,4 +49,5 @@ def search_in_case(
         cm = get_case_manager()
         return _search(q, case_id, cm)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Case search error")
+        raise HTTPException(status_code=500, detail="Internal server error")

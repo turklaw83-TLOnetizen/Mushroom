@@ -131,8 +131,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in CORS_ORIGINS],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     expose_headers=["X-Request-ID"],  # Let frontend read request IDs
 )
 
@@ -237,12 +237,13 @@ async def health_check():
             else:
                 db_status = "engine_not_initialized"
         except Exception as e:
-            db_status = f"error: {e}"
+            logger.warning("Health check DB ping failed: %s", e)
+            db_status = "error"
 
     return {
         "status": "healthy" if db_status in ("connected", "not_configured") else "degraded",
         "service": "Project Mushroom Cloud API",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "database": db_status,
         "db_latency_ms": db_latency_ms,
     }

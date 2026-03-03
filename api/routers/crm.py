@@ -6,7 +6,7 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api.auth import get_current_user, require_role
 
@@ -17,28 +17,28 @@ router = APIRouter(prefix="/crm", tags=["CRM"])
 # ---- Schemas -------------------------------------------------------------
 
 class ClientCreate(BaseModel):
-    first_name: str = ""
-    last_name: str = ""
-    name: str = ""  # Legacy fallback
-    email: str = ""
-    phone: str = ""
-    mailing_address: str = ""
-    home_address: str = ""
+    first_name: str = Field(default="", max_length=200)
+    last_name: str = Field(default="", max_length=200)
+    name: str = Field(default="", max_length=400)
+    email: str = Field(default="", max_length=320)
+    phone: str = Field(default="", max_length=30)
+    mailing_address: str = Field(default="", max_length=1000)
+    home_address: str = Field(default="", max_length=1000)
     home_same_as_mailing: bool = False
-    notes: str = ""
-    referral_source: str = ""
+    notes: str = Field(default="", max_length=10000)
+    referral_source: str = Field(default="", max_length=200)
     tags: List[str] = Field(default_factory=list)
 
 
 class ClientUpdate(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    mailing_address: Optional[str] = None
-    home_address: Optional[str] = None
-    notes: Optional[str] = None
-    intake_status: Optional[str] = None
+    first_name: Optional[str] = Field(default=None, max_length=200)
+    last_name: Optional[str] = Field(default=None, max_length=200)
+    email: Optional[str] = Field(default=None, max_length=320)
+    phone: Optional[str] = Field(default=None, max_length=30)
+    mailing_address: Optional[str] = Field(default=None, max_length=1000)
+    home_address: Optional[str] = Field(default=None, max_length=1000)
+    notes: Optional[str] = Field(default=None, max_length=10000)
+    intake_status: Optional[str] = Field(default=None, max_length=100)
     tags: Optional[List[str]] = None
 
 
@@ -47,8 +47,16 @@ class LinkRequest(BaseModel):
 
 
 class IntakeAnswers(BaseModel):
-    template_key: str
-    answers: dict
+    template_key: str = Field(..., max_length=100)
+    answers: dict = Field(default_factory=dict)
+
+    @field_validator("answers")
+    @classmethod
+    def limit_answers_size(cls, v):
+        import json
+        if len(json.dumps(v, default=str)) > 100_000:
+            raise ValueError("Intake answers too large (max 100KB)")
+        return v
 
 
 # ---- Endpoints -----------------------------------------------------------
@@ -65,7 +73,8 @@ def list_clients(
             return {"items": search_clients(q)}
         return {"items": load_clients()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list clients")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/clients/{client_id}")
@@ -83,7 +92,8 @@ def get_client(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get client")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/clients")
@@ -108,7 +118,8 @@ def create_client(
         )
         return {"id": client_id, "status": "created"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to create client")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/clients/{client_id}")
@@ -127,7 +138,8 @@ def update_client(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to update client")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/clients/{client_id}")
@@ -144,7 +156,8 @@ def delete_client(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to delete client")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ---- Case Linking --------------------------------------------------------
@@ -164,7 +177,8 @@ def link_to_case(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to link client to case")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/clients/{client_id}/link/{case_id}")
@@ -179,7 +193,8 @@ def unlink_from_case(
         unlink_client_from_case(client_id, case_id)
         return {"status": "unlinked"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to unlink client from case")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/clients/{client_id}/cases")
@@ -192,7 +207,8 @@ def client_cases(
         from core.crm import get_cases_for_client
         return {"case_ids": get_cases_for_client(client_id)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get client cases")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ---- Intake Forms --------------------------------------------------------
@@ -206,7 +222,8 @@ def intake_templates(
         from core.crm import get_intake_templates
         return {"templates": get_intake_templates()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get intake templates")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/clients/{client_id}/intake")
@@ -221,7 +238,8 @@ def save_intake(
         save_intake_answers(client_id, body.template_key, body.answers)
         return {"status": "saved"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to save intake")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/clients/{client_id}/intake")
@@ -235,7 +253,8 @@ def get_intake(
         from core.crm import get_intake_answers
         return {"answers": get_intake_answers(client_id, template_key)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get intake answers")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ---- Stats ---------------------------------------------------------------
@@ -249,4 +268,5 @@ def crm_stats(
         from core.crm import get_crm_stats
         return get_crm_stats()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get CRM stats")
+        raise HTTPException(status_code=500, detail="Internal server error")
