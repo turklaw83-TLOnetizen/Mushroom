@@ -6,15 +6,9 @@ import { Toaster } from "sonner";
 
 import { initSentry } from "@/lib/sentry";
 import { QueryProvider } from "@/lib/query-provider";
-import { Sidebar } from "@/components/sidebar";
-import { CommandPalette } from "@/components/command-palette";
+import { AppShell } from "@/components/app-shell";
 
 initSentry();
-import { Breadcrumbs } from "@/components/breadcrumbs";
-import { NotificationBell } from "@/components/notification-bell";
-import { ShortcutsPanel } from "@/components/shortcuts-panel";
-import { ServiceWorkerRegistrar } from "@/components/sw-registrar";
-import { UploadIndicator } from "@/components/upload-indicator";
 import "./globals.css";
 
 const inter = Inter({
@@ -49,22 +43,7 @@ export default function RootLayout({
         </head>
         <body className={`${inter.variable} font-sans antialiased`}>
           <QueryProvider>
-            <div className="flex h-screen overflow-hidden bg-background text-foreground">
-              <Sidebar />
-              <main className="flex-1 overflow-y-auto flex flex-col">
-                <div className="flex items-center justify-between">
-                  <Breadcrumbs />
-                  <div className="pr-4">
-                    <NotificationBell />
-                  </div>
-                </div>
-                <div className="flex-1">{children}</div>
-              </main>
-            </div>
-            <CommandPalette />
-            <ShortcutsPanel />
-            <ServiceWorkerRegistrar />
-            <UploadIndicator />
+            <AppShell>{children}</AppShell>
             <Toaster
               theme="dark"
               position="bottom-right"

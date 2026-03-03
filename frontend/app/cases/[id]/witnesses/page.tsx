@@ -1,11 +1,14 @@
-// ---- Witnesses Tab (with detail panel, exam generation, optimistic deletes)
+// ---- Witnesses Tab (with detail panel, exam generation, on-demand AI, optimistic deletes)
 "use client";
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import type { Witness } from "@/types/api";
 import { usePrep } from "@/hooks/use-prep";
@@ -15,10 +18,18 @@ import { DataPage } from "@/components/shared/data-page";
 import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DetailPanel, type DetailField } from "@/components/shared/detail-panel";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from "@/components/ui/dialog";
 
 // ---- Types --------------------------------------------------------------
 
@@ -38,6 +49,13 @@ interface ExamEntry {
 interface PrepState {
     cross_examination_plan?: ExamEntry[] | string;
     direct_examination_plan?: ExamEntry[] | string;
+    [key: string]: unknown;
+}
+
+/** Shape of the on-demand result returned by witness-prep / interview-plan endpoints. */
+interface OnDemandResult {
+    result?: string;
+    content?: string;
     [key: string]: unknown;
 }
 
@@ -100,6 +118,11 @@ function findExamEntries(plan: ExamEntry[] | string | undefined, witnessName: st
     return plan.filter(
         (e) => examWitnessName(e).toLowerCase() === witnessName.toLowerCase()
     );
+}
+
+/** Extract readable text from an on-demand result object. */
+function extractResultText(data: OnDemandResult): string {
+    return data.result ?? data.content ?? JSON.stringify(data, null, 2);
 }
 
 // ---- Exam Content Renderer ----------------------------------------------
@@ -175,6 +198,162 @@ function ExamContent({ entries, label }: { entries: ExamEntry[]; label: string }
     );
 }
 
+// ---- Markdown Result Renderer -------------------------------------------
+
+function MarkdownResult({ content }: { content: string }) {
+    return (
+        <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+        </div>
+    );
+}
+
+// ---- On-Demand Result Modal ---------------------------------------------
+
+function OnDemandResultDialog({
+    open,
+    onOpenChange,
+    title,
+    witnessName,
+    content,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    title: string;
+    witnessName: string;
+    content: string;
+}) {
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>{title}</DialogTitle>
+                    <DialogDescription>Generated for {witnessName}</DialogDescription>
+                </DialogHeader>
+                <div className="mt-2">
+                    <MarkdownResult content={content} />
+                </div>
+                <DialogFooter showCloseButton />
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// ---- Deposition Analysis Section ----------------------------------------
+
+function DepositionAnalysisSection({
+    caseId,
+    prepId,
+    getToken,
+}: {
+    caseId: string;
+    prepId: string;
+    getToken: () => Promise<string | null>;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const [transcript, setTranscript] = useState("");
+    const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+
+    const depositionMutation = useMutation({
+        mutationFn: (body: { prep_id: string; transcript: string }) =>
+            api.post<OnDemandResult>(
+                `/cases/${caseId}/ondemand/deposition-analysis`,
+                body,
+                { getToken },
+            ),
+        onSuccess: (data) => {
+            const text = extractResultText(data);
+            setAnalysisResult(text);
+            toast.success("Deposition analysis complete");
+        },
+        onError: (err: Error) => {
+            toast.error("Deposition analysis failed", { description: err.message });
+        },
+    });
+
+    const handleAnalyze = () => {
+        if (!transcript.trim()) {
+            toast.error("Please paste a transcript before analyzing");
+            return;
+        }
+        depositionMutation.mutate({ prep_id: prepId, transcript: transcript.trim() });
+    };
+
+    return (
+        <Card className="mt-6">
+            <CardHeader className="pb-3">
+                <button
+                    type="button"
+                    className="flex items-center gap-2 text-left w-full"
+                    onClick={() => setExpanded((prev) => !prev)}
+                >
+                    <span className={`transition-transform text-xs ${expanded ? "rotate-90" : ""}`}>
+                        {"\u25B6"}
+                    </span>
+                    <CardTitle className="text-base">Deposition Analysis</CardTitle>
+                </button>
+                {!expanded && (
+                    <CardDescription className="ml-5">
+                        Paste a deposition transcript to get AI-powered analysis
+                    </CardDescription>
+                )}
+            </CardHeader>
+            {expanded && (
+                <CardContent className="space-y-4">
+                    <CardDescription>
+                        Paste a deposition transcript below, then click Analyze to generate an AI-powered analysis.
+                    </CardDescription>
+                    <textarea
+                        className="w-full min-h-[200px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-y"
+                        placeholder="Paste deposition transcript here..."
+                        value={transcript}
+                        onChange={(e) => setTranscript(e.target.value)}
+                        disabled={depositionMutation.isPending}
+                    />
+                    <div className="flex items-center gap-3">
+                        <Button
+                            onClick={handleAnalyze}
+                            disabled={depositionMutation.isPending || !transcript.trim()}
+                            size="sm"
+                            className="gap-1.5"
+                        >
+                            {depositionMutation.isPending ? (
+                                <>
+                                    <LoadingSpinner />
+                                    Analyzing...
+                                </>
+                            ) : (
+                                "Analyze"
+                            )}
+                        </Button>
+                        {transcript.trim() && (
+                            <span className="text-xs text-muted-foreground">
+                                {transcript.trim().split(/\s+/).length} words
+                            </span>
+                        )}
+                    </div>
+                    {analysisResult && (
+                        <div className="mt-4 rounded-lg border bg-muted/30 p-4">
+                            <div className="flex items-center justify-between mb-3">
+                                <h4 className="text-sm font-semibold">Analysis Result</h4>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-xs h-7"
+                                    onClick={() => setAnalysisResult(null)}
+                                >
+                                    Clear
+                                </Button>
+                            </div>
+                            <MarkdownResult content={analysisResult} />
+                        </div>
+                    )}
+                </CardContent>
+            )}
+        </Card>
+    );
+}
+
 // ---- Page Component -----------------------------------------------------
 
 export default function WitnessesPage() {
@@ -191,6 +370,14 @@ export default function WitnessesPage() {
 
     // Track which witness+exam type is currently generating
     const [generatingExam, setGeneratingExam] = useState<string | null>(null);
+
+    // On-demand result dialog state
+    const [onDemandDialog, setOnDemandDialog] = useState<{
+        open: boolean;
+        title: string;
+        witnessName: string;
+        content: string;
+    }>({ open: false, title: "", witnessName: "", content: "" });
 
     const queryKey = ["witnesses", caseId, activePrepId];
     const prepStateKey = ["prep-state", caseId, activePrepId];
@@ -315,12 +502,10 @@ export default function WitnessesPage() {
             await queryClient.invalidateQueries({ queryKey: prepStateKey });
 
             const label = examType === "cross" ? "Cross-examination" : "Direct-examination";
-            const toastFn = await import("sonner").then((m) => m.toast);
-            toastFn.success(`${label} plan generated for ${witnessName}`);
+            toast.success(`${label} plan generated for ${witnessName}`);
         } catch (err) {
-            const toastFn = await import("sonner").then((m) => m.toast);
             const label = examType === "cross" ? "cross-examination" : "direct-examination";
-            toastFn.error(`Failed to generate ${label}`, {
+            toast.error(`Failed to generate ${label}`, {
                 description: err instanceof Error ? err.message : "Unknown error",
             });
         } finally {
@@ -328,10 +513,66 @@ export default function WitnessesPage() {
         }
     };
 
+    // ---- On-Demand: Witness Prep ----
+
+    const witnessPrepMutation = useMutation({
+        mutationFn: (vars: { witnessIndex: number; witnessName: string }) =>
+            api.post<OnDemandResult>(
+                `/cases/${caseId}/ondemand/witness-prep`,
+                { prep_id: activePrepId, witness_index: vars.witnessIndex },
+                { getToken },
+            ),
+        onSuccess: (data, vars) => {
+            const text = extractResultText(data);
+            setOnDemandDialog({
+                open: true,
+                title: "Witness Prep",
+                witnessName: vars.witnessName,
+                content: text,
+            });
+            toast.success(`Witness prep generated for ${vars.witnessName}`);
+        },
+        onError: (err: Error) => {
+            toast.error("Failed to generate witness prep", { description: err.message });
+        },
+    });
+
+    // ---- On-Demand: Interview Plan ----
+
+    const interviewPlanMutation = useMutation({
+        mutationFn: (vars: { witnessIndex: number; witnessName: string }) =>
+            api.post<OnDemandResult>(
+                `/cases/${caseId}/ondemand/interview-plan`,
+                { prep_id: activePrepId, witness_index: vars.witnessIndex },
+                { getToken },
+            ),
+        onSuccess: (data, vars) => {
+            const text = extractResultText(data);
+            setOnDemandDialog({
+                open: true,
+                title: "Interview Plan",
+                witnessName: vars.witnessName,
+                content: text,
+            });
+            toast.success(`Interview plan generated for ${vars.witnessName}`);
+        },
+        onError: (err: Error) => {
+            toast.error("Failed to generate interview plan", { description: err.message });
+        },
+    });
+
     // ---- Derived exam data ----
 
     const crossPlan = prepStateQuery.data?.cross_examination_plan;
     const directPlan = prepStateQuery.data?.direct_examination_plan;
+
+    // Check if any on-demand mutation is currently running for a given witness
+    const isOnDemandPending = (witnessIndex: number) => {
+        return (
+            (witnessPrepMutation.isPending && witnessPrepMutation.variables?.witnessIndex === witnessIndex) ||
+            (interviewPlanMutation.isPending && interviewPlanMutation.variables?.witnessIndex === witnessIndex)
+        );
+    };
 
     return (
         <DataPage
@@ -352,6 +593,8 @@ export default function WitnessesPage() {
                 const isGeneratingCross = generatingExam === crossGenKey;
                 const isGeneratingDirect = generatingExam === directGenKey;
                 const isGeneratingAny = generatingExam !== null;
+                const isPrepPending = witnessPrepMutation.isPending && witnessPrepMutation.variables?.witnessIndex === i;
+                const isInterviewPending = interviewPlanMutation.isPending && interviewPlanMutation.variables?.witnessIndex === i;
 
                 return (
                     <Card
@@ -371,6 +614,45 @@ export default function WitnessesPage() {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
+                                    {/* On-Demand AI buttons */}
+                                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-xs h-7 gap-1"
+                                            disabled={isOnDemandPending(i)}
+                                            onClick={() =>
+                                                witnessPrepMutation.mutate({ witnessIndex: i, witnessName: witness.name })
+                                            }
+                                        >
+                                            {isPrepPending ? (
+                                                <>
+                                                    <LoadingSpinner />
+                                                    Prep...
+                                                </>
+                                            ) : (
+                                                "Prep"
+                                            )}
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-xs h-7 gap-1"
+                                            disabled={isOnDemandPending(i)}
+                                            onClick={() =>
+                                                interviewPlanMutation.mutate({ witnessIndex: i, witnessName: witness.name })
+                                            }
+                                        >
+                                            {isInterviewPending ? (
+                                                <>
+                                                    <LoadingSpinner />
+                                                    Interview...
+                                                </>
+                                            ) : (
+                                                "Interview"
+                                            )}
+                                        </Button>
+                                    </div>
                                     <Badge
                                         variant="outline"
                                         className={
@@ -483,6 +765,15 @@ export default function WitnessesPage() {
                 </div>
             )}
 
+            {/* Deposition Analysis Section */}
+            {activePrepId && (
+                <DepositionAnalysisSection
+                    caseId={caseId}
+                    prepId={activePrepId}
+                    getToken={getToken}
+                />
+            )}
+
             {canEdit && (
                 <FormDialog
                     open={dialogOpen}
@@ -527,6 +818,15 @@ export default function WitnessesPage() {
                     } : undefined}
                 />
             )}
+
+            {/* On-Demand Result Dialog */}
+            <OnDemandResultDialog
+                open={onDemandDialog.open}
+                onOpenChange={(open) => setOnDemandDialog((prev) => ({ ...prev, open }))}
+                title={onDemandDialog.title}
+                witnessName={onDemandDialog.witnessName}
+                content={onDemandDialog.content}
+            />
         </DataPage>
     );
 }

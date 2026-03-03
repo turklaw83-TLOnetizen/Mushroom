@@ -5,6 +5,9 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { usePrep } from "@/hooks/use-prep";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,6 +71,29 @@ export default function ResearchPage() {
             ),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["research", caseId, activePrepId] });
+        },
+    });
+
+    // ---- Demand Letter On-Demand Generation ---------------------------------
+
+    const [demandLetterResult, setDemandLetterResult] = useState<string | null>(null);
+    const [demandLetterExpanded, setDemandLetterExpanded] = useState(false);
+
+    const demandLetterMutation = useMutation({
+        mutationFn: () =>
+            api.post<{ result?: string; content?: string }>(
+                `/cases/${caseId}/ondemand/demand-letter`,
+                { prep_id: activePrepId },
+                { getToken },
+            ),
+        onSuccess: (data) => {
+            const text = data.result ?? data.content ?? JSON.stringify(data, null, 2);
+            setDemandLetterResult(text);
+            setDemandLetterExpanded(true);
+            toast.success("Demand letter generated");
+        },
+        onError: (err: Error) => {
+            toast.error("Failed to generate demand letter", { description: err.message });
         },
     });
 
@@ -270,6 +296,92 @@ export default function ResearchPage() {
                         ))}
                     </div>
                 )
+            )}
+
+            {/* ---- Generate Demand Letter ---- */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                            <CardTitle className="text-sm font-medium">
+                                Generate Demand Letter
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                AI-generated demand letter based on case analysis and research.
+                            </p>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant={demandLetterResult ? "outline" : "default"}
+                            disabled={demandLetterMutation.isPending}
+                            onClick={() => demandLetterMutation.mutate()}
+                            className="shrink-0"
+                        >
+                            {demandLetterMutation.isPending ? (
+                                <>
+                                    <svg
+                                        className="animate-spin h-3 w-3 mr-1.5"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <circle
+                                            className="opacity-25"
+                                            cx="12"
+                                            cy="12"
+                                            r="10"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                        />
+                                        <path
+                                            className="opacity-75"
+                                            fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                        />
+                                    </svg>
+                                    Generating...
+                                </>
+                            ) : demandLetterResult ? (
+                                "Regenerate"
+                            ) : (
+                                "Generate Demand Letter"
+                            )}
+                        </Button>
+                    </div>
+                </CardHeader>
+            </Card>
+
+            {demandLetterResult && (
+                <Card className="border-primary/20">
+                    <CardHeader className="pb-0 pt-3 px-4">
+                        <button
+                            type="button"
+                            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+                            onClick={() => setDemandLetterExpanded((prev) => !prev)}
+                        >
+                            <span
+                                className={`transition-transform ${
+                                    demandLetterExpanded ? "rotate-90" : ""
+                                }`}
+                            >
+                                {"\u25B6"}
+                            </span>
+                            {demandLetterExpanded ? "Collapse" : "Expand"} result
+                            <Badge variant="outline" className="ml-auto text-[10px]">
+                                AI Generated
+                            </Badge>
+                        </button>
+                    </CardHeader>
+                    {demandLetterExpanded && (
+                        <CardContent className="pt-3 px-4 pb-4">
+                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {demandLetterResult}
+                                </ReactMarkdown>
+                            </div>
+                        </CardContent>
+                    )}
+                </Card>
             )}
         </div>
     );

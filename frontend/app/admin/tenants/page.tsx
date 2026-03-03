@@ -1,6 +1,8 @@
 // ---- Tenant Admin Page (Phase 22) -----------------------------------------
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";

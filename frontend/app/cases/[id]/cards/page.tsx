@@ -5,12 +5,14 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api } from "@/lib/api-client";
 import { usePrep } from "@/hooks/use-prep";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -302,6 +304,29 @@ export default function QuickCardsPage() {
 
     const data = cardsQuery.data;
 
+    // ---- Exhibit Plan On-Demand Generation ----------------------------------
+
+    const [exhibitPlanResult, setExhibitPlanResult] = useState<string | null>(null);
+    const [exhibitPlanExpanded, setExhibitPlanExpanded] = useState(false);
+
+    const exhibitPlanMutation = useMutation({
+        mutationFn: () =>
+            api.post<{ result?: string; content?: string }>(
+                `/cases/${caseId}/ondemand/exhibit-plan`,
+                { prep_id: activePrepId },
+                { getToken },
+            ),
+        onSuccess: (data) => {
+            const text = data.result ?? data.content ?? JSON.stringify(data, null, 2);
+            setExhibitPlanResult(text);
+            setExhibitPlanExpanded(true);
+            toast.success("Exhibit plan generated");
+        },
+        onError: (err: Error) => {
+            toast.error("Failed to generate exhibit plan", { description: err.message });
+        },
+    });
+
     // ---- Handlers ----
 
     const handlePrint = () => {
@@ -477,6 +502,92 @@ export default function QuickCardsPage() {
                     </div>
                 </TabsContent>
             </Tabs>
+
+            {/* ---- Generate Exhibit Plan ---- */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                            <CardTitle className="text-sm font-medium">
+                                Generate Exhibit Plan
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                                AI-generated exhibit plan with presentation order and authentication notes.
+                            </p>
+                        </div>
+                        <Button
+                            size="sm"
+                            variant={exhibitPlanResult ? "outline" : "default"}
+                            disabled={exhibitPlanMutation.isPending}
+                            onClick={() => exhibitPlanMutation.mutate()}
+                            className="shrink-0"
+                        >
+                            {exhibitPlanMutation.isPending ? (
+                                <>
+                                    <svg
+                                        className="animate-spin h-3 w-3 mr-1.5"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <circle
+                                            className="opacity-25"
+                                            cx="12"
+                                            cy="12"
+                                            r="10"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                        />
+                                        <path
+                                            className="opacity-75"
+                                            fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                        />
+                                    </svg>
+                                    Generating...
+                                </>
+                            ) : exhibitPlanResult ? (
+                                "Regenerate"
+                            ) : (
+                                "Generate Exhibit Plan"
+                            )}
+                        </Button>
+                    </div>
+                </CardHeader>
+            </Card>
+
+            {exhibitPlanResult && (
+                <Card className="border-primary/20">
+                    <CardHeader className="pb-0 pt-3 px-4">
+                        <button
+                            type="button"
+                            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+                            onClick={() => setExhibitPlanExpanded((prev) => !prev)}
+                        >
+                            <span
+                                className={`transition-transform ${
+                                    exhibitPlanExpanded ? "rotate-90" : ""
+                                }`}
+                            >
+                                {"\u25B6"}
+                            </span>
+                            {exhibitPlanExpanded ? "Collapse" : "Expand"} result
+                            <Badge variant="outline" className="ml-auto text-[10px]">
+                                AI Generated
+                            </Badge>
+                        </button>
+                    </CardHeader>
+                    {exhibitPlanExpanded && (
+                        <CardContent className="pt-3 px-4 pb-4">
+                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {exhibitPlanResult}
+                                </ReactMarkdown>
+                            </div>
+                        </CardContent>
+                    )}
+                </Card>
+            )}
         </div>
     );
 }

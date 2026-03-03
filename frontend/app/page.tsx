@@ -12,10 +12,19 @@ import { api } from "@/lib/api-client";
 import { CaseTable } from "@/components/dashboard/case-table";
 import { NewCaseDialog } from "@/components/dashboard/new-case-dialog";
 import { DashboardStats, ActivityFeed } from "@/components/dashboard/dashboard-widgets";
+import {
+  BillingMetrics,
+  CalendarMetrics,
+  DeadlineUrgencyBoard,
+  TeamWorkload,
+  useDeadlineToasts,
+} from "@/components/dashboard/dashboard-enrichment";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const PER_PAGE_OPTIONS = [10, 25, 50] as const;
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -25,8 +34,16 @@ export default function DashboardPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<CaseItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { data, isLoading, error } = useCases();
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState<number>(25);
+  const { data, isLoading, error } = useCases(page, perPage);
   const createCase = useCreateCase();
+
+  const totalPages = data?.pages ?? 1;
+  const totalCases = data?.total ?? 0;
+
+  // Fire deadline toast notifications on mount (once per session)
+  useDeadlineToasts();
 
   const cases = data?.items ?? [];
   const filtered = search
@@ -82,7 +99,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {data ? `${data.total} total cases` : "Loading..."}
+            {data ? `${totalCases} total cases` : "Loading..."}
           </p>
         </div>
         <Button onClick={() => setDialogOpen(true)} className="gap-2">
@@ -98,8 +115,20 @@ export default function DashboardPage() {
         className="max-w-md"
       />
 
+      {/* Billing Metrics */}
+      <BillingMetrics />
+
       {/* Stats */}
       <DashboardStats />
+
+      {/* Deadline Urgency Board */}
+      <DeadlineUrgencyBoard />
+
+      {/* Calendar Metrics */}
+      <CalendarMetrics />
+
+      {/* Team Workload */}
+      <TeamWorkload />
 
       {/* Case Table */}
       {isLoading ? (
@@ -118,6 +147,57 @@ export default function DashboardPage() {
           onRowClick={(c) => router.push(`/cases/${c.id}`)}
           onDelete={(c) => setDeleteTarget(c)}
         />
+      )}
+
+      {/* Pagination Controls */}
+      {!isLoading && !error && (
+        <div className="flex items-center justify-between border-t pt-4">
+          {/* Left: total count */}
+          <p className="text-sm text-muted-foreground">
+            {totalCases} {totalCases === 1 ? "case" : "cases"} total
+          </p>
+
+          {/* Center: page navigation */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span className="text-sm text-muted-foreground px-2">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next
+            </Button>
+          </div>
+
+          {/* Right: per-page selector */}
+          <div className="flex items-center gap-1">
+            <span className="text-sm text-muted-foreground mr-1">Show</span>
+            {PER_PAGE_OPTIONS.map((opt) => (
+              <Button
+                key={opt}
+                variant={perPage === opt ? "default" : "ghost"}
+                size="xs"
+                onClick={() => {
+                  setPerPage(opt);
+                  setPage(1);
+                }}
+              >
+                {opt}
+              </Button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* New Case Dialog */}

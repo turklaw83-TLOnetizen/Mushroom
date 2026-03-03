@@ -14,6 +14,33 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+
+// ---- Co-Counsel Personas ------------------------------------------------
+
+type Persona = {
+    id: string;
+    label: string;
+    description: string;
+};
+
+const PERSONAS: Persona[] = [
+    { id: "general", label: "General Assistant", description: "Balanced, all-purpose" },
+    { id: "strategist", label: "The Strategist", description: "Trial strategy & case theory" },
+    { id: "bulldog", label: "The Bulldog", description: "Aggressive cross-exam & weaknesses" },
+    { id: "scholar", label: "The Scholar", description: "Academic legal research" },
+    { id: "judge", label: "The Judge", description: "Evaluates from the bench" },
+];
+
+// ---- File item shape from /cases/:id/files ------------------------------
+
+interface FileItem {
+    filename: string;
+    size: number;
+    tags: string[];
+    uploaded_at?: string;
+    ocr_status?: string;
+}
 
 export default function ChatPage() {
     const params = useParams();
@@ -28,6 +55,28 @@ export default function ChatPage() {
     const [streamingContent, setStreamingContent] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Co-Counsel persona selection
+    const [selectedPersona, setSelectedPersona] = useState<string>("general");
+
+    // Document Focus Mode
+    const [focusDocIds, setFocusDocIds] = useState<string[]>([]);
+    const [docPanelOpen, setDocPanelOpen] = useState(false);
+
+    // Fetch file list for document focus
+    const { data: files } = useQuery({
+        queryKey: ["cases", caseId, "files"],
+        queryFn: () => api.get<FileItem[]>(`/cases/${caseId}/files`, { getToken }),
+        enabled: !!caseId,
+    });
+
+    const toggleDocFocus = (filename: string) => {
+        setFocusDocIds((prev) =>
+            prev.includes(filename)
+                ? prev.filter((f) => f !== filename)
+                : [...prev, filename],
+        );
+    };
 
     // Load chat history
     const { data, isLoading } = useQuery({
@@ -64,7 +113,12 @@ export default function ChatPage() {
         try {
             const response = await api.stream(
                 `/cases/${caseId}/chat/stream`,
-                { message: text, prep_id: activePrepId },
+                {
+                    message: text,
+                    prep_id: activePrepId,
+                    persona: selectedPersona,
+                    ...(focusDocIds.length > 0 && { document_ids: focusDocIds }),
+                },
                 { getToken },
             );
 
@@ -263,25 +317,101 @@ export default function ChatPage() {
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input area */}
+            {/* Controls area */}
             {canEdit && (
-                <div className="flex items-center gap-2 pt-3 border-t border-border mt-3">
-                    <Input
-                        ref={inputRef}
-                        placeholder="Ask about case strategy..."
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        disabled={isStreaming || !activePrepId}
-                        className="flex-1"
-                    />
-                    <Button
-                        onClick={handleSend}
-                        disabled={!input.trim() || isStreaming || !activePrepId}
-                        size="sm"
-                    >
-                        {isStreaming ? "Sending..." : "Send"}
-                    </Button>
+                <div className="pt-3 border-t border-border mt-3 space-y-3">
+                    {/* Document Focus Mode */}
+                    <div>
+                        <button
+                            type="button"
+                            onClick={() => setDocPanelOpen((v) => !v)}
+                            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            <span className="inline-block transition-transform duration-200" style={{ transform: docPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>
+                                &#9654;
+                            </span>
+                            Focus Documents
+                            {!docPanelOpen && focusDocIds.length > 0 && (
+                                <Badge variant="secondary" className="ml-1">
+                                    {focusDocIds.length} doc{focusDocIds.length !== 1 ? "s" : ""} focused
+                                </Badge>
+                            )}
+                        </button>
+
+                        {docPanelOpen && (
+                            <Card className="mt-2">
+                                <CardContent className="py-2 px-3 max-h-40 overflow-y-auto">
+                                    {!files || files.length === 0 ? (
+                                        <p className="text-xs text-muted-foreground py-1">
+                                            No files uploaded to this case.
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-1">
+                                            {files.map((file) => (
+                                                <label
+                                                    key={file.filename}
+                                                    className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-1 py-0.5"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={focusDocIds.includes(file.filename)}
+                                                        onChange={() => toggleDocFocus(file.filename)}
+                                                        className="accent-primary h-3.5 w-3.5 rounded"
+                                                    />
+                                                    <span className="truncate flex-1">{file.filename}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {focusDocIds.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setFocusDocIds([])}
+                                            className="text-xs text-muted-foreground hover:text-foreground mt-1"
+                                        >
+                                            Clear selection
+                                        </button>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+                    </div>
+
+                    {/* Co-Counsel Persona Selector */}
+                    <div className="flex flex-wrap gap-1.5">
+                        {PERSONAS.map((p) => (
+                            <Button
+                                key={p.id}
+                                variant={selectedPersona === p.id ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setSelectedPersona(p.id)}
+                                title={p.description}
+                                className="text-xs h-7 px-2.5"
+                            >
+                                {p.label}
+                            </Button>
+                        ))}
+                    </div>
+
+                    {/* Input row */}
+                    <div className="flex items-center gap-2">
+                        <Input
+                            ref={inputRef}
+                            placeholder="Ask about case strategy..."
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            disabled={isStreaming || !activePrepId}
+                            className="flex-1"
+                        />
+                        <Button
+                            onClick={handleSend}
+                            disabled={!input.trim() || isStreaming || !activePrepId}
+                            size="sm"
+                        >
+                            {isStreaming ? "Sending..." : "Send"}
+                        </Button>
+                    </div>
                 </div>
             )}
         </div>

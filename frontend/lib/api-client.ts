@@ -2,6 +2,7 @@
 // Typed fetch wrapper with Clerk auth, retry logic, and offline detection.
 
 import { isDevAuthMode, getDevToken } from "./dev-auth";
+import { useSessionCostStore } from "./stores/session-cost-store";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -60,6 +61,27 @@ if (typeof window !== "undefined") {
     window.addEventListener("offline", () => _setOffline(true));
 }
 
+// ---- Usage Tracking -----------------------------------------------------
+
+function _recordUsage(response: Response, path: string) {
+    const tokensHeader = response.headers.get("x-usage-tokens");
+    const costHeader = response.headers.get("x-usage-cost");
+    if (!tokensHeader && !costHeader) return;
+
+    const tokens = tokensHeader ? parseInt(tokensHeader, 10) : 0;
+    const cost = costHeader ? parseFloat(costHeader) : 0;
+    if (tokens <= 0 && cost <= 0) return;
+
+    const model = response.headers.get("x-usage-model") || "unknown";
+
+    useSessionCostStore.getState().addEntry({
+        tokens,
+        cost,
+        model,
+        endpoint: path,
+    });
+}
+
 // ---- Core Request Function with Retry -----------------------------------
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -109,14 +131,22 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
             _setOffline(false);
 
             if (response.ok) {
+                // Track API usage if the backend reports token/cost headers
+                _recordUsage(response, path);
+
                 if (response.status === 204 || response.headers.get("content-length") === "0") {
                     return {} as T;
                 }
                 return response.json();
             }
 
-            // Auto-redirect to sign-in on 401 (skip in dev auth mode)
-            if (response.status === 401 && typeof window !== "undefined" && !isDevAuthMode()) {
+            // Auto-redirect to sign-in on 401 (skip in dev auth mode or if already on sign-in)
+            if (
+                response.status === 401 &&
+                typeof window !== "undefined" &&
+                !isDevAuthMode() &&
+                !window.location.pathname.startsWith("/sign-in")
+            ) {
                 window.location.href = "/sign-in";
                 return new Promise<T>(() => { });
             }

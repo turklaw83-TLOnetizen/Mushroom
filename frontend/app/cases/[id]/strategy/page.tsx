@@ -5,6 +5,9 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { usePrep } from "@/hooks/use-prep";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +40,59 @@ interface StrategyData {
     };
 }
 
+/** Shape returned by on-demand generation endpoints. */
+interface OnDemandResult {
+    result?: string;
+    content?: string;
+    [key: string]: unknown;
+}
+
+/** Extract readable text from an on-demand result object. */
+function extractResultText(data: OnDemandResult): string {
+    return data.result ?? data.content ?? JSON.stringify(data, null, 2);
+}
+
+/** Configuration for each on-demand AI tool button. */
+interface OnDemandTool {
+    key: string;
+    label: string;
+    endpoint: string;
+    description: string;
+}
+
+const ON_DEMAND_TOOLS: OnDemandTool[] = [
+    {
+        key: "client-report",
+        label: "Generate Client Report",
+        endpoint: "client-report",
+        description: "Produce a plain-language case summary suitable for client review.",
+    },
+    {
+        key: "opponent-playbook",
+        label: "Generate Opponent Playbook",
+        endpoint: "opponent-playbook",
+        description: "Anticipate the opposing counsel's likely arguments and tactics.",
+    },
+    {
+        key: "case-theory",
+        label: "Validate Case Theory",
+        endpoint: "case-theory",
+        description: "Stress-test the current case theory for logical consistency.",
+    },
+    {
+        key: "jury-instructions",
+        label: "Generate Jury Instructions",
+        endpoint: "jury-instructions",
+        description: "Draft proposed jury instructions tailored to the charges and facts.",
+    },
+    {
+        key: "statements",
+        label: "Generate Statements",
+        endpoint: "statements",
+        description: "Draft opening and closing statement outlines for trial.",
+    },
+];
+
 export default function StrategyPage() {
     const params = useParams();
     const caseId = params.id as string;
@@ -68,6 +124,42 @@ export default function StrategyPage() {
             queryClient.invalidateQueries({ queryKey: ["strategy", caseId, activePrepId] });
         },
     });
+
+    // ---- On-Demand AI Tools state -------------------------------------------
+
+    /** Stores generated markdown results keyed by tool key (e.g. "client-report"). */
+    const [onDemandResults, setOnDemandResults] = useState<Record<string, string>>({});
+
+    /** Tracks which tool sections are expanded. */
+    const [expandedTools, setExpandedTools] = useState<Record<string, boolean>>({});
+
+    /** Tracks which tool is currently generating. */
+    const [generatingTool, setGeneratingTool] = useState<string | null>(null);
+
+    const onDemandMutation = useMutation({
+        mutationFn: (tool: OnDemandTool) =>
+            api.post<OnDemandResult>(
+                `/cases/${caseId}/ondemand/${tool.endpoint}`,
+                { prep_id: activePrepId },
+                { getToken },
+            ),
+        onSuccess: (data, tool) => {
+            const text = extractResultText(data);
+            setOnDemandResults((prev) => ({ ...prev, [tool.key]: text }));
+            setExpandedTools((prev) => ({ ...prev, [tool.key]: true }));
+            toast.success(`${tool.label.replace("Generate ", "").replace("Validate ", "")} generated`);
+            setGeneratingTool(null);
+        },
+        onError: (err: Error, tool) => {
+            toast.error(`Failed: ${tool.label}`, { description: err.message });
+            setGeneratingTool(null);
+        },
+    });
+
+    const handleGenerate = (tool: OnDemandTool) => {
+        setGeneratingTool(tool.key);
+        onDemandMutation.mutate(tool);
+    };
 
     if (!activePrepId && !prepLoading) {
         return (
@@ -356,6 +448,119 @@ export default function StrategyPage() {
                     )}
                 </div>
             )}
+
+            {/* ---- On-Demand AI Tools ----------------------------------------- */}
+            <div className="border-t border-border pt-6 mt-6 space-y-4">
+                <div>
+                    <h3 className="text-lg font-semibold tracking-tight">On-Demand AI Tools</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                        Generate additional strategic documents and analyses on demand.
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {ON_DEMAND_TOOLS.map((tool) => {
+                        const isGenerating = generatingTool === tool.key;
+                        const result = onDemandResults[tool.key];
+                        const isExpanded = expandedTools[tool.key] ?? false;
+
+                        return (
+                            <div key={tool.key} className="space-y-2">
+                                <Card>
+                                    <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <CardTitle className="text-sm font-medium">
+                                                    {tool.label}
+                                                </CardTitle>
+                                                <p className="text-xs text-muted-foreground mt-0.5">
+                                                    {tool.description}
+                                                </p>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                variant={result ? "outline" : "default"}
+                                                disabled={isGenerating}
+                                                onClick={() => handleGenerate(tool)}
+                                                className="shrink-0"
+                                            >
+                                                {isGenerating ? (
+                                                    <>
+                                                        <svg
+                                                            className="animate-spin h-3 w-3 mr-1.5"
+                                                            xmlns="http://www.w3.org/2000/svg"
+                                                            fill="none"
+                                                            viewBox="0 0 24 24"
+                                                        >
+                                                            <circle
+                                                                className="opacity-25"
+                                                                cx="12"
+                                                                cy="12"
+                                                                r="10"
+                                                                stroke="currentColor"
+                                                                strokeWidth="4"
+                                                            />
+                                                            <path
+                                                                className="opacity-75"
+                                                                fill="currentColor"
+                                                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                                            />
+                                                        </svg>
+                                                        Generating...
+                                                    </>
+                                                ) : result ? (
+                                                    "Regenerate"
+                                                ) : (
+                                                    "Generate"
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </CardHeader>
+                                </Card>
+
+                                {/* Collapsible result card */}
+                                {result && (
+                                    <Card className="border-primary/20">
+                                        <CardHeader className="pb-0 pt-3 px-4">
+                                            <button
+                                                type="button"
+                                                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+                                                onClick={() =>
+                                                    setExpandedTools((prev) => ({
+                                                        ...prev,
+                                                        [tool.key]: !prev[tool.key],
+                                                    }))
+                                                }
+                                            >
+                                                <span
+                                                    className={`transition-transform ${
+                                                        isExpanded ? "rotate-90" : ""
+                                                    }`}
+                                                >
+                                                    {"\u25B6"}
+                                                </span>
+                                                {isExpanded ? "Collapse" : "Expand"} result
+                                                <Badge variant="outline" className="ml-auto text-[10px]">
+                                                    AI Generated
+                                                </Badge>
+                                            </button>
+                                        </CardHeader>
+                                        {isExpanded && (
+                                            <CardContent className="pt-3 px-4 pb-4">
+                                                <div className="prose prose-sm dark:prose-invert max-w-none">
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                        {result}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            </CardContent>
+                                        )}
+                                    </Card>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
     );
 }

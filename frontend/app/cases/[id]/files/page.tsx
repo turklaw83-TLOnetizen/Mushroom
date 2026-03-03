@@ -1,4 +1,4 @@
-// ---- Files Tab (with FileUpload, Delete, Force OCR, and Bulk Operations) --
+// ---- Files Tab (with FileUpload, Delete, Force OCR, Preview, and Bulk Operations) --
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
@@ -10,6 +10,7 @@ import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { DataPage } from "@/components/shared/data-page";
 import { FileUpload } from "@/components/shared/file-upload";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { PdfViewer } from "@/components/pdf-viewer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import {
     DialogTitle,
     DialogFooter,
 } from "@/components/ui/dialog";
+import { EyeIcon } from "lucide-react";
 
 interface FileItem {
     filename: string;
@@ -291,6 +293,13 @@ export default function FilesPage() {
                             <div className="flex items-center gap-2">
                                 {/* Action buttons -- visible on hover */}
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <PdfViewer
+                                        caseId={caseId}
+                                        filename={file.filename}
+                                        label="Preview"
+                                        triggerIcon={EyeIcon}
+                                        triggerClassName="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                    />
                                     <Button
                                         size="sm"
                                         variant="ghost"

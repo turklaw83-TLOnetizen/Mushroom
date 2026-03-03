@@ -60,6 +60,8 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in"
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: "/"
         NEXT_PUBLIC_API_URL: "${NEXT_PUBLIC_API_URL:-https://turkclaw.net/api}"
     restart: unless-stopped
     depends_on:
@@ -72,6 +74,8 @@ services:
       NEXT_TELEMETRY_DISABLED: "1"
       CLERK_SECRET_KEY: "${CLERK_SECRET_KEY}"
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}"
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: "/sign-in"
+      NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: "/"
     expose:
       - "3000"
   nginx:

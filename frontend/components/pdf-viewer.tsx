@@ -46,6 +46,10 @@ interface PdfViewerProps {
     filename: string;
     /** Trigger button label (optional, defaults to filename) */
     label?: string;
+    /** Optional className override for the trigger button */
+    triggerClassName?: string;
+    /** Optional icon override for the trigger button (replaces file-type icon) */
+    triggerIcon?: React.ComponentType<{ className?: string }>;
 }
 
 interface Annotation {
@@ -88,7 +92,7 @@ const DEFAULT_ZOOM_INDEX = 2; // 100%
 
 // ---- Component ------------------------------------------------------------
 
-export function PdfViewer({ caseId, filename, label }: PdfViewerProps) {
+export function PdfViewer({ caseId, filename, label, triggerClassName, triggerIcon }: PdfViewerProps) {
     const [open, setOpen] = useState(false);
     const { getToken } = useAuth();
     const [fileUrl, setFileUrl] = useState<string | null>(null);
@@ -687,17 +691,19 @@ export function PdfViewer({ caseId, filename, label }: PdfViewerProps) {
 
     // ---- Main render --------------------------------------------------------
 
-    const IconComponent = getFileIcon(fileCategory);
+    const FileIconComponent = getFileIcon(fileCategory);
+    const TriggerIconComponent = triggerIcon || FileIconComponent;
 
     return (
         <>
             <Button
                 variant="ghost"
                 size="sm"
-                className="text-xs truncate max-w-[200px]"
+                className={triggerClassName || "text-xs truncate max-w-[200px]"}
                 onClick={handleOpen}
+                title={`Preview ${filename}`}
             >
-                <IconComponent className="size-3.5 mr-1 shrink-0" />
+                <TriggerIconComponent className="size-3.5 mr-1 shrink-0" />
                 {label || filename}
             </Button>
 
@@ -711,7 +717,7 @@ export function PdfViewer({ caseId, filename, label }: PdfViewerProps) {
                 >
                     <DialogHeader className="p-3 pb-0 shrink-0">
                         <DialogTitle className="text-sm truncate flex items-center gap-2">
-                            <IconComponent className="size-4 shrink-0 text-muted-foreground" />
+                            <FileIconComponent className="size-4 shrink-0 text-muted-foreground" />
                             {filename}
                         </DialogTitle>
                     </DialogHeader>

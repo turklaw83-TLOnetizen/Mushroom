@@ -98,7 +98,7 @@ def root():
         "status": "running",
         "docs": "/docs",
         "health": "/api/v1/health",
-        "routers": 39,
+        "routers": 40,
     }
 # ---- Middleware (order matters: last added = outermost) -------------------
 
@@ -200,6 +200,7 @@ from api.routers.snapshots import router as snapshots_router
 from api.routers.research import router as research_router
 from api.routers.predict import router as predict_router
 from api.routers.security import router as security_router
+from api.routers.ondemand import router as ondemand_router
 from api.metrics import router as metrics_router
 from api.websockets.workers_ws import router as ws_router
 
@@ -259,6 +260,7 @@ app.include_router(snapshots_router, prefix="/api/v1")
 app.include_router(research_router, prefix="/api/v1")
 app.include_router(predict_router, prefix="/api/v1")
 app.include_router(security_router, prefix="/api/v1")
+app.include_router(ondemand_router, prefix="/api/v1")
 app.include_router(metrics_router, prefix="/api/v1")
 app.include_router(ws_router, prefix="/api/v1")
 
