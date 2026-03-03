@@ -5,7 +5,7 @@
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from api.auth import get_current_user, require_role
@@ -19,6 +19,8 @@ router = APIRouter(prefix="/crm", tags=["CRM"])
 class ClientCreate(BaseModel):
     first_name: str = ""
     last_name: str = ""
+    middle_name: str = ""
+    suffix: str = ""
     name: str = ""  # Legacy fallback
     email: str = ""
     phone: str = ""
@@ -33,6 +35,8 @@ class ClientCreate(BaseModel):
 class ClientUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    suffix: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
     mailing_address: Optional[str] = None
@@ -56,14 +60,18 @@ class IntakeAnswers(BaseModel):
 @router.get("/clients")
 def list_clients(
     q: str = "",
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
 ):
-    """List all clients, optionally filtered by search query."""
+    """List clients, optionally filtered by search query (with limit/offset)."""
     try:
         from core.crm import load_clients, search_clients
         if q:
-            return {"items": search_clients(q)}
-        return {"items": load_clients()}
+            items = search_clients(q)
+        else:
+            items = load_clients()
+        return {"items": items[offset:offset + limit], "total": len(items)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -97,6 +105,8 @@ def create_client(
         client_id = add_client(
             first_name=body.first_name,
             last_name=body.last_name,
+            middle_name=body.middle_name,
+            suffix=body.suffix,
             name=body.name,
             email=body.email,
             phone=body.phone,

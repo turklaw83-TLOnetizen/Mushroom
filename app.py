@@ -102,8 +102,8 @@ if "_deadline_toasts_shown" not in st.session_state:
                 st.toast(f"Due TOMORROW: {_ud_label} ({_ud_case})", icon="\U0001f7e0")
             else:
                 st.toast(f"Due in {_ud_days}d: {_ud_label} ({_ud_case})", icon="\U0001f7e1")
-    except Exception:
-        pass
+    except Exception as _deadline_err:
+        logger.warning("Failed to show deadline toasts: %s", _deadline_err)
 
 # ---- Main Application ----------------------------------------------------
 from ui.navigation import render_sidebar

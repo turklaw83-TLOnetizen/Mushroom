@@ -5,7 +5,9 @@
 # document generation (PDF, Word) is CPU-bound and slow.
 
 import asyncio
+import io
 import logging
+import zipfile
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -133,4 +135,60 @@ async def export_trial_binder(
         )
     except Exception as e:
         logger.exception("Trial binder export failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/zip/{prep_id}")
+async def export_all_zip(
+    case_id: str,
+    prep_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Generate and download a ZIP containing all export formats."""
+    cm = get_case_manager()
+    state = cm.load_prep_state(case_id, prep_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Preparation state not found")
+
+    case_name = cm.get_case_name(case_id)
+    prep = cm.get_preparation(case_id, prep_id) or {}
+    prep_type = prep.get("type", "trial")
+    prep_name = prep.get("name", "")
+
+    try:
+        # Generate all formats in parallel via thread pool
+        from core.export.pdf_export import generate_pdf_report, generate_trial_binder_pdf
+        from core.export.word_export import generate_word_report, generate_brief_outline
+
+        pdf_buf, word_buf, brief_buf, binder_buf = await asyncio.gather(
+            asyncio.to_thread(generate_pdf_report, state, case_name),
+            asyncio.to_thread(generate_word_report, state, case_name, None),
+            asyncio.to_thread(generate_brief_outline, state, case_name),
+            asyncio.to_thread(
+                generate_trial_binder_pdf, state, case_name, prep_type, prep_name
+            ),
+        )
+
+        # Package into ZIP
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            pdf_buf.seek(0)
+            zf.writestr(f"{case_name}_report.pdf", pdf_buf.read())
+            word_buf.seek(0)
+            zf.writestr(f"{case_name}_report.docx", word_buf.read())
+            brief_buf.seek(0)
+            zf.writestr(f"{case_name}_brief.docx", brief_buf.read())
+            binder_buf.seek(0)
+            zf.writestr(f"{case_name}_trial_binder.pdf", binder_buf.read())
+        zip_buf.seek(0)
+
+        return StreamingResponse(
+            zip_buf,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{case_name}_all_exports.zip"'
+            },
+        )
+    except Exception as e:
+        logger.exception("ZIP export failed")
         raise HTTPException(status_code=500, detail=str(e))

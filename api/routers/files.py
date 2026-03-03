@@ -4,6 +4,7 @@
 # Upload/download use `async def` (they do async file reads via UploadFile).
 # All other endpoints use sync `def` for thread-pooled Postgres safety.
 
+import datetime
 import logging
 import os
 from pathlib import Path
@@ -14,7 +15,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from api.auth import get_current_user, require_role
-from api.deps import get_case_manager
+from api.deps import get_case_manager, validate_path_id
+from api.file_scanner import scan_bytes
+from api.routers.security import append_scan_entry
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/files", tags=["Files"])
@@ -39,6 +42,7 @@ class UploadResult(BaseModel):
 @router.get("", response_model=List[FileInfo])
 def list_files(case_id: str, user: dict = Depends(get_current_user)):
     """List all source document files for a case."""
+    validate_path_id(case_id, "case_id")
     cm = get_case_manager()
     meta = cm.get_case_metadata(case_id)
     if not meta:
@@ -70,6 +74,7 @@ async def upload_files(
     user: dict = Depends(require_role("admin", "attorney", "paralegal")),
 ):
     """Upload one or more files to a case (async for file I/O)."""
+    validate_path_id(case_id, "case_id")
     cm = get_case_manager()
     meta = cm.get_case_metadata(case_id)
     if not meta:
@@ -85,8 +90,36 @@ async def upload_files(
             raise HTTPException(status_code=400, detail=f"Invalid filename: {f.filename}")
 
         data = await f.read()
+
+        # Security: scan file content before saving
+        scan_result = scan_bytes(data, safe_name)
+        if not scan_result.clean:
+            append_scan_entry(case_id, {
+                "file_name": safe_name,
+                "status": "threat",
+                "scanned_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "sha256": "",
+                "threats": [scan_result.reason],
+            })
+            raise HTTPException(status_code=400, detail=f"File rejected: {scan_result.reason}")
+
+        # Log successful scan
+        append_scan_entry(case_id, {
+            "file_name": safe_name,
+            "status": "clean",
+            "scanned_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "sha256": scan_result.sha256,
+            "threats": [],
+        })
+
         path = cm.save_file(case_id, data, safe_name)
         uploaded.append(FileInfo(filename=safe_name, size=len(data), path=path))
+
+    # Trigger notification for uploads
+    if uploaded:
+        from api.notify import notify_file_uploaded
+        first_name = uploaded[0].filename
+        notify_file_uploaded(user["id"], case_id, first_name, len(uploaded))
 
     return UploadResult(uploaded=uploaded, count=len(uploaded))
 
@@ -98,6 +131,7 @@ def download_file(
     user: dict = Depends(get_current_user),
 ):
     """Download a specific file from a case."""
+    validate_path_id(case_id, "case_id")
     cm = get_case_manager()
     file_path = cm.get_file_path(case_id, filename)
 
@@ -124,6 +158,7 @@ def delete_file(
     user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Delete a file from a case."""
+    validate_path_id(case_id, "case_id")
     cm = get_case_manager()
     if not cm.delete_file(case_id, filename):
         raise HTTPException(status_code=404, detail="File not found")

@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 # each track their own usage independently (no cross-case pollution).
 
 _usage_local = threading.local()
+_context_local = threading.local()
+
+
+def set_max_context_mode(enabled: bool):
+    """Set per-thread max context mode. Call at the start of an analysis run."""
+    _context_local.max_context_mode = enabled
+
+
+def get_max_context_mode() -> bool:
+    """Read per-thread max context mode (defaults to False)."""
+    return getattr(_context_local, "max_context_mode", False)
 
 
 def reset_usage_accumulator():
@@ -64,7 +75,7 @@ def _record_usage(response, model_name=""):
 
 # ---- LLM Factory ---------------------------------------------------------
 
-def get_llm(provider: str = None, max_output_tokens: int = 4096):
+def get_llm(provider: str = None, max_output_tokens: int = 4096, max_context_mode: bool = None):
     """
     Build and return a LangChain chat model for the given provider.
 
@@ -78,8 +89,18 @@ def get_llm(provider: str = None, max_output_tokens: int = 4096):
         - "custom:<model_id>" -> Anthropic with custom model ID
         - "gemini"            -> Google Gemini
 
+    Args:
+        provider: LLM provider key. Falls back to config default if None.
+        max_output_tokens: Maximum output tokens for the response.
+        max_context_mode: When True, enables 1M context window for supported
+            models (opus-4.6, sonnet-4.6). When False, uses default 200K window.
+            When None (default), reads from thread-local set by set_max_context_mode().
+
     Returns None if the API key is missing or the provider is unknown.
     """
+    # Resolve max_context_mode: explicit param > thread-local > False
+    if max_context_mode is None:
+        max_context_mode = get_max_context_mode()
     if not provider:
         provider = CONFIG.get("llm", {}).get("default_provider", "xai")
 
@@ -124,12 +145,13 @@ def get_llm(provider: str = None, max_output_tokens: int = 4096):
         elif provider.startswith("custom:"):
             model_id = provider.replace("custom:", "")
 
-        # Enable extended context window for large-context models
+        # Enable extended context window for large-context models when max_context_mode is ON
         extra_kwargs = {}
-        if model_id in ("claude-opus-4-6", "claude-sonnet-4-6"):
+        if max_context_mode and model_id in ("claude-opus-4-6", "claude-sonnet-4-6"):
             extra_kwargs["default_headers"] = {
                 "anthropic-beta": "context-1m-2025-08-07",
             }
+            logger.info("1M context window enabled for model %s", model_id)
 
         return ChatAnthropic(
             model=model_id,

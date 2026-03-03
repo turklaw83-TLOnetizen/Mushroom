@@ -113,7 +113,7 @@ def get_analysis_progress(case_id: str, prep_id: str) -> dict:
             try:
                 last_dt = datetime.fromisoformat(last_update)
                 elapsed = (datetime.now() - last_dt).total_seconds()
-                if elapsed > 300:  # 5 minutes with no update
+                if elapsed > 300:  # 5 min — analysis nodes can take minutes for large LLM calls
                     logger.warning(
                         "Analysis progress stale for %s/%s (%ds). Marking as error.",
                         case_id, prep_id, int(elapsed),
@@ -147,7 +147,7 @@ def is_analysis_running(case_id: str, prep_id: str) -> bool:
         try:
             last_dt = datetime.fromisoformat(last_update)
             elapsed = (datetime.now() - last_dt).total_seconds()
-            if elapsed > 300:  # 5 minutes with no update = crashed
+            if elapsed > 300:  # 5 min — analysis nodes can take minutes for large LLM calls
                 _write_progress(case_id, prep_id, {
                     "status": "error",
                     "error": f"Analysis appears to have crashed (no update for {int(elapsed)}s). Partial results were saved.",
@@ -267,8 +267,8 @@ def _run_analysis_thread(
                 progress["streamed_text"] = display_text
                 progress["node_started_at"] = datetime.now().isoformat()
                 _write_progress(case_id, prep_id, progress)
-            except Exception:
-                pass  # Non-critical
+            except Exception as _upd_err:
+                logger.warning("Progress updater failed to write token progress: %s", _upd_err)
             _updater_stop.wait(timeout=1.0)
 
     # Start the progress updater daemon
@@ -276,8 +276,11 @@ def _run_analysis_thread(
 
     try:
         # Reset token usage accumulator for accurate cost tracking
-        from core.llm import reset_usage_accumulator
+        from core.llm import reset_usage_accumulator, set_max_context_mode
         reset_usage_accumulator()
+        # Set thread-local max context mode so all get_llm() calls in this thread
+        # automatically pick it up (avoids changing 40+ call sites in node files)
+        set_max_context_mode(max_context_mode)
 
         # Build graph
         if active_modules and active_modules != set(NODE_LABELS.keys()):
@@ -287,6 +290,23 @@ def _run_analysis_thread(
             total_nodes = get_node_count(prep_type)
 
         started_at = datetime.now().isoformat()
+
+        # -- Load attorney module notes for AI-aware re-analysis --
+        # Module notes are stored separately from analysis results and persist
+        # through re-analysis. They're injected into state so get_case_context()
+        # can build the module_notes_block for LLM prompts.
+        try:
+            from core.module_definitions import MODULE_NAMES as _MODULE_NAMES
+            _notes = {}
+            for _mod in _MODULE_NAMES:
+                _note = case_mgr.load_module_notes(case_id, prep_id, _mod)
+                if _note and _note.strip():
+                    _notes[_mod] = _note
+            if _notes:
+                state["_attorney_module_notes"] = _notes
+                logger.info("Loaded %d attorney module notes for re-analysis", len(_notes))
+        except Exception as _notes_err:
+            logger.warning("Failed to load module notes: %s", _notes_err)
 
         # -- Smart caching: check existing results + fingerprint --
         existing_state = case_mgr.load_prep_state(case_id, prep_id) or {}
@@ -576,8 +596,8 @@ def _run_analysis_thread(
         # Cleanup streaming on error
         try:
             clear_stream_callback()
-        except Exception:
-            pass
+        except Exception as _cb_err:
+            logger.debug("Failed to clear stream callback during error cleanup: %s", _cb_err)
         _updater_stop.set()
 
         # Save partial results on error so work isn't lost
@@ -585,8 +605,8 @@ def _run_analysis_thread(
             _partial = case_mgr.merge_append_only(case_id, prep_id, results)
             _partial["_docs_fingerprint"] = case_mgr.compute_docs_fingerprint(case_id)
             case_mgr.save_prep_state(case_id, prep_id, _partial)
-        except Exception:
-            pass
+        except Exception as _save_err:
+            logger.warning("Failed to save partial results on error: %s", _save_err)
 
         _write_progress(case_id, prep_id, {
             "status": "error",
@@ -598,6 +618,13 @@ def _run_analysis_thread(
             "per_node_times": per_node_times if 'per_node_times' in dir() else {},
             "skipped_nodes": skipped_nodes if 'skipped_nodes' in dir() else [],
         })
+
+        # Notify assigned users about the failure
+        try:
+            from api.notify import notify_analysis_failed
+            notify_analysis_failed(case_id, prep_id, str(e))
+        except Exception:
+            pass  # best-effort
 
 
 def start_background_analysis(
@@ -621,8 +648,8 @@ def start_background_analysis(
         _storage = JSONStorageBackend(_data_dir)
         case_mgr = CaseManager(_storage)
         case_mgr.save_snapshot(case_id, prep_id, label="Before background analysis")
-    except Exception:
-        pass  # Non-critical
+    except Exception as _snap_err:
+        logger.warning("Pre-analysis snapshot failed: %s", _snap_err)
 
     # -- Write initial progress.json BEFORE starting the thread --
     # This eliminates the race condition where st.rerun() fires before

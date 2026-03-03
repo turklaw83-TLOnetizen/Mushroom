@@ -12,6 +12,16 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ClientCombobox } from "@/components/ui/client-combobox";
+
+// ---- Case sub-types (match backend case_type values) --------------------
+const CASE_TYPES = [
+    { value: "criminal", label: "Criminal - Adult" },
+    { value: "criminal-juvenile", label: "Criminal - Juvenile" },
+    { value: "civil-plaintiff", label: "Civil - Plaintiff" },
+    { value: "civil-defendant", label: "Civil - Defendant" },
+    { value: "civil-juvenile", label: "Civil - Juvenile" },
+] as const;
 
 interface NewCaseDialogProps {
     open: boolean;
@@ -83,10 +93,9 @@ export function NewCaseDialog({
 
                     <div className="space-y-2">
                         <label className="text-sm font-medium">Client Name</label>
-                        <Input
-                            placeholder="e.g. John Johnson"
+                        <ClientCombobox
                             value={client}
-                            onChange={(e) => setClient(e.target.value)}
+                            onChange={setClient}
                         />
                     </div>
 
@@ -98,10 +107,11 @@ export function NewCaseDialog({
                                 onChange={(e) => setCaseType(e.target.value)}
                                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                             >
-                                <option value="criminal">Criminal</option>
-                                <option value="civil">Civil</option>
-                                <option value="family">Family</option>
-                                <option value="other">Other</option>
+                                {CASE_TYPES.map((ct) => (
+                                    <option key={ct.value} value={ct.value}>
+                                        {ct.label}
+                                    </option>
+                                ))}
                             </select>
                         </div>
                         <div className="space-y-2">

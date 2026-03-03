@@ -1,0 +1,37 @@
+[Unit]
+Description=Project Mushroom Cloud — Next.js Frontend
+Documentation=https://github.com/your-org/project-mushroom-cloud
+After=network.target mushroom-api.service
+Wants=mushroom-api.service
+
+[Service]
+Type=simple
+User=mushroom
+Group=mushroom
+WorkingDirectory=/opt/mushroom-cloud/frontend
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+Environment="HOSTNAME=0.0.0.0"
+Environment="NEXT_TELEMETRY_DISABLED=1"
+EnvironmentFile=-/opt/mushroom-cloud/.env
+
+ExecStart=/usr/bin/node .next/standalone/server.js
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mushroom-frontend
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadOnlyPaths=/opt/mushroom-cloud/frontend
+PrivateTmp=yes
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

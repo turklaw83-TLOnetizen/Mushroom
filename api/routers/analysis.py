@@ -5,7 +5,11 @@
 # asyncio.to_thread for long-running operations. Status endpoints use sync.
 
 import asyncio
+import json
 import logging
+import os
+from pathlib import Path
+from types import SimpleNamespace
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +21,8 @@ from api.deps import get_case_manager, get_config
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/analysis", tags=["Analysis"])
 
+DATA_DIR = str(Path(__file__).resolve().parent.parent.parent / "data")
+
 
 # ---- Schemas -------------------------------------------------------------
 
@@ -24,6 +30,8 @@ class StartAnalysisRequest(BaseModel):
     prep_id: str
     force_rerun: bool = False
     active_modules: Optional[List[str]] = None
+    model: Optional[str] = None
+    max_context_mode: bool = True
 
 
 class StartIngestionRequest(BaseModel):
@@ -50,7 +58,9 @@ async def start_analysis(
     """Start background analysis for a case preparation."""
     cm = get_case_manager()
     config = get_config()
-    provider = config.get("llm", {}).get("default_provider", "anthropic")
+
+    # Determine model provider: request override > config default
+    provider = body.model or config.get("llm", {}).get("default_provider", "anthropic")
 
     try:
         from core.bg_analysis import start_background_analysis, is_analysis_running
@@ -61,15 +71,68 @@ async def start_analysis(
                 detail="Analysis is already running for this preparation",
             )
 
+        # -- Build the state dict (mirrors Streamlit's case_view.py) --
+        # Load prep metadata for type info
+        prep_meta = cm.get_preparation(case_id, body.prep_id) or {}
+        prep_type = prep_meta.get("type", "trial")
+        prep_name = prep_meta.get("name", "Trial Preparation")
+
+        # Load cached documents from ingestion cache
+        all_docs = []
+        all_paths = cm.get_case_files(case_id)
+        cache_path = os.path.join(DATA_DIR, "cases", case_id, "ingestion_cache.json")
+        if os.path.exists(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as f:
+                    cache_data = json.load(f)
+                for _key, doc_list in cache_data.items():
+                    for doc in doc_list:
+                        all_docs.append(
+                            SimpleNamespace(
+                                page_content=doc["page_content"],
+                                metadata=doc.get("metadata", {}),
+                            )
+                        )
+            except Exception as e:
+                logger.warning("Failed to load ingestion cache: %s", e)
+
+        if not all_docs and not body.force_rerun:
+            raise HTTPException(
+                status_code=400,
+                detail="No cached documents found. Run ingestion first or use force_rerun.",
+            )
+
+        state = {
+            "case_files": all_paths,
+            "raw_documents": all_docs,
+            "current_model": provider,
+            "max_context_mode": body.max_context_mode,
+            "case_id": case_id,
+            "case_type": cm.get_case_type(case_id),
+            "client_name": cm.get_client_name(case_id),
+            "attorney_directives": cm.load_directives(case_id),
+            "prep_type": prep_type,
+            "prep_name": prep_name,
+            "_file_tags": cm.get_all_file_tags(case_id),
+        }
+
+        # Convert active_modules list to set (as expected by bg_analysis)
+        active_modules = set(body.active_modules) if body.active_modules else None
+
         await asyncio.to_thread(
             start_background_analysis,
             case_id,
             body.prep_id,
-            cm,
+            state,
+            active_modules,
+            prep_type,
             provider,
-            force_rerun=body.force_rerun,
-            active_modules=body.active_modules,
+            body.max_context_mode,
         )
+
+        # Trigger notification
+        from api.notify import notify_analysis_started
+        notify_analysis_started(user["id"], case_id, body.prep_id, body.active_modules)
 
         return {"status": "started", "case_id": case_id, "prep_id": body.prep_id}
     except ImportError as e:

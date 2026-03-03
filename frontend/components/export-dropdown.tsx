@@ -6,6 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { isDevAuthMode, getDevToken } from "@/lib/dev-auth";
 
 interface ExportDropdownProps {
     caseId: string;
@@ -19,9 +20,12 @@ async function downloadExport(
     getToken: () => Promise<string | null>,
 ) {
     try {
-        const token = await getToken();
+        let token = await getToken();
+        if (!token && isDevAuthMode()) {
+            token = await getDevToken();
+        }
         const res = await fetch(`${API_BASE}${url}`, {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!res.ok) throw new Error(`Export failed: ${res.statusText}`);
         const blob = await res.blob();

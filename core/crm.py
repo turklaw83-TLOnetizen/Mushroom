@@ -157,6 +157,8 @@ def add_client(
     tags: List[str] = None,
     first_name: str = "",
     last_name: str = "",
+    middle_name: str = "",
+    suffix: str = "",
     mailing_address: str = "",
     home_address: str = "",
     home_same_as_mailing: bool = False,
@@ -170,7 +172,10 @@ def add_client(
 
     # Compute display name from first/last or legacy name
     if first_name or last_name:
-        _computed_name = f"{first_name.strip()} {last_name.strip()}".strip()
+        parts = [first_name.strip(), middle_name.strip(), last_name.strip()]
+        _computed_name = " ".join(p for p in parts if p)
+        if suffix and suffix.strip():
+            _computed_name += f", {suffix.strip()}"
     elif name:
         _computed_name = name.strip()
     else:
@@ -185,6 +190,8 @@ def add_client(
         "name": _computed_name,
         "first_name": first_name.strip(),
         "last_name": last_name.strip(),
+        "middle_name": middle_name.strip(),
+        "suffix": suffix.strip(),
         "client_type": client_type,
         "email": email.strip(),
         "phone": phone.strip(),

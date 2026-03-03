@@ -6,11 +6,12 @@
 
 import logging
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 
 from api.auth import get_current_user
 from api.database import get_session_factory
@@ -105,3 +106,33 @@ def get_config() -> dict:
         with open(config_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {}
+
+
+# ---- Path Parameter Validation -------------------------------------------
+# Rejects traversal and injection attempts in case_id / prep_id path params.
+
+_SAFE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,200}$")
+
+
+def validate_path_id(value: str, label: str = "id") -> str:
+    """Validate a path parameter is a safe identifier.
+
+    Rejects: '../', '..\\', null bytes, slashes, and anything
+    that doesn't match [a-zA-Z0-9_-]{1,200}.
+    """
+    if not value or not _SAFE_ID_RE.match(value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {label}: must be 1-200 alphanumeric, dash, or underscore characters",
+        )
+    return value
+
+
+def valid_case_id(case_id: str) -> str:
+    """FastAPI dependency — validates case_id path parameter."""
+    return validate_path_id(case_id, "case_id")
+
+
+def valid_prep_id(prep_id: str) -> str:
+    """FastAPI dependency — validates prep_id path parameter."""
+    return validate_path_id(prep_id, "prep_id")

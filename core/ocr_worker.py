@@ -28,6 +28,7 @@ DATA_DIR = str(_PROJECT_ROOT / "data" / "cases")
 
 # Singleton guard: one worker thread per case
 _active_workers: dict = {}  # {case_id: threading.Thread}
+_workers_lock = threading.Lock()
 _stop_flags: dict = {}  # {case_id: threading.Event}
 
 # Priority queue: files the user wants OCR'd immediately
@@ -85,8 +86,8 @@ def get_ocr_status(case_id: str) -> dict:
                 if age > 600:  # 10 minutes with no update = dead thread
                     logger.warning(f"OCR worker stale for {case_id} ({int(age)}s). Resetting.")
                     data["status"] = "idle"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to parse OCR status timestamp for stale detection: %s", e)
 
     return data
 
@@ -103,6 +104,17 @@ def _get_priority_files(case_id: str) -> list:
     """Get and clear priority files for a case."""
     with _priority_lock:
         return _priority_files.pop(case_id, [])
+
+
+def _get_failed_pages(case_id: str, fname: str, page_num: int, reason: str) -> list:
+    """Accumulate failed page metadata in the OCR status dict."""
+    status = get_ocr_status(case_id)
+    failed = status.get("failed_pages", [])
+    # Cap stored failures to avoid unbounded growth
+    if len(failed) >= 100:
+        failed = failed[-99:]
+    failed.append({"file": fname, "page": page_num, "reason": reason[:200]})
+    return failed
 
 
 # --- Worker Thread ---
@@ -211,7 +223,8 @@ def _run_ocr_thread(case_id: str, case_mgr, model_provider: str):
         logger.warning(f"OCR worker error for {case_id}: {e}")
         _set_status(case_id, status="idle", error=str(e))
     finally:
-        _active_workers.pop(case_id, None)
+        with _workers_lock:
+            _active_workers.pop(case_id, None)
         _stop_flags.pop(case_id, None)
 
 
@@ -270,9 +283,13 @@ def _process_single_file(case_id, fpath, fname, file_key, ext,
                         except concurrent.futures.TimeoutError:
                             logger.warning(f"OCR timeout on {fname} page {page_num + 1}")
                             ocr_text = text or "[OCR timeout]"
+                            _set_status(case_id, last_error=f"Timeout on {fname} p{page_num + 1}",
+                                        failed_pages=_get_failed_pages(case_id, fname, page_num, "timeout"))
                         except Exception as e:
                             logger.warning(f"OCR error on {fname} page {page_num + 1}: {e}")
                             ocr_text = text or ""
+                            _set_status(case_id, last_error=f"Error on {fname} p{page_num + 1}: {e}",
+                                        failed_pages=_get_failed_pages(case_id, fname, page_num, str(e)))
 
                         page_text = ocr_text if ocr_text else text
                     else:
@@ -309,9 +326,13 @@ def _process_single_file(case_id, fpath, fname, file_key, ext,
             except concurrent.futures.TimeoutError:
                 logger.warning(f"OCR timeout on image {fname}")
                 text = "[OCR timeout]"
+                _set_status(case_id, last_error=f"Timeout on image {fname}",
+                            failed_pages=_get_failed_pages(case_id, fname, 0, "timeout"))
             except Exception as e:
                 logger.warning(f"OCR error on image {fname}: {e}")
                 text = ""
+                _set_status(case_id, last_error=f"Error on image {fname}: {e}",
+                            failed_pages=_get_failed_pages(case_id, fname, 0, str(e)))
 
             if text and text.strip():
                 ocr_cache.store_text(file_key, text, fname)
@@ -323,33 +344,36 @@ def _process_single_file(case_id, fpath, fname, file_key, ext,
     except Exception as e:
         logger.warning(f"OCR worker failed on {fname}: {e}")
         ocr_cache.set_status(file_key, "error", fname)
+        _set_status(case_id, last_error=f"Failed on {fname}: {e}",
+                    failed_pages=_get_failed_pages(case_id, fname, -1, str(e)))
 
 
 # --- Public API ---
 
 def start_ocr_worker(case_id: str, case_mgr, model_provider: str) -> bool:
     """Start passive OCR worker for a case. Returns True if started."""
-    # Check if already running
-    existing = _active_workers.get(case_id)
-    if existing and existing.is_alive():
-        return False
+    with _workers_lock:
+        # Check if already running
+        existing = _active_workers.get(case_id)
+        if existing and existing.is_alive():
+            return False
 
-    # Check status for stale detection
-    status = get_ocr_status(case_id)
-    if status.get("status") == "running":
-        return False  # Already running (or stale — get_ocr_status auto-resets after 10 min)
+        # Check status for stale detection
+        status = get_ocr_status(case_id)
+        if status.get("status") == "running":
+            return False  # Already running (or stale — get_ocr_status auto-resets after 10 min)
 
-    stop_event = threading.Event()
-    _stop_flags[case_id] = stop_event
+        stop_event = threading.Event()
+        _stop_flags[case_id] = stop_event
 
-    thread = threading.Thread(
-        target=_run_ocr_thread,
-        args=(case_id, case_mgr, model_provider),
-        daemon=True,
-    )
-    _active_workers[case_id] = thread
-    thread.start()
-    return True
+        thread = threading.Thread(
+            target=_run_ocr_thread,
+            args=(case_id, case_mgr, model_provider),
+            daemon=True,
+        )
+        _active_workers[case_id] = thread
+        thread.start()
+        return True
 
 
 def stop_ocr_worker(case_id: str):
@@ -366,7 +390,9 @@ def _cleanup_ocr_workers():
     """atexit handler: signal all OCR workers to stop."""
     for cid in list(_stop_flags.keys()):
         stop_ocr_worker(cid)
-    for cid, thr in list(_active_workers.items()):
+    with _workers_lock:
+        workers_snapshot = list(_active_workers.items())
+    for cid, thr in workers_snapshot:
         if thr.is_alive():
             logger.info("Waiting for OCR thread %s to finish...", cid)
             thr.join(timeout=5)

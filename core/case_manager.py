@@ -1233,15 +1233,15 @@ class CaseManager:
             draft_filename = f"major_drafts/{draft_id}.json"
             try:
                 self.storage.save_json(case_id, draft_filename, None)
-            except Exception:
-                pass  # File may already be gone
+            except Exception as e:
+                logger.debug("Draft file %s may already be gone: %s", draft_filename, e)
             # Try to remove the actual file using storage's path helper
             try:
                 draft_path = Path(self.storage.get_file_path(case_id, "")).parent / "major_drafts" / f"{draft_id}.json"
                 if draft_path.exists():
                     draft_path.unlink()
-            except Exception:
-                pass  # Best-effort cleanup
+            except Exception as e:
+                logger.debug("Best-effort draft file cleanup failed for %s: %s", draft_id, e)
             return True
         except Exception as e:
             logger.error("Failed to delete major draft %s/%s: %s", case_id, draft_id, e)

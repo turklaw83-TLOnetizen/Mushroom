@@ -9,6 +9,7 @@ import { usePrep } from "@/hooks/use-prep";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { isDevAuthMode, getDevToken } from "@/lib/dev-auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -24,6 +25,7 @@ const exports: ExportOption[] = [
     { label: "Word Report", endpoint: "word", icon: "📘", description: "Editable analysis report" },
     { label: "IRAC Brief", endpoint: "brief", icon: "📗", description: "Issue-Rule-Application-Conclusion" },
     { label: "Trial Binder", endpoint: "trial-binder", icon: "📙", description: "Complete 13-tab trial binder" },
+    { label: "Export All (ZIP)", endpoint: "zip", icon: "📦", description: "All formats in one download" },
 ];
 
 export function ExportPanel({ caseId }: { caseId: string }) {
@@ -39,9 +41,12 @@ export function ExportPanel({ caseId }: { caseId: string }) {
 
         setDownloading(exp.endpoint);
         try {
-            const token = await getToken();
+            let token = await getToken();
+            if (!token && isDevAuthMode()) {
+                token = await getDevToken();
+            }
             const response = await fetch(
-                `${API_BASE}/api/cases/${caseId}/export/${exp.endpoint}/${activePrepId}`,
+                `${API_BASE}/api/v1/cases/${caseId}/export/${exp.endpoint}/${activePrepId}`,
                 {
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                 },
@@ -60,7 +65,8 @@ export function ExportPanel({ caseId }: { caseId: string }) {
 
             // Extract filename from Content-Disposition header
             const disposition = response.headers.get("Content-Disposition");
-            const filename = disposition?.match(/filename="(.+)"/)?.[1] || `export.${exp.endpoint === "pdf" || exp.endpoint === "trial-binder" ? "pdf" : "docx"}`;
+            const fallbackExt = exp.endpoint === "zip" ? "zip" : (exp.endpoint === "pdf" || exp.endpoint === "trial-binder") ? "pdf" : "docx";
+            const filename = disposition?.match(/filename="(.+)"/)?.[1] || `export.${fallbackExt}`;
             a.download = filename;
             document.body.appendChild(a);
             a.click();

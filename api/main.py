@@ -10,7 +10,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+
+from api.auth import require_role
 from fastapi.middleware.cors import CORSMiddleware
 
 # Sentry error tracking (no-op if SENTRY_DSN not set)
@@ -96,7 +98,7 @@ def root():
         "status": "running",
         "docs": "/docs",
         "health": "/api/v1/health",
-        "routers": 32,
+        "routers": 40,
     }
 # ---- Middleware (order matters: last added = outermost) -------------------
 
@@ -106,6 +108,22 @@ from api.rate_limit import RateLimitMiddleware
 from api.upload_limit import UploadSizeMiddleware
 from api.input_sanitize import InputSanitizationMiddleware
 from api.metrics import MetricsMiddleware
+
+# Phase 19: Prometheus metrics middleware (graceful if not installed)
+try:
+    from api.metrics_middleware import PrometheusMiddleware
+    app.add_middleware(PrometheusMiddleware)
+except ImportError:
+    pass
+
+# Phase 20: Profiling middleware (opt-in via ENABLE_PROFILING=true)
+try:
+    from api.profiling import ProfilingMiddleware
+    if os.getenv("ENABLE_PROFILING", "").lower() == "true":
+        app.add_middleware(ProfilingMiddleware)
+except ImportError:
+    pass
+
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(AuditTrailMiddleware)
@@ -113,6 +131,11 @@ app.add_middleware(RateLimitMiddleware)
 app.add_middleware(UploadSizeMiddleware, max_size=20 * 1024 * 1024 * 1024)  # 20GB
 app.add_middleware(InputSanitizationMiddleware)
 app.add_middleware(MetricsMiddleware)
+
+# Domain-specific exception handler (must be registered before the generic one)
+from api.error_handlers import mushroom_cloud_error_handler
+from core.exceptions import MushroomCloudError
+app.add_exception_handler(MushroomCloudError, mushroom_cloud_error_handler)
 
 # Fix #10: Global structured error handler
 app.add_exception_handler(Exception, structured_error_handler)
@@ -131,8 +154,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in CORS_ORIGINS],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "Accept"],
     expose_headers=["X-Request-ID"],  # Let frontend read request IDs
 )
 
@@ -170,8 +193,34 @@ from api.routers.ai_features import router as ai_features_router
 from api.routers.webhooks import router as webhooks_router
 from api.routers.gdpr import router as gdpr_router
 from api.routers.batch import router as batch_router
+from api.routers.chat import router as chat_router
+from api.routers.module_notes import router as module_notes_router
+from api.routers.journal import router as journal_router
+from api.routers.snapshots import router as snapshots_router
+from api.routers.research import router as research_router
+from api.routers.predict import router as predict_router
+from api.routers.security import router as security_router
+from api.routers.ondemand import router as ondemand_router
 from api.metrics import router as metrics_router
 from api.websockets.workers_ws import router as ws_router
+
+# Phase 19+20: Web Vitals / performance metrics router
+try:
+    from api.routers.metrics_router import router as web_vitals_router
+except ImportError:
+    web_vitals_router = None
+
+# Phase 22: Multi-tenancy router
+try:
+    from api.routers.tenants import router as tenants_router
+except ImportError:
+    tenants_router = None
+
+# Phase 24: DLP / file security router
+try:
+    from api.routers.dlp import router as dlp_router
+except ImportError:
+    dlp_router = None
 
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
@@ -204,26 +253,77 @@ app.include_router(ai_features_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(gdpr_router, prefix="/api/v1")
 app.include_router(batch_router, prefix="/api/v1")
+app.include_router(chat_router, prefix="/api/v1")
+app.include_router(module_notes_router, prefix="/api/v1")
+app.include_router(journal_router, prefix="/api/v1")
+app.include_router(snapshots_router, prefix="/api/v1")
+app.include_router(research_router, prefix="/api/v1")
+app.include_router(predict_router, prefix="/api/v1")
+app.include_router(security_router, prefix="/api/v1")
+app.include_router(ondemand_router, prefix="/api/v1")
 app.include_router(metrics_router, prefix="/api/v1")
 app.include_router(ws_router, prefix="/api/v1")
 
+# Phase 19+20: Web Vitals router
+if web_vitals_router:
+    app.include_router(web_vitals_router, prefix="/api/v1")
 
-# ---- Health Check (Fix #12: actually pings DB) ---------------------------
+# Phase 22: Tenant management
+if tenants_router:
+    app.include_router(tenants_router, prefix="/api/v1")
+
+# Phase 24: DLP / file security
+if dlp_router:
+    app.include_router(dlp_router, prefix="/api/v1")
+
+# Phase 12: WebSocket endpoints for real-time features
+from api.websockets.notifications_ws import websocket_notifications
+from api.websockets.presence import websocket_presence
+from api.websockets.collab import websocket_collab
+
+app.add_api_websocket_route("/ws/notifications", websocket_notifications)
+app.add_api_websocket_route("/ws/presence/{case_id}", websocket_presence)
+app.add_api_websocket_route("/ws/collab/{case_id}", websocket_collab)
+
+# Phase 19: Prometheus /metrics endpoint
+try:
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    from fastapi.responses import Response
+
+    @app.get("/metrics", tags=["System"])
+    async def prometheus_metrics():
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+except ImportError:
+    pass
+
+# Phase 20: OpenTelemetry tracing init
+try:
+    from api.tracing import init_tracing
+    init_tracing()
+except ImportError:
+    pass
+
+
+# ---- Health Check (Fix #12: actually pings DB + LLM/disk/data checks) ----
 
 @app.get("/api/v1/health", tags=["System"])
 async def health_check():
     """
     Health check endpoint.
 
-    Returns database connectivity status alongside the service status.
+    Returns database connectivity, LLM provider availability, disk space,
+    and data directory status alongside the service status.
     """
+    import shutil
+    import time
+
     db_status = "not_configured"
     db_latency_ms = None
 
+    # ---- Database check ----
     database_url = os.getenv("DATABASE_URL")
     if database_url:
         try:
-            import time
             from api.database import get_engine
             from sqlalchemy import text
 
@@ -239,12 +339,59 @@ async def health_check():
         except Exception as e:
             db_status = f"error: {e}"
 
+    # ---- LLM provider check ----
+    llm_status = (
+        "configured"
+        if os.getenv("ANTHROPIC_API_KEY") or os.getenv("XAI_API_KEY")
+        else "no_api_keys"
+    )
+
+    # ---- Disk space check ----
+    data_dir = _PROJECT_ROOT / "data"
+    disk_free_gb = None
+    try:
+        disk = shutil.disk_usage(str(data_dir) if data_dir.exists() else str(_PROJECT_ROOT))
+        disk_free_gb = round(disk.free / (1024 ** 3), 1)
+    except OSError:
+        pass  # disk_free_gb stays None
+
+    # ---- Data directory check ----
+    if not data_dir.exists():
+        data_dir_status = "missing"
+    else:
+        # Verify writable by attempting to create and remove a temp file
+        try:
+            probe = data_dir / ".health_probe"
+            probe.write_text("ok")
+            probe.unlink()
+            data_dir_status = "ok"
+        except OSError:
+            data_dir_status = "not_writable"
+
+    # ---- Overall status ----
+    degraded = (
+        db_status not in ("connected", "not_configured")
+        or llm_status != "configured"
+        or data_dir_status != "ok"
+    )
+    unhealthy = data_dir_status == "missing"
+
+    if unhealthy:
+        overall = "unhealthy"
+    elif degraded:
+        overall = "degraded"
+    else:
+        overall = "healthy"
+
     return {
-        "status": "healthy" if db_status in ("connected", "not_configured") else "degraded",
+        "status": overall,
         "service": "Project Mushroom Cloud API",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "database": db_status,
         "db_latency_ms": db_latency_ms,
+        "llm": llm_status,
+        "disk_free_gb": disk_free_gb,
+        "data_dir": data_dir_status,
     }
 
 
@@ -263,3 +410,116 @@ def get_providers():
             if isinstance(p, dict) and "model" in p
         },
     }
+
+
+@app.get("/api/v1/config/api-keys", tags=["System"])
+def get_api_key_status():
+    """Return which API keys are configured (boolean status only, no secrets).
+
+    Checks env vars first, then config.yaml api_keys section.
+    """
+    from api.deps import get_config
+    config = get_config()
+    config_keys = config.get("api_keys", {})
+
+    providers = {
+        "anthropic": {
+            "configured": bool(
+                os.getenv("ANTHROPIC_API_KEY") or config_keys.get("anthropic")
+            ),
+            "env_var": "ANTHROPIC_API_KEY",
+        },
+        "openai": {
+            "configured": bool(
+                os.getenv("OPENAI_API_KEY") or config_keys.get("openai")
+            ),
+            "env_var": "OPENAI_API_KEY",
+        },
+        "xai": {
+            "configured": bool(
+                os.getenv("XAI_API_KEY") or config_keys.get("xai")
+            ),
+            "env_var": "XAI_API_KEY",
+        },
+        "google": {
+            "configured": bool(
+                os.getenv("GOOGLE_API_KEY")
+                or os.getenv("GEMINI_API_KEY")
+                or config_keys.get("google")
+            ),
+            "env_var": "GOOGLE_API_KEY",
+        },
+    }
+    return {"providers": providers}
+
+
+@app.put("/api/v1/config/api-keys", tags=["System"])
+def update_api_keys(body: dict, user: dict = Depends(require_role("admin"))):
+    """Save API keys to config.yaml (never echoes keys back).
+
+    Accepts: { "anthropic": "sk-ant-...", "xai": "xai-...", ... }
+    Also sets them as environment variables for the running process.
+    Returns updated boolean status per provider.
+    """
+    import yaml
+
+    valid_providers = {"anthropic", "openai", "xai", "google"}
+    env_var_map = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "xai": "XAI_API_KEY",
+        "google": "GOOGLE_API_KEY",
+    }
+
+    config_path = _PROJECT_ROOT / "config.yaml"
+    if not config_path.exists():
+        return {"status": "error", "detail": "config.yaml not found"}
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+
+    api_keys = config.setdefault("api_keys", {})
+    updated = []
+
+    for provider, key_value in body.items():
+        if provider not in valid_providers:
+            continue
+        if not isinstance(key_value, str) or not key_value.strip():
+            continue
+        api_keys[provider] = key_value.strip()
+        # Also set as env var for the running process
+        os.environ[env_var_map[provider]] = key_value.strip()
+        updated.append(provider)
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f, default_flow_style=False)
+
+    # Clear cached config so next request sees updated values
+    from api.deps import get_config
+    get_config.cache_clear()
+
+    logger.info("API keys updated for providers: %s", updated)
+    # Return fresh boolean status (never echo keys)
+    return get_api_key_status()
+
+
+@app.put("/api/v1/config/providers", tags=["System"])
+def update_providers(body: dict, user: dict = Depends(require_role("admin"))):
+    """Update default/fallback provider selection (saves to config.yaml)."""
+    import yaml
+    config_path = _PROJECT_ROOT / "config.yaml"
+    if not config_path.exists():
+        return {"status": "error", "detail": "config.yaml not found"}
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+    llm = config.setdefault("llm", {})
+    if "default_provider" in body:
+        llm["default_provider"] = body["default_provider"]
+    if "fallback_provider" in body:
+        llm["fallback_provider"] = body["fallback_provider"]
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f, default_flow_style=False)
+    # Clear cached config so next request sees updated values
+    from api.deps import get_config
+    get_config.cache_clear()
+    return {"status": "updated"}

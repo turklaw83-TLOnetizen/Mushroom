@@ -1,6 +1,9 @@
 // ---- API Client ---------------------------------------------------------
 // Typed fetch wrapper with Clerk auth, retry logic, and offline detection.
 
+import { isDevAuthMode, getDevToken } from "./dev-auth";
+import { useSessionCostStore } from "./stores/session-cost-store";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ---- Retry Configuration ------------------------------------------------
@@ -22,7 +25,7 @@ export class ApiError extends Error {
     }
 }
 
-type RequestOptions = {
+export type RequestOptions = {
     method?: string;
     body?: unknown;
     params?: Record<string, string | number | boolean | undefined>;
@@ -58,6 +61,27 @@ if (typeof window !== "undefined") {
     window.addEventListener("offline", () => _setOffline(true));
 }
 
+// ---- Usage Tracking -----------------------------------------------------
+
+function _recordUsage(response: Response, path: string) {
+    const tokensHeader = response.headers.get("x-usage-tokens");
+    const costHeader = response.headers.get("x-usage-cost");
+    if (!tokensHeader && !costHeader) return;
+
+    const tokens = tokensHeader ? parseInt(tokensHeader, 10) : 0;
+    const cost = costHeader ? parseFloat(costHeader) : 0;
+    if (tokens <= 0 && cost <= 0) return;
+
+    const model = response.headers.get("x-usage-model") || "unknown";
+
+    useSessionCostStore.getState().addEntry({
+        tokens,
+        cost,
+        model,
+        endpoint: path,
+    });
+}
+
 // ---- Core Request Function with Retry -----------------------------------
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -73,12 +97,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         });
     }
 
-    // Attach Clerk token if available
+    // Attach auth token: Clerk first, then dev fallback
+    let token: string | null = null;
     if (getToken) {
-        const token = await getToken();
-        if (token) {
-            headers["Authorization"] = `Bearer ${token}`;
-        }
+        token = await getToken();
+    }
+    if (!token && isDevAuthMode()) {
+        token = await getDevToken();
+    }
+    if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
     }
 
     const fetchOptions: RequestInit = {
@@ -103,14 +131,22 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
             _setOffline(false);
 
             if (response.ok) {
+                // Track API usage if the backend reports token/cost headers
+                _recordUsage(response, path);
+
                 if (response.status === 204 || response.headers.get("content-length") === "0") {
                     return {} as T;
                 }
                 return response.json();
             }
 
-            // Auto-redirect to sign-in on 401
-            if (response.status === 401 && typeof window !== "undefined") {
+            // Auto-redirect to sign-in on 401 (skip in dev auth mode or if already on sign-in)
+            if (
+                response.status === 401 &&
+                typeof window !== "undefined" &&
+                !isDevAuthMode() &&
+                !window.location.pathname.startsWith("/sign-in")
+            ) {
                 window.location.href = "/sign-in";
                 return new Promise<T>(() => { });
             }
@@ -182,9 +218,15 @@ export const api = {
         files.forEach((f) => formData.append("files", f));
 
         const headers: Record<string, string> = {};
+        let uploadToken: string | null = null;
         if (getToken) {
-            const token = await getToken();
-            if (token) headers["Authorization"] = `Bearer ${token}`;
+            uploadToken = await getToken();
+        }
+        if (!uploadToken && isDevAuthMode()) {
+            uploadToken = await getDevToken();
+        }
+        if (uploadToken) {
+            headers["Authorization"] = `Bearer ${uploadToken}`;
         }
 
         const response = await fetch(url.toString(), {
@@ -203,5 +245,21 @@ export const api = {
         }
 
         return response.json();
+    },
+
+    // Streaming fetch (returns raw Response for SSE consumption)
+    stream: async (path: string, body: any, options?: RequestOptions): Promise<Response> => {
+        const url = `${API_BASE}/api/v1${path}`;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+        if (options?.getToken) {
+            const token = await options.getToken();
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+        } else if (isDevAuthMode()) {
+            const token = await getDevToken();
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        return fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
     },
 };

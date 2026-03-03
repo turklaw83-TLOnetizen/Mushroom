@@ -91,22 +91,22 @@ def get_ingestion_status(case_id: str) -> dict:
         logger.warning(f"Error reading ingestion status: {e}")
         return {"status": "none", "progress": 0, "message": ""}
 
-    # Stale detection: if "running" but no update in 5 min, the worker thread is dead
+    # Stale detection: if "running" but no update in 90s, the worker thread is dead
     if data.get("status") == "running":
         updated_at = data.get("updated_at", "")
         if updated_at:
             try:
                 last_update = datetime.fromisoformat(updated_at)
                 age_secs = (datetime.now() - last_update).total_seconds()
-                if age_secs > 300:  # 5 minutes
+                if age_secs > 90:  # 90 seconds (heartbeat interval is 15s)
                     logger.warning(
                         f"Ingestion status stale for {case_id} ({int(age_secs)}s). "
                         f"Auto-resetting from 'running' to 'none'."
                     )
                     clear_ingestion_status(case_id)
                     return {"status": "none", "progress": 0, "message": ""}
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to parse ingestion status timestamp for %s: %s", case_id, e)
 
     return data
 
@@ -116,8 +116,8 @@ def clear_ingestion_status(case_id: str):
     try:
         if os.path.exists(path):
             os.remove(path)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to remove ingestion status file for %s: %s", case_id, e)
 
 
 # --- Decision File (UI → Worker communication) ---
@@ -131,8 +131,8 @@ def _clear_decision(case_id: str):
     try:
         if os.path.exists(path):
             os.remove(path)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to remove ingestion decision file for %s: %s", case_id, e)
 
 
 def write_ingestion_decision(case_id: str, action: str):
@@ -260,8 +260,8 @@ def _run_ingestion_thread(case_id: str, case_mgr, model_provider: str, force_ocr
                         if _auto_tag:
                             case_mgr.set_file_tags(case_id, fname, [_auto_tag])
                             logger.info("Auto-classified cached %s as '%s'", fname, _auto_tag)
-                except Exception:
-                    pass
+                except Exception as _cls_err:
+                    logger.warning("Auto-classification failed for cached file %s: %s", fname, _cls_err)
 
                 skipped_count += 1
 
@@ -373,8 +373,8 @@ def _run_ingestion_thread(case_id: str, case_mgr, model_provider: str, force_ocr
                         if _auto_tag:
                             case_mgr.set_file_tags(case_id, fname, [_auto_tag])
                             logger.info("Auto-classified %s as '%s'", fname, _auto_tag)
-                except Exception:
-                    pass
+                except Exception as _cls_err:
+                    logger.warning("Auto-classification failed for file %s: %s", fname, _cls_err)
 
             except concurrent.futures.TimeoutError:
                 logger.warning(f"Processing {fname} timed out after 30 minutes -- auto-skipping")
@@ -473,6 +473,13 @@ def _run_ingestion_thread(case_id: str, case_mgr, model_provider: str, force_ocr
         error_tb = traceback.format_exc()
         logger.warning(f"Ingestion Error: {error_tb}")
         set_ingestion_status(case_id, "error", 100, f"Critical error during ingestion.", error=str(e))
+
+        # Notify assigned users about the failure
+        try:
+            from api.notify import notify_ingestion_failed
+            notify_ingestion_failed(case_id, str(e))
+        except Exception:
+            pass  # best-effort
 
 # --- Active Thread Tracking & Graceful Shutdown ---
 

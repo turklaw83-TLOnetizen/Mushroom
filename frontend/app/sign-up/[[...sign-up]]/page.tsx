@@ -1,16 +1,7 @@
-import { SignUp } from "@clerk/nextjs";
+import { redirect } from "next/navigation";
 
+// Sign-up is disabled — users are invited through the Clerk Dashboard.
+// Redirect anyone hitting /sign-up to /sign-in.
 export default function SignUpPage() {
-    return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-            <SignUp
-                appearance={{
-                    elements: {
-                        rootBox: "mx-auto",
-                        card: "shadow-xl",
-                    },
-                }}
-            />
-        </div>
-    );
+    redirect("/sign-in");
 }

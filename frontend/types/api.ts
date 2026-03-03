@@ -34,15 +34,16 @@ export interface Preparation {
 
 // ---- Witness ----
 export interface Witness {
-    id: string;
+    id?: string;
     name: string;
-    type: "State" | "Defense" | "Expert" | "Character";
+    type: string;
     role: string;
-    relationship: string;
-    contact_info: string;
+    relationship?: string;
+    contact_info?: string;
     deposition_date?: string;
-    notes: string;
+    notes?: string;
     credibility_score?: number;
+    goal?: string;
 }
 
 // ---- Evidence ----
@@ -56,8 +57,12 @@ export interface Evidence {
     location?: string;
     chain_of_custody?: string;
     admissibility_notes?: string;
+    foundation?: string;
     tags: string[];
 }
+
+/** Alias used by the evidence page (same shape as Evidence). */
+export type EvidenceItem = Evidence;
 
 // ---- Calendar Event ----
 export interface CalendarEvent {
@@ -90,6 +95,22 @@ export interface Expense {
     category: string;
     description: string;
     receipt_path?: string;
+}
+
+// ---- Timeline ----
+export interface TimelineEvent {
+    date: string;
+    title: string;
+    description: string;
+    source_ref: string;
+    _custom?: boolean;
+}
+
+// ---- Chat ----
+export interface ChatMessage {
+    role: "user" | "assistant";
+    content: string;
+    timestamp?: string;
 }
 
 // ---- Analysis ----

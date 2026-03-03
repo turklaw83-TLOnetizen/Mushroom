@@ -2,8 +2,10 @@
 # Bulk actions for managing large case loads efficiently.
 
 import logging
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from api.auth import get_current_user, require_role
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/batch", tags=["Batch Operations"])
@@ -26,7 +28,10 @@ class BulkExport(BaseModel):
 
 
 @router.post("/cases/status")
-def bulk_update_status(payload: BulkStatusUpdate):
+def bulk_update_status(
+    payload: BulkStatusUpdate,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
     """Update status for multiple cases at once."""
     updated = []
     for case_id in payload.case_ids:
@@ -35,12 +40,15 @@ def bulk_update_status(payload: BulkStatusUpdate):
             "new_status": payload.new_status,
             "updated": True,
         })
-    logger.info("Bulk status update: %d cases → %s", len(payload.case_ids), payload.new_status)
+    logger.info("Bulk status update by %s: %d cases → %s", user["id"], len(payload.case_ids), payload.new_status)
     return {"updated": len(updated), "results": updated}
 
 
 @router.post("/cases/assign")
-def bulk_assign_cases(payload: BulkAssign):
+def bulk_assign_cases(
+    payload: BulkAssign,
+    user: dict = Depends(require_role("admin")),
+):
     """Assign multiple cases to a team member."""
     assigned = []
     for case_id in payload.case_ids:
@@ -49,14 +57,17 @@ def bulk_assign_cases(payload: BulkAssign):
             "assignee_id": payload.assignee_id,
             "assigned": True,
         })
-    logger.info("Bulk assign: %d cases → %s", len(payload.case_ids), payload.assignee_id)
+    logger.info("Bulk assign by %s: %d cases → %s", user["id"], len(payload.case_ids), payload.assignee_id)
     return {"assigned": len(assigned), "results": assigned}
 
 
 @router.post("/cases/export")
-def bulk_export_cases(payload: BulkExport):
+def bulk_export_cases(
+    payload: BulkExport,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
     """Export multiple cases to a downloadable file."""
-    logger.info("Bulk export: %d cases as %s", len(payload.case_ids), payload.format)
+    logger.info("Bulk export by %s: %d cases as %s", user["id"], len(payload.case_ids), payload.format)
     return {
         "status": "processing",
         "case_count": len(payload.case_ids),
@@ -66,10 +77,13 @@ def bulk_export_cases(payload: BulkExport):
 
 
 @router.post("/cases/archive")
-def bulk_archive_cases(payload: BulkStatusUpdate):
+def bulk_archive_cases(
+    payload: BulkStatusUpdate,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
     """Archive multiple closed cases."""
     archived = []
     for case_id in payload.case_ids:
         archived.append({"case_id": case_id, "archived": True})
-    logger.info("Bulk archive: %d cases", len(payload.case_ids))
+    logger.info("Bulk archive by %s: %d cases", user["id"], len(payload.case_ids))
     return {"archived": len(archived), "results": archived}

@@ -230,7 +230,8 @@ def render_case_view():
                 f'<span class="pill-badge pill-badge-accent">{ct_icon} {ct_display}</span>',
                 unsafe_allow_html=True,
             )
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to load CRM client badge for case %s: %s", case_id, e)
         st.markdown(
             f'<span class="pill-badge pill-badge-accent">{ct_icon} {ct_display}</span>',
             unsafe_allow_html=True,
@@ -493,8 +494,8 @@ def render_case_view():
         _ocr_stat = get_ocr_status(case_id)
         if _ocr_stat.get("status") != "running" and case_mgr.get_case_files(case_id):
             start_ocr_worker(case_id, case_mgr, model_provider)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Auto-start passive OCR failed for case %s: %s", case_id, e)
 
     # ===== FILE MANAGEMENT =====
     _render_file_management(case_id, case_mgr, model_provider)
@@ -1219,8 +1220,8 @@ def _render_file_management(case_id, case_mgr, model_provider):
                     st.caption(
                         f"\u2705 **OCR complete:** {_ocr_stat.get('files_done', 0)} files indexed"
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to display OCR status for case %s: %s", case_id, e)
 
             _all_file_tags = case_mgr.get_all_file_tags(case_id)
             _custom_tag_cats = case_mgr.get_custom_file_tag_categories(case_id)
@@ -1246,8 +1247,8 @@ def _render_file_management(case_id, case_mgr, model_provider):
                 _current_prep = st.session_state.get("current_prep_id", "")
                 if _current_prep:
                     _relevance_scores = _load_rel(_rel_data_dir, case_id, _current_prep)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Could not load relevance scores for case %s: %s", case_id, e)
 
             # Apply sort
             if _sort_mode == "Name (A-Z)":
@@ -1306,7 +1307,8 @@ def _render_file_management(case_id, case_mgr, model_provider):
                     str(Path(__file__).resolve().parent.parent / "data" / "cases"), case_id
                 ))
                 _ocr_statuses = _ocr_cache.get_all_statuses()
-            except Exception:
+            except Exception as e:
+                logger.debug("Could not load OCR cache statuses for case %s: %s", case_id, e)
                 _ocr_statuses = {}
 
             for idx, file_path in _page_files:
@@ -1472,7 +1474,8 @@ def _render_file_management(case_id, case_mgr, model_provider):
                                     st.code(_preview_text, language="text")
                                 else:
                                     st.info(f"Binary file ({_ext}) — no text preview available.")
-                            except Exception:
+                            except Exception as e:
+                                logger.debug("Could not read file %s as text: %s", file_path, e)
                                 st.info(f"Binary file ({_ext}) — no text preview available.")
 
             st.divider()
@@ -1532,8 +1535,8 @@ def _render_file_management(case_id, case_mgr, model_provider):
             try:
                 from core.ocr_worker import start_ocr_worker
                 start_ocr_worker(case_id, case_mgr, model_provider)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to start OCR worker after upload for case %s: %s", case_id, e)
 
         # ---- Helper: scan a folder path, dedup, and import in one shot ----
         def _scan_and_import_folder(folder_path_str: str, recurse: bool = True):
@@ -2013,8 +2016,8 @@ def _render_analysis_engine(
                                     f"&#8987; Processing for {int(_age_secs)}s... "
                                     f"(OCR on scanned documents can take 1-2 min per page)</div>"
                                 )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("Could not compute ingestion age for stale warning: %s", e)
 
                     _safe_msg = _html_mod.escape(msg)
                     st.markdown(
@@ -2063,8 +2066,8 @@ def _render_analysis_engine(
                     st.session_state._trigger_token_count = True
                     try:
                         clear_ingestion_status(case_id)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("Failed to clear ingestion status for case %s: %s", case_id, e)
                     st.rerun()
             except ImportError:
                 st.session_state._waiting_for_analysis_preview = False
@@ -2183,8 +2186,8 @@ def _render_analysis_engine(
                                                 _RaDoc(page_content=_rv["page_content"],
                                                        metadata=_rv.get("metadata", {}))
                                             )
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.warning("Failed to load cached documents for re-analysis: %s", e)
 
                             if not _ra_all_docs:
                                 # No cached docs — need to run ingestion first
@@ -2268,7 +2271,8 @@ def _render_analysis_engine(
                         try:
                             with open(_cache_path, "r", encoding="utf-8") as _cf:
                                 _cached_keys = set(json.load(_cf).keys())
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("Failed to read ingestion cache at %s: %s", _cache_path, e)
                             _needs_ingestion = True
 
                         if not _needs_ingestion:
@@ -2322,8 +2326,8 @@ def _render_analysis_engine(
                                             metadata=_acd.get("metadata", {}),
                                         )
                                     )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("Failed to load analysis doc cache at %s: %s", _acache_path, e)
 
                 _doc_text = "\n".join(str(d) for d in all_docs)
                 _est_tokens = len(_doc_text) // 4
@@ -2815,8 +2819,8 @@ def _render_analysis_engine(
                                         f"Completed in {int(_elapsed // 60)}m {int(_elapsed % 60)}s — "
                                         f"{_regen_count} regenerated, {len(_fp_skipped)} cached"
                                     )
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.debug("Could not compute analysis completion summary: %s", e)
                             _summary_rows = []
                             try:
                                 from core.nodes.graph_builder import NODE_LABELS as _NL
@@ -2912,8 +2916,8 @@ def _render_global_search(results, nav_groups, case_mgr=None):
                             st.caption(
                                 f"\u2022 {_sa.get('action', '')} \u2014 {_sa.get('detail', '')[:60]}"
                             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Cross-entity search failed: %s", e)
 
 
 def _render_courtroom_mode(results):

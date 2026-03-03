@@ -1,0 +1,26 @@
+{
+  "dashboard": {
+    "title": "Background Workers",
+    "uid": "mc-workers",
+    "panels": [
+      {
+        "title": "Worker Status",
+        "type": "stat",
+        "targets": [{"expr": "worker_status", "legendFormat": "{{worker_type}}"}],
+        "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0}
+      },
+      {
+        "title": "File Uploads",
+        "type": "timeseries",
+        "targets": [{"expr": "rate(file_uploads_total[5m])", "legendFormat": "uploads/s"}],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "title": "OCR Pages Processed",
+        "type": "timeseries",
+        "targets": [{"expr": "rate(ocr_pages_processed_total[5m])", "legendFormat": "pages/s"}],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+      }
+    ]
+  }
+}

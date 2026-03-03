@@ -40,14 +40,16 @@ class CreateEventRequest(BaseModel):
 @router.get("/events", response_model=List[EventResponse])
 def list_events(
     case_id: str = Query(default="", description="Filter by case"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     user: dict = Depends(get_current_user),
 ):
-    """List calendar events, optionally filtered by case."""
+    """List calendar events, optionally filtered by case (with limit/offset)."""
     try:
         from core.calendar_events import load_events
         cm = get_case_manager()
         events = load_events(cm.storage, case_id=case_id or None)
-        return events
+        return events[offset:offset + limit]
     except ImportError:
         return []
 

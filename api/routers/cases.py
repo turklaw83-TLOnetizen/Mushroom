@@ -73,6 +73,7 @@ class UpdateCaseRequest(BaseModel):
     case_subcategory: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
     client_name: Optional[str] = Field(default=None, max_length=CASE_NAME_MAX)
     jurisdiction: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+    pinned: Optional[bool] = None
 
 
 class SetPhaseRequest(BaseModel):
@@ -203,10 +204,17 @@ def set_phase(
 ):
     """Set case phase (active/closed/archived) and optional sub-phase."""
     cm = get_case_manager()
+    old_phase, _ = cm.get_phase(case_id)
     try:
         cm.set_phase(case_id, body.phase, body.sub_phase)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Trigger notification on phase change
+    if old_phase != body.phase:
+        from api.notify import notify_phase_changed
+        notify_phase_changed(user["id"], case_id, old_phase, body.phase)
+
     return PhaseResponse(phase=body.phase, sub_phase=body.sub_phase)
 
 
@@ -293,6 +301,46 @@ def delete_preparation(
     return {"status": "deleted", "prep_id": prep_id}
 
 
+class RenamePrepRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=CASE_NAME_MAX)
+
+
+class ClonePrepRequest(BaseModel):
+    name: str = Field(default="", max_length=CASE_NAME_MAX)
+
+
+@router.patch("/{case_id}/preparations/{prep_id}")
+def rename_preparation(
+    case_id: str,
+    prep_id: str,
+    body: RenamePrepRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Rename a preparation."""
+    cm = get_case_manager()
+    try:
+        cm.rename_preparation(case_id, prep_id, body.name)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "renamed", "prep_id": prep_id, "name": body.name}
+
+
+@router.post("/{case_id}/preparations/{prep_id}/clone", status_code=status.HTTP_201_CREATED)
+def clone_preparation(
+    case_id: str,
+    prep_id: str,
+    body: ClonePrepRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Deep-copy a preparation with all analysis results."""
+    cm = get_case_manager()
+    try:
+        new_prep_id = cm.clone_preparation(case_id, prep_id, body.name)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"prep_id": new_prep_id}
+
+
 # ---- Directives ---------------------------------------------------------
 
 @router.get("/{case_id}/directives")
@@ -312,3 +360,28 @@ def add_directive(
     cm = get_case_manager()
     directive_id = cm.save_directive(case_id, body.text, body.category)
     return {"directive_id": directive_id}
+
+
+@router.put("/{case_id}/directives/{directive_id}")
+def update_directive(
+    case_id: str,
+    directive_id: str,
+    body: AddDirectiveRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Update an attorney directive."""
+    cm = get_case_manager()
+    cm.update_directive(case_id, directive_id, body.text)
+    return {"status": "updated", "directive_id": directive_id}
+
+
+@router.delete("/{case_id}/directives/{directive_id}")
+def delete_directive(
+    case_id: str,
+    directive_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Delete an attorney directive."""
+    cm = get_case_manager()
+    cm.delete_directive(case_id, directive_id)
+    return {"status": "deleted", "directive_id": directive_id}

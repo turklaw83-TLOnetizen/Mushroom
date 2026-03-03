@@ -243,7 +243,8 @@ def render_sidebar():
                 if _was_google:
                     try:
                         st.logout()
-                    except Exception:
+                    except Exception as _logout_err:
+                        logger.debug("st.logout() unavailable, falling back to rerun: %s", _logout_err)
                         st.rerun()
                 else:
                     st.rerun()
@@ -277,8 +278,9 @@ def render_sidebar():
                             st.divider()
                     if _notif_count > 15:
                         st.caption(f"... and {_notif_count - 15} more")
-        except Exception:
-            pass
+        except Exception as _notif_err:
+            logger.warning("Failed to load notifications: %s", _notif_err)
+            st.caption("\u26a0\ufe0f Notifications unavailable")
 
         # ---- Back to Cases (when inside a case) ----
         if st.session_state.get("current_case_id"):
@@ -294,8 +296,8 @@ def render_sidebar():
                 st.session_state.chat_history = []
                 try:
                     st.query_params.clear()
-                except Exception:
-                    pass
+                except Exception as _qp_err:
+                    logger.debug("Could not clear query params: %s", _qp_err)
                 st.rerun()
             st.divider()
 
@@ -477,8 +479,9 @@ def render_sidebar():
                         f"\U0001f4c5 {_soon} upcoming deadline{'s' if _soon != 1 else ''}"
                     )
                 st.markdown("---")
-        except Exception:
-            pass
+        except Exception as _dl_err:
+            logger.warning("Failed to load deadline badges: %s", _dl_err)
+            st.caption("\u26a0\ufe0f Deadline badges unavailable")
 
         # ---- Case-Specific Sidebar (when case is open) ----
         current_case_id = st.session_state.get("current_case_id")
@@ -752,16 +755,19 @@ def render_sidebar():
                             from core.export.word_export import generate_word_report as _gwr
                             _zf.writestr(f"{_safe_fname}_Report.docx", _gwr(_results, _export_title))
                         except Exception as _e:
+                            logger.warning("ZIP export - Word report failed: %s", _e)
                             _zip_errors.append(f"Word: {_e}")
                         try:
                             from core.export.pdf_export import generate_pdf_report as _gpr
                             _zf.writestr(f"{_safe_fname}_Report.pdf", _gpr(_results, _export_title))
                         except Exception as _e:
+                            logger.warning("ZIP export - PDF report failed: %s", _e)
                             _zip_errors.append(f"PDF: {_e}")
                         try:
                             from core.export.word_export import generate_brief_outline as _gbo
                             _zf.writestr(f"IRAC_Brief_{_safe_fname}.docx", _gbo(_results, _export_title))
                         except Exception as _e:
+                            logger.warning("ZIP export - IRAC brief failed: %s", _e)
                             _zip_errors.append(f"Brief: {_e}")
                         try:
                             from core.export.word_export import generate_trial_binder as _gtb
@@ -770,6 +776,7 @@ def render_sidebar():
                                 _gtb(_results, _export_title, prep_type=_binder_prep_type, prep_name=_pname),
                             )
                         except Exception as _e:
+                            logger.warning("ZIP export - Trial binder failed: %s", _e)
                             _zip_errors.append(f"Binder: {_e}")
                     _zip_buf.seek(0)
                     st.download_button(

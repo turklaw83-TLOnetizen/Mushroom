@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificationCenter } from "@/components/notification-center";
+import { SessionCostWidget } from "@/components/session-cost-widget";
 
 export function Sidebar() {
     const pathname = usePathname();
@@ -144,6 +145,7 @@ export function Sidebar() {
                         <NavItem href="/portal" label="Client Portal" icon="🌐" active={pathname === "/portal"} collapsed={!sidebarOpen} />
                         <NavItem href="/profile" label="Profile" icon="👤" active={pathname === "/profile"} collapsed={!sidebarOpen} />
                         <NavItem href="/settings" label="Settings" icon="⚙️" active={pathname === "/settings"} collapsed={!sidebarOpen} />
+                        <NavItem href="/settings/backup" label="Backup" icon="💾" active={pathname === "/settings/backup"} collapsed={!sidebarOpen} />
                         <NavItem href="/admin" label="Admin" icon="🛡️" active={pathname === "/admin"} collapsed={!sidebarOpen} />
                     </div>
 
@@ -180,6 +182,9 @@ export function Sidebar() {
                         </>
                     )}
                 </nav>
+
+                {/* Session cost tracker (only when sidebar is expanded) */}
+                {sidebarOpen && <SessionCostWidget />}
 
                 <Separator />
 
