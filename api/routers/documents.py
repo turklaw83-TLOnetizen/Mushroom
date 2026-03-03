@@ -57,7 +57,8 @@ def save_draft(
         draft_id = cm.save_major_draft(case_id, body.model_dump())
         return {"status": "saved", "id": draft_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to save draft")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/drafts/{case_id}/{draft_id}")
@@ -72,7 +73,8 @@ def delete_draft(
         cm.delete_major_draft(case_id, draft_id)
         return {"status": "deleted", "id": draft_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to delete draft")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put("/drafts/{case_id}/{draft_id}")
@@ -89,7 +91,8 @@ def update_draft(
         new_id = cm.save_major_draft(case_id, {"id": draft_id, **body.model_dump()})
         return {"status": "updated", "id": new_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to update draft")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ---- Research Data -------------------------------------------------------

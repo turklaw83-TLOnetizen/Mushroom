@@ -38,4 +38,4 @@ def get_notifications(
         return {"items": items, "total": len(items)}
     except Exception as e:
         logger.exception("Notification error")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

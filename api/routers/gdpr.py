@@ -6,12 +6,14 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 
+from api.auth import get_current_user, require_role
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/gdpr", tags=["GDPR / Privacy"])
 
 
 @router.get("/export/{client_id}")
-def export_client_data(client_id: str):
+def export_client_data(client_id: str, user: dict = Depends(require_role("admin"))):
     """
     Export all data associated with a client in JSON format.
     GDPR Article 20 — Right to Data Portability.
@@ -40,7 +42,7 @@ def export_client_data(client_id: str):
 
 
 @router.post("/forget/{client_id}")
-def forget_client(client_id: str):
+def forget_client(client_id: str, user: dict = Depends(require_role("admin"))):
     """
     Right to be forgotten — anonymize all client data.
     GDPR Article 17 — Right to Erasure.
@@ -55,7 +57,7 @@ def forget_client(client_id: str):
 
 
 @router.get("/consent/{client_id}")
-def get_consent_status(client_id: str):
+def get_consent_status(client_id: str, user: dict = Depends(get_current_user)):
     """Check what data processing consents are on file for a client."""
     return {
         "client_id": client_id,

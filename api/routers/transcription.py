@@ -30,7 +30,8 @@ def start_transcription(
         result = transcribe_file(case_id, body.file_key, language=body.language)
         return {"status": "started", "job_id": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to start transcription")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/jobs")
@@ -43,7 +44,8 @@ def list_jobs(
         from core.transcription_worker import list_transcription_jobs
         return {"items": list_transcription_jobs(case_id)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to list transcription jobs")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/jobs/{job_id}")
@@ -62,4 +64,5 @@ def get_job_status(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get transcription job status")
+        raise HTTPException(status_code=500, detail="Internal server error")

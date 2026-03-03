@@ -40,7 +40,8 @@ def email_queue(
         items = get_all_emails(status_filter=status)
         return {"items": items, "total": len(items)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get email queue")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get("/queue/stats")
@@ -52,7 +53,8 @@ def email_stats(
         from core.email_integration import get_email_queue_stats
         return get_email_queue_stats()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to get email stats")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/classify")
@@ -71,7 +73,8 @@ def classify_email(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to classify email")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/dismiss")
@@ -88,4 +91,5 @@ def dismiss_email(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Failed to dismiss email")
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -21,7 +21,7 @@ def _verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     if not secret:
         logger.warning("CLERK_WEBHOOK_SECRET not set — skipping signature verification")
         return True
-    expected = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    expected = hmac.HMAC(secret.encode(), payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
 
@@ -65,7 +65,7 @@ async def clerk_webhook(request: Request):
 
     except Exception as e:
         logger.exception("Webhook processing failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Webhook processing failed")
 
 
 def _sync_user(user_data: dict, action: str = "create"):

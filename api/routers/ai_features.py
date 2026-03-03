@@ -76,7 +76,7 @@ Keep the summary under {body.max_length} characters. Be specific, cite evidence 
         raise
     except Exception as e:
         logger.exception("AI summary generation failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/deposition-prep")
@@ -115,4 +115,5 @@ Focus on areas where the evidence may be weak or contradictory."""
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Deposition prep failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
