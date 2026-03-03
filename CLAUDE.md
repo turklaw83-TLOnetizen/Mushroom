@@ -146,3 +146,74 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 
 ## Branding Note
 Source files still reference "AllRise Beta" in many places. These should be updated to "Project Mushroom Cloud" / "mushroom-cloud" as the project evolves. The `core/storage/encrypted_backend.py` magic bytes must NOT be changed (would break encryption verification).
+
+---
+
+## Next.js Frontend (frontend/)
+
+### Stack
+- **Next.js 16.1.6** (Turbopack) with App Router
+- **Clerk** for auth (`@clerk/nextjs` v6.39.0)
+- **React Query** (`@tanstack/react-query`) for data fetching
+- **Zustand** for UI state (theme, sidebar) — store key: `mc-ui-store`
+- **shadcn/ui** components in `components/ui/`
+- **Tailwind CSS v4** with oklch color space
+
+### Key Architecture
+- `proxy.ts` — Next.js 16 auth proxy (replaces deprecated middleware.ts). Uses `clerkMiddleware` to protect routes. Public routes: `/sign-in`, `/sign-up`, `/api`.
+- `app/layout.tsx` — Root layout. ThemeAwareClerk → QueryProvider → AppShell → children. Inline `<script>` reads theme from localStorage before hydration.
+- `components/app-shell.tsx` — Strips sidebar/chrome for auth routes (`/sign-in`, `/sign-up`).
+- `components/theme-aware-clerk.tsx` — Reads theme from Zustand, passes to ClerkProvider. Uses stub key `pk_test_YnVpbGQuY2xlcmsuYWNjb3VudHMuZGV2JA` for build-time prerendering when no real key available.
+- `lib/api-client.ts` — Typed fetch wrapper with Clerk auth, retry, offline detection. On 401, redirects to `/sign-in` unless already on an auth page.
+- `next.config.ts` — CSP headers, `output: "standalone"`, `reactStrictMode: false`.
+
+### CSS/Theming
+- `globals.css` — Brand colors use indigo oklch(0.55 0.23 264). Custom variables: `--brand-indigo`, `--brand-violet`, `--brand-lavender`.
+- `.glass-card` utility class — backdrop-blur, left gradient accent bar, hover lift, staggered floatIn animation.
+- Keyframe animations: `floatIn`, `fadeIn`, `pulseGlow`.
+- Theme toggle reads/writes `mc-ui-store` in localStorage and toggles `.dark` class on `documentElement`.
+
+### Environment Variables
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` — Required. Dev: `pk_test_...`, Prod: `pk_live_...`
+- `CLERK_SECRET_KEY` — Required server-side.
+- `NEXT_PUBLIC_API_URL` — FastAPI backend URL. Default: `http://localhost:8000`
+- `NEXT_PUBLIC_CLERK_SIGN_IN_URL` — Default: `/sign-in`
+- `NEXT_PUBLIC_CLERK_SIGN_UP_URL` — Default: `/sign-up`
+
+---
+
+## VPS Deployment
+
+### Infrastructure
+- **VPS**: Vultr, IP `45.32.216.52`, Ubuntu 22.04
+- **Domain**: `turkclaw.net` (Cloudflare DNS + proxy)
+- **Clerk prod domain**: `clerk.turkclaw.net` (Clerk loads JS/API from this subdomain)
+- **Clerk prod key**: `pk_live_Y2xlcmsudHVya2NsYXcubmV0JA` (encodes to `clerk.turkclaw.net$`)
+- **Docker Compose**: `docker-compose.prod.yml` — frontend, api, postgres containers
+- **GitHub repo**: `turklaw83-TLOnetizen/Mushroom` (master branch)
+
+### Deploy Commands
+```bash
+ssh root@45.32.216.52
+cd /root/project-mushroom-cloud && git pull && docker compose -f docker-compose.prod.yml build && docker compose -f docker-compose.prod.yml up -d
+```
+
+### Critical: CSP Must Include Production Clerk Domain
+The CSP in `frontend/next.config.ts` MUST include `*.turkclaw.net` in `script-src`, `connect-src`, and `frame-src`. Without this, Clerk's JS (loaded from `clerk.turkclaw.net`) is blocked by the browser and the sign-in page renders as an empty div.
+
+### Current VPS State (as of 2026-03-03)
+- VPS is running OLD code — CSP does NOT yet include `*.turkclaw.net`
+- The latest commit `0afa02c` on GitHub master has the fix but needs to be deployed
+- The VPS `.env` should have: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...`, `CLERK_SECRET_KEY=sk_live_...`, `DB_PASSWORD=<set>`
+- DB_PASSWORD was previously unset (warning in docker logs) — may need to add `DB_PASSWORD=mcloud-db-2026-Kx9m` to `/root/project-mushroom-cloud/.env`
+
+### Sign-In Redirect Loop — Root Cause & Fix History
+The sign-in page was caught in an infinite redirect loop on production. Multiple contributing factors:
+
+1. **CSP blocking Clerk JS (THE MAIN CAUSE)**: Production Clerk loads from `clerk.turkclaw.net` but CSP only allowed `*.clerk.accounts.dev`. Browser blocked the script → SignIn component rendered empty → auth never completed. **Fix**: Added `*.turkclaw.net` to CSP script-src/connect-src/frame-src.
+
+2. **API client 401 loop**: `lib/api-client.ts` did `window.location.href = "/sign-in"` on any 401, even when already on `/sign-in`. **Fix**: Added check to skip redirect if `window.location.pathname` starts with `/sign-in` or `/sign-up`.
+
+3. **Missing fallbackRedirectUrl**: Clerk's `<SignIn>` component had no explicit redirect target after sign-in. **Fix**: Added `fallbackRedirectUrl="/"`.
+
+All fixes are committed and pushed to GitHub master. **They just need to be deployed to the VPS.**
