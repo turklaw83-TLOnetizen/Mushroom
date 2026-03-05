@@ -216,3 +216,20 @@ def billing_summary(
         return get_case_billing_summary(case_id)
     except ImportError:
         return {"total_hours": 0, "total_expenses": 0, "total_billable": 0}
+
+
+# ---- AR Overview ---------------------------------------------------------
+
+@router.get("/ar-overview")
+def ar_overview(
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Firm-wide accounts receivable overview across all cases."""
+    try:
+        from core.billing import get_ar_overview
+        from core.case_manager import CaseManager
+        cm = CaseManager()
+        return get_ar_overview(cm)
+    except ImportError:
+        return {"total_plans": 0, "active_plans": 0, "total_receivable": 0,
+                "total_collected": 0, "total_overdue": 0, "overdue_count": 0, "plans": []}

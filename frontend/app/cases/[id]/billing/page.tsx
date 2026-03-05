@@ -16,6 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PaymentPlanTab } from "@/components/billing/payment-plan-tab";
 
 interface TimeEntry {
     id: string;
@@ -217,6 +218,7 @@ export default function BillingPage() {
                 <TabsList>
                     <TabsTrigger value="time">Time Entries ({timeEntries.length})</TabsTrigger>
                     <TabsTrigger value="expenses">Expenses ({expenses.length})</TabsTrigger>
+                    <TabsTrigger value="payment-plan">Payment Plan</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="time" className="space-y-2 mt-4">
@@ -322,6 +324,10 @@ export default function BillingPage() {
                             </Card>
                         ))
                     )}
+                </TabsContent>
+
+                <TabsContent value="payment-plan">
+                    <PaymentPlanTab caseId={caseId} />
                 </TabsContent>
             </Tabs>
 

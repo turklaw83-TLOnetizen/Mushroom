@@ -976,3 +976,521 @@ def get_aging_report() -> dict:
             buckets["90_plus"].append(inv_summary)
 
     return buckets
+
+
+# ===================================================================
+#  8.  PAYMENT PLANS
+# ===================================================================
+
+PAYMENT_METHODS = ["cash", "check", "card", "wire", "zelle", "venmo", "retainer"]
+PAYMENT_FREQUENCIES = ["weekly", "biweekly", "monthly"]
+PLAN_STATUSES = ["active", "completed", "paused", "cancelled"]
+
+
+def _payment_plan_path(case_id: str) -> str:
+    return os.path.join(_DATA_DIR, "cases", case_id, "payment_plan.json")
+
+
+def load_payment_plan(case_id: str) -> Optional[Dict]:
+    """Load the payment plan for a case. Returns None if no plan exists."""
+    path = _payment_plan_path(case_id)
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
+def _save_payment_plan(case_id: str, plan: Dict) -> None:
+    """Save a payment plan to disk."""
+    path = _payment_plan_path(case_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    plan["updated_at"] = datetime.now().isoformat()
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(plan, f, indent=2, ensure_ascii=False)
+
+
+def _generate_schedule(
+    total_amount: float,
+    down_payment: float,
+    recurring_amount: float,
+    frequency: str,
+    start_date_str: str,
+) -> List[Dict]:
+    """Generate the list of scheduled payments from plan parameters."""
+    schedule = []
+    start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+    remaining = total_amount
+
+    # Frequency deltas
+    if frequency == "weekly":
+        delta = timedelta(weeks=1)
+    elif frequency == "biweekly":
+        delta = timedelta(weeks=2)
+    else:  # monthly
+        delta = timedelta(days=30)
+
+    seq = 1
+
+    # Down payment
+    if down_payment > 0:
+        dp_amount = min(down_payment, remaining)
+        schedule.append({
+            "id": f"sp_{seq:04d}",
+            "due_date": start.isoformat(),
+            "amount": round(dp_amount, 2),
+            "type": "down_payment",
+            "status": "pending",
+            "paid_amount": 0.0,
+            "paid_date": None,
+            "late_fee_applied": 0.0,
+        })
+        remaining -= dp_amount
+        seq += 1
+
+    # Recurring payments
+    current_date = start + delta if down_payment > 0 else start
+    while remaining > 0.01:
+        pay_amount = min(recurring_amount, remaining)
+        is_final = (remaining - pay_amount) < 0.01
+        schedule.append({
+            "id": f"sp_{seq:04d}",
+            "due_date": current_date.isoformat(),
+            "amount": round(pay_amount, 2),
+            "type": "final" if is_final else "recurring",
+            "status": "pending",
+            "paid_amount": 0.0,
+            "paid_date": None,
+            "late_fee_applied": 0.0,
+        })
+        remaining -= pay_amount
+        current_date += delta
+        seq += 1
+
+    return schedule
+
+
+def create_payment_plan(
+    case_id: str,
+    total_amount: float,
+    down_payment: float,
+    recurring_amount: float,
+    frequency: str,
+    start_date: str,
+    client_name: str = "",
+    notes: str = "",
+    late_fee_amount: float = 0.0,
+    late_fee_grace_days: int = 3,
+    created_by: str = "",
+) -> Dict:
+    """Create a payment plan for a case. Returns the created plan."""
+    schedule = _generate_schedule(
+        total_amount, down_payment, recurring_amount, frequency, start_date,
+    )
+
+    end_date = schedule[-1]["due_date"] if schedule else start_date
+
+    plan = {
+        "id": uuid.uuid4().hex[:8],
+        "case_id": case_id,
+        "client_name": client_name,
+        "total_amount": round(total_amount, 2),
+        "down_payment": round(down_payment, 2),
+        "recurring_amount": round(recurring_amount, 2),
+        "frequency": frequency,
+        "start_date": start_date,
+        "end_date": end_date,
+        "status": "active",
+        "late_fee_amount": round(late_fee_amount, 2),
+        "late_fee_grace_days": late_fee_grace_days,
+        "notes": notes,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+        "created_by": created_by,
+        "scheduled_payments": schedule,
+        "payments": [],
+        "history": [
+            {
+                "timestamp": datetime.now().isoformat(),
+                "action": "created",
+                "details": (
+                    f"Plan created: ${total_amount:,.2f} total, "
+                    f"${down_payment:,.2f} down, "
+                    f"${recurring_amount:,.2f}/{frequency}"
+                ),
+                "user": created_by,
+            },
+        ],
+    }
+
+    _save_payment_plan(case_id, plan)
+    logger.info("Created payment plan for case %s: $%.2f", case_id, total_amount)
+    return plan
+
+
+def update_payment_plan(case_id: str, updates: Dict, updated_by: str = "") -> bool:
+    """Update plan parameters. Returns True if plan exists."""
+    plan = load_payment_plan(case_id)
+    if not plan:
+        return False
+
+    allowed = {"notes", "late_fee_amount", "late_fee_grace_days", "status"}
+    changes = []
+    for k, v in updates.items():
+        if k in allowed:
+            old_val = plan.get(k)
+            plan[k] = v
+            changes.append(f"{k}: {old_val} -> {v}")
+
+    if changes:
+        plan["history"].append({
+            "timestamp": datetime.now().isoformat(),
+            "action": "updated",
+            "details": "; ".join(changes),
+            "user": updated_by,
+        })
+
+    _save_payment_plan(case_id, plan)
+    return True
+
+
+def record_plan_payment(
+    case_id: str,
+    amount: float,
+    method: str = "",
+    payer_name: str = "",
+    note: str = "",
+    scheduled_payment_id: str = "",
+    date_str: str = "",
+    recorded_by: str = "",
+) -> Optional[str]:
+    """Record a payment against the plan. Auto-applies to oldest pending
+    scheduled payment if scheduled_payment_id is not provided.
+    Returns payment ID on success, None on failure."""
+    plan = load_payment_plan(case_id)
+    if not plan or plan.get("status") not in ("active", "paused"):
+        return None
+
+    pay_date = date_str or date.today().isoformat()
+    payment_id = uuid.uuid4().hex[:8]
+
+    payment = {
+        "id": payment_id,
+        "date": pay_date,
+        "amount": round(amount, 2),
+        "method": method,
+        "payer_name": payer_name,
+        "note": note,
+        "scheduled_payment_id": scheduled_payment_id or None,
+        "recorded_by": recorded_by,
+        "recorded_at": datetime.now().isoformat(),
+    }
+    plan["payments"].append(payment)
+
+    # Apply to scheduled payments
+    remaining_amount = amount
+    for sp in plan["scheduled_payments"]:
+        if remaining_amount <= 0.005:
+            break
+
+        # If specific scheduled_payment_id given, only apply to that one
+        if scheduled_payment_id and sp["id"] != scheduled_payment_id:
+            continue
+
+        if sp["status"] in ("paid", "waived"):
+            continue
+
+        owed = sp["amount"] - sp.get("paid_amount", 0)
+        if owed <= 0:
+            continue
+
+        apply = min(remaining_amount, owed)
+        sp["paid_amount"] = round(sp.get("paid_amount", 0) + apply, 2)
+        sp["paid_date"] = pay_date
+        remaining_amount -= apply
+
+        if abs(sp["paid_amount"] - sp["amount"]) < 0.01:
+            sp["status"] = "paid"
+        elif sp["paid_amount"] > 0:
+            sp["status"] = "partial"
+
+        # Link payment to this scheduled payment if auto-applying
+        if not scheduled_payment_id:
+            payment["scheduled_payment_id"] = sp["id"]
+
+    # Check if all scheduled payments are completed
+    all_done = all(
+        sp["status"] in ("paid", "waived") for sp in plan["scheduled_payments"]
+    )
+    if all_done:
+        plan["status"] = "completed"
+        plan["history"].append({
+            "timestamp": datetime.now().isoformat(),
+            "action": "completed",
+            "details": "All scheduled payments fulfilled",
+            "user": recorded_by,
+        })
+
+    plan["history"].append({
+        "timestamp": datetime.now().isoformat(),
+        "action": "payment_recorded",
+        "details": f"${amount:,.2f} via {method or 'unspecified'} from {payer_name or 'unknown'}",
+        "user": recorded_by,
+    })
+
+    _save_payment_plan(case_id, plan)
+    logger.info("Recorded payment of $%.2f for case %s", amount, case_id)
+    return payment_id
+
+
+def get_plan_status(case_id: str) -> Dict:
+    """Calculate current plan status summary."""
+    plan = load_payment_plan(case_id)
+    if not plan:
+        return {
+            "status": "no_plan",
+            "total_amount": 0, "total_paid": 0, "remaining": 0,
+            "next_due_date": None, "next_due_amount": 0,
+            "overdue_amount": 0, "overdue_count": 0,
+            "payments_made": 0, "payments_remaining": 0,
+            "percent_complete": 0,
+        }
+
+    total = plan["total_amount"]
+    total_paid = sum(p["amount"] for p in plan.get("payments", []))
+    remaining = max(0, total - total_paid)
+
+    # Find overdue
+    today = date.today().isoformat()
+    overdue = [
+        sp for sp in plan["scheduled_payments"]
+        if sp["status"] in ("pending", "overdue", "partial") and sp["due_date"] < today
+    ]
+    overdue_amount = sum(sp["amount"] - sp.get("paid_amount", 0) for sp in overdue)
+
+    # Find next due
+    pending = [
+        sp for sp in plan["scheduled_payments"]
+        if sp["status"] in ("pending", "partial") and sp["due_date"] >= today
+    ]
+    next_due = pending[0] if pending else None
+
+    # Determine status
+    if plan["status"] in ("paused", "cancelled", "completed"):
+        status = plan["status"]
+    elif all(sp["status"] in ("paid", "waived") for sp in plan["scheduled_payments"]):
+        status = "completed"
+    elif len(overdue) > 0:
+        status = "behind"
+    elif total_paid > sum(
+        sp["amount"] for sp in plan["scheduled_payments"]
+        if sp["due_date"] <= today and sp["status"] != "waived"
+    ):
+        status = "ahead"
+    else:
+        status = "on_track"
+
+    paid_count = sum(1 for sp in plan["scheduled_payments"] if sp["status"] == "paid")
+    total_count = len(plan["scheduled_payments"])
+
+    return {
+        "status": status,
+        "total_amount": round(total, 2),
+        "total_paid": round(total_paid, 2),
+        "remaining": round(remaining, 2),
+        "next_due_date": next_due["due_date"] if next_due else None,
+        "next_due_amount": next_due["amount"] - next_due.get("paid_amount", 0) if next_due else 0,
+        "overdue_amount": round(overdue_amount, 2),
+        "overdue_count": len(overdue),
+        "payments_made": paid_count,
+        "payments_remaining": total_count - paid_count,
+        "percent_complete": round((total_paid / total * 100) if total > 0 else 0, 1),
+    }
+
+
+def mark_overdue_payments(case_id: str) -> int:
+    """Scan scheduled payments and mark any past-due pending items as 'overdue'.
+    Apply late fees if configured. Returns count of newly overdue items."""
+    plan = load_payment_plan(case_id)
+    if not plan or plan["status"] != "active":
+        return 0
+
+    today = date.today()
+    grace = plan.get("late_fee_grace_days", 3)
+    late_fee = plan.get("late_fee_amount", 0)
+    count = 0
+
+    for sp in plan["scheduled_payments"]:
+        if sp["status"] not in ("pending", "partial"):
+            continue
+        due = datetime.strptime(sp["due_date"], "%Y-%m-%d").date()
+        if today > due + timedelta(days=grace):
+            if sp["status"] != "overdue":
+                sp["status"] = "overdue"
+                count += 1
+                # Apply late fee if configured and not already applied
+                if late_fee > 0 and sp.get("late_fee_applied", 0) == 0:
+                    sp["late_fee_applied"] = late_fee
+                    sp["amount"] = round(sp["amount"] + late_fee, 2)
+
+    if count > 0:
+        plan["history"].append({
+            "timestamp": datetime.now().isoformat(),
+            "action": "overdue_marked",
+            "details": f"{count} payment(s) marked overdue",
+            "user": "system",
+        })
+        _save_payment_plan(case_id, plan)
+
+    return count
+
+
+def delete_payment_plan(case_id: str) -> bool:
+    """Delete a payment plan. Returns True if one existed."""
+    path = _payment_plan_path(case_id)
+    if os.path.exists(path):
+        os.remove(path)
+        return True
+    return False
+
+
+def get_ar_overview(case_mgr) -> Dict:
+    """Aggregate AR data across all cases with payment plans."""
+    cases = case_mgr.list_cases() if case_mgr else []
+    plans = []
+    total_receivable = 0
+    total_collected = 0
+    total_overdue = 0
+    overdue_count = 0
+    active_count = 0
+
+    for case_meta in cases:
+        cid = case_meta.get("id", "") if isinstance(case_meta, dict) else getattr(case_meta, "id", "")
+        plan = load_payment_plan(cid)
+        if not plan:
+            continue
+
+        status = get_plan_status(cid)
+        total_paid = status["total_paid"]
+        remaining = status["remaining"]
+
+        case_name = ""
+        if isinstance(case_meta, dict):
+            case_name = case_meta.get("name", case_meta.get("title", ""))
+        else:
+            case_name = getattr(case_meta, "name", getattr(case_meta, "title", ""))
+
+        plans.append({
+            "case_id": cid,
+            "case_name": case_name,
+            "client_name": plan.get("client_name", ""),
+            "total_amount": plan["total_amount"],
+            "total_paid": total_paid,
+            "remaining": remaining,
+            "next_due_date": status["next_due_date"],
+            "status": status["status"],
+            "overdue_amount": status["overdue_amount"],
+        })
+
+        total_receivable += plan["total_amount"]
+        total_collected += total_paid
+        total_overdue += status["overdue_amount"]
+        overdue_count += status["overdue_count"]
+        if plan["status"] == "active":
+            active_count += 1
+
+    return {
+        "total_plans": len(plans),
+        "active_plans": active_count,
+        "total_receivable": round(total_receivable, 2),
+        "total_collected": round(total_collected, 2),
+        "total_overdue": round(total_overdue, 2),
+        "overdue_count": overdue_count,
+        "plans": plans,
+    }
+
+
+def parse_payment_plan_from_text(
+    natural_text: str,
+    case_id: str = "",
+    client_name: str = "",
+) -> Dict:
+    """Use LLM to parse natural language into structured payment plan parameters.
+
+    Input: "$5000 to be paid with $1k down immediately and $200 every friday"
+    Output: {total_amount, down_payment, recurring_amount, frequency, start_date, notes}
+    """
+    import json as _json
+    try:
+        from core.llm import get_llm, invoke_with_retry
+        from langchain_core.messages import HumanMessage
+    except ImportError:
+        logger.warning("LLM not available for payment plan parsing")
+        return {"error": "LLM not available"}
+
+    llm = get_llm(max_output_tokens=1024)
+    if not llm:
+        return {"error": "No LLM configured"}
+
+    today_str = date.today().isoformat()
+    prompt = f"""Parse the following natural language payment plan description into a structured JSON object.
+
+Description: "{natural_text}"
+
+Today's date: {today_str}
+Client name: {client_name or "Unknown"}
+
+Return ONLY a JSON object with these fields (no markdown, no explanation):
+{{
+  "total_amount": <number>,
+  "down_payment": <number, 0 if none mentioned>,
+  "recurring_amount": <number>,
+  "frequency": "<weekly|biweekly|monthly>",
+  "start_date": "<YYYY-MM-DD, use today if 'immediately' or not specified>",
+  "notes": "<any extra details from the description>"
+}}
+
+Rules:
+- Convert shorthand like "$1k" to 1000, "$5k" to 5000
+- "every friday" or "weekly" = "weekly"
+- "every two weeks" or "bi-weekly" = "biweekly"
+- "monthly" or "every month" = "monthly"
+- If start date is "immediately" or "now", use today's date ({today_str})
+- down_payment is 0 if not mentioned"""
+
+    try:
+        response = invoke_with_retry(llm, [HumanMessage(content=prompt)])
+        text = response.content if hasattr(response, "content") else str(response)
+
+        # Extract JSON from response (handle potential markdown wrapping)
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            text = text.rsplit("```", 1)[0]
+        text = text.strip()
+
+        parsed = _json.loads(text)
+
+        # Validate required fields
+        required = ["total_amount", "recurring_amount", "frequency"]
+        for field in required:
+            if field not in parsed:
+                return {"error": f"Missing required field: {field}"}
+
+        # Ensure numeric types
+        parsed["total_amount"] = float(parsed["total_amount"])
+        parsed["down_payment"] = float(parsed.get("down_payment", 0))
+        parsed["recurring_amount"] = float(parsed["recurring_amount"])
+        parsed["start_date"] = parsed.get("start_date", today_str)
+        parsed["frequency"] = parsed["frequency"].lower()
+
+        if parsed["frequency"] not in PAYMENT_FREQUENCIES:
+            parsed["frequency"] = "monthly"
+
+        return parsed
+
+    except _json.JSONDecodeError as e:
+        logger.warning("Failed to parse LLM response as JSON: %s", e)
+        return {"error": "Failed to parse AI response"}
+    except Exception as e:
+        logger.exception("LLM payment plan parsing failed")
+        return {"error": str(e)}

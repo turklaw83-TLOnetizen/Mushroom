@@ -5,7 +5,8 @@
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from api.auth import get_current_user, require_role
@@ -254,6 +255,69 @@ def get_intake(
         return {"answers": get_intake_answers(client_id, template_key)}
     except Exception as e:
         logger.exception("Failed to get intake answers")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---- Rep Agreement -------------------------------------------------------
+
+@router.post("/clients/{client_id}/rep-agreement")
+async def upload_rep_agreement(
+    client_id: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Upload a representation agreement for a client. Replaces any existing."""
+    try:
+        from core.crm import save_rep_agreement
+        data = await file.read()
+        filename = file.filename or "rep_agreement"
+        user_name = user.get("name", user.get("user_id", ""))
+        if not save_rep_agreement(client_id, data, filename, uploaded_by=user_name):
+            raise HTTPException(status_code=404, detail="Client not found")
+        return {"status": "uploaded", "filename": filename}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to upload rep agreement")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/clients/{client_id}/rep-agreement")
+def download_rep_agreement(
+    client_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Download the client's rep agreement."""
+    try:
+        from core.crm import get_rep_agreement_path, get_rep_agreement_metadata
+        path = get_rep_agreement_path(client_id)
+        if not path:
+            raise HTTPException(status_code=404, detail="No rep agreement found")
+        meta = get_rep_agreement_metadata(client_id)
+        filename = meta.get("filename", "rep_agreement") if meta else "rep_agreement"
+        return FileResponse(path, filename=filename)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to download rep agreement")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/clients/{client_id}/rep-agreement")
+def delete_rep_agreement(
+    client_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Delete the client's rep agreement."""
+    try:
+        from core.crm import delete_rep_agreement as _delete_rep
+        if not _delete_rep(client_id):
+            raise HTTPException(status_code=404, detail="No rep agreement found")
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to delete rep agreement")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
