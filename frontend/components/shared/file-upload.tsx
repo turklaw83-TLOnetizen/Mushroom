@@ -1,5 +1,6 @@
 // ---- File Upload Component -----------------------------------------------
 // Drag-and-drop file/folder upload with progress tracking.
+// Shows compatible file types and filters incompatible files.
 "use client";
 
 import { useState, useCallback, useRef } from "react";
@@ -13,10 +14,36 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const MAX_SIZE_BYTES = 20 * 1024 * 1024 * 1024; // 20 GB
 
+// ---- Compatible file types (must match core/ingest.py) -------------------
+
+const COMPATIBLE_TYPES: Record<string, string[]> = {
+    "Documents": [".pdf", ".docx", ".doc", ".txt", ".rtf", ".md", ".pptx"],
+    "Spreadsheets": [".xlsx", ".xls", ".csv", ".tsv"],
+    "Images": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".heic", ".heif", ".webp"],
+    "Audio": [".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".wma"],
+    "Video": [".mp4", ".mpeg", ".mpga", ".webm", ".avi", ".mov", ".mkv"],
+    "Data/Code": [".json", ".xml", ".html", ".htm", ".yaml", ".yml", ".log", ".ini", ".cfg", ".toml"],
+};
+
+const ALL_EXTENSIONS = new Set(
+    Object.values(COMPATIBLE_TYPES).flat(),
+);
+
+// For the <input accept=""> attribute
+const ACCEPT_STRING = Array.from(ALL_EXTENSIONS).join(",");
+
+function isCompatible(filename: string): boolean {
+    const ext = filename.lastIndexOf(".") >= 0
+        ? filename.slice(filename.lastIndexOf(".")).toLowerCase()
+        : "";
+    return ALL_EXTENSIONS.has(ext);
+}
+
+// --------------------------------------------------------------------------
+
 interface FileUploadProps {
     caseId: string;
     onUploadComplete?: () => void;
-    accept?: string;
     maxSizeMB?: number;
 }
 
@@ -52,7 +79,6 @@ async function readEntryRecursive(entry: FileSystemEntry): Promise<File[]> {
     if (entry.isDirectory) {
         const dirReader = (entry as FileSystemDirectoryEntry).createReader();
         const files: File[] = [];
-        // readEntries may return partial results — call until empty
         const readBatch = (): Promise<FileSystemEntry[]> =>
             new Promise((resolve) => dirReader.readEntries(resolve, () => resolve([])));
         let batch = await readBatch();
@@ -70,7 +96,6 @@ async function readEntryRecursive(entry: FileSystemEntry): Promise<File[]> {
 // Extract files from a DataTransfer, traversing directories
 async function extractFilesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
     const items = dt.items;
-    // Check if webkitGetAsEntry is supported (Chrome/Edge/Firefox)
     if (items && items.length > 0 && typeof items[0].webkitGetAsEntry === "function") {
         const allFiles: File[] = [];
         const entries: FileSystemEntry[] = [];
@@ -83,20 +108,19 @@ async function extractFilesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
         }
         return allFiles;
     }
-    // Fallback: just use the flat file list
     return Array.from(dt.files);
 }
 
 export function FileUpload({
     caseId,
     onUploadComplete,
-    accept = "*",
     maxSizeMB = MAX_SIZE_BYTES / (1024 * 1024),
 }: FileUploadProps) {
     const { getToken } = useAuth();
     const [dragOver, setDragOver] = useState(false);
     const [files, setFiles] = useState<UploadingFile[]>([]);
     const [isUploading, setIsUploading] = useState(false);
+    const [showTypes, setShowTypes] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const folderInputRef = useRef<HTMLInputElement>(null);
 
@@ -104,30 +128,39 @@ export function FileUpload({
 
     const addFiles = useCallback(
         (newFiles: File[]) => {
+            let skippedSize = 0;
+            let skippedType = 0;
+            let skippedHidden = 0;
+
             const valid = newFiles.filter((f) => {
+                if (f.name.startsWith(".")) { skippedHidden++; return false; }
+                if (!isCompatible(f.name)) { skippedType++; return false; }
                 if (f.size > maxSizeBytes) {
+                    skippedSize++;
                     toast.error(`${f.name} exceeds ${formatSizeLimit(maxSizeMB)} limit`);
                     return false;
                 }
-                // Skip hidden/system files from folder drops
-                if (f.name.startsWith(".")) return false;
                 return true;
             });
 
-            if (valid.length === 0) return;
+            if (valid.length > 0) {
+                setFiles((prev) => [
+                    ...prev,
+                    ...valid.map((file) => ({
+                        file,
+                        progress: 0,
+                        status: "pending" as const,
+                    })),
+                ]);
+            }
 
-            setFiles((prev) => [
-                ...prev,
-                ...valid.map((file) => ({
-                    file,
-                    progress: 0,
-                    status: "pending" as const,
-                })),
-            ]);
-
-            if (valid.length !== newFiles.length) {
-                const skipped = newFiles.length - valid.length;
-                toast.info(`${skipped} file(s) skipped (too large or hidden)`);
+            const totalSkipped = skippedSize + skippedType + skippedHidden;
+            if (totalSkipped > 0) {
+                const parts: string[] = [];
+                if (skippedType > 0) parts.push(`${skippedType} unsupported type${skippedType > 1 ? "s" : ""}`);
+                if (skippedSize > 0) parts.push(`${skippedSize} too large`);
+                if (skippedHidden > 0) parts.push(`${skippedHidden} hidden`);
+                toast.info(`${totalSkipped} file(s) skipped: ${parts.join(", ")}`);
             }
         },
         [maxSizeBytes, maxSizeMB],
@@ -155,7 +188,6 @@ export function FileUpload({
         const formData = new FormData();
         pendingFiles.forEach((f) => formData.append("files", f.file));
 
-        // Mark all pending as uploading
         setFiles((prev) =>
             prev.map((f) =>
                 f.status === "pending" ? { ...f, status: "uploading" as const, progress: 50 } : f,
@@ -183,7 +215,6 @@ export function FileUpload({
             toast.success(`${pendingFiles.length} file(s) uploaded`);
             onUploadComplete?.();
 
-            // Clear after 2s
             setTimeout(() => setFiles([]), 2000);
         } catch (error) {
             setFiles((prev) =>
@@ -237,14 +268,13 @@ export function FileUpload({
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept={accept}
+                    accept={ACCEPT_STRING}
                     onChange={(e) => {
                         if (e.target.files) addFiles(Array.from(e.target.files));
                         e.target.value = "";
                     }}
                     className="hidden"
                 />
-                {/* Hidden folder input */}
                 <input
                     ref={folderInputRef}
                     type="file"
@@ -264,24 +294,61 @@ export function FileUpload({
                 <p className="text-xs text-muted-foreground mt-1">
                     {formatSizeLimit(maxSizeMB)} max per file &middot; No file count limit
                 </p>
-                <Button
-                    variant="link"
-                    size="sm"
-                    className="text-xs mt-1 h-auto p-0"
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        folderInputRef.current?.click();
-                    }}
-                >
-                    Or select a folder
-                </Button>
+                <div className="flex items-center justify-center gap-3 mt-2">
+                    <Button
+                        variant="link"
+                        size="sm"
+                        className="text-xs h-auto p-0"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            folderInputRef.current?.click();
+                        }}
+                    >
+                        Select a folder
+                    </Button>
+                    <span className="text-muted-foreground text-xs">|</span>
+                    <Button
+                        variant="link"
+                        size="sm"
+                        className="text-xs h-auto p-0"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setShowTypes((v) => !v);
+                        }}
+                    >
+                        {showTypes ? "Hide" : "View"} compatible file types
+                    </Button>
+                </div>
             </div>
+
+            {/* Compatible File Types Panel */}
+            {showTypes && (
+                <Card>
+                    <CardContent className="py-3">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {Object.entries(COMPATIBLE_TYPES).map(([category, exts]) => (
+                                <div key={category}>
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                                        {category}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {exts.map((ext) => (
+                                            <Badge key={ext} variant="outline" className="text-[10px] font-mono px-1.5">
+                                                {ext}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {/* File List */}
             {files.length > 0 && (
                 <div className="space-y-2">
                     {files.length > 20 ? (
-                        // Compact summary for large batches
                         <Card>
                             <CardContent className="py-3">
                                 <p className="text-sm font-medium">
