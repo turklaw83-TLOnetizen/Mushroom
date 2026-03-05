@@ -3,49 +3,51 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
-import { toast } from "sonner";
+import { z } from "zod";
 import { api } from "@/lib/api-client";
+import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
+import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
+import type { Client } from "@/types/api";
 
-interface Client {
-    id: string;
-    name: string;
-    email: string;
-    phone: string;
-    company: string;
-    cases: string[];
-    created_at: string;
-}
+// ---- Form Schema --------------------------------------------------------
+
+const clientSchema = z.object({
+    name: z.string().min(1, "Name is required").max(200),
+    email: z.string().email("Invalid email").max(320).or(z.literal("")).optional().default(""),
+    phone: z.string().max(30).optional().default(""),
+    company: z.string().max(200).optional().default(""),
+});
+type ClientInput = z.infer<typeof clientSchema>;
+
+const clientFields: FieldConfig<ClientInput>[] = [
+    { name: "name", label: "Full Name", required: true, placeholder: "e.g. John Smith" },
+    { name: "email", label: "Email", placeholder: "e.g. john@example.com" },
+    { name: "phone", label: "Phone", placeholder: "e.g. (555) 123-4567" },
+    { name: "company", label: "Company", placeholder: "e.g. Smith & Associates" },
+];
 
 export default function CRMPage() {
     const { getToken } = useAuth();
-    const queryClient = useQueryClient();
     const [search, setSearch] = useState("");
     const [addOpen, setAddOpen] = useState(false);
-    const [form, setForm] = useState({ name: "", email: "", phone: "", company: "" });
 
-    const { data, isLoading } = useQuery({
+    const { data, isLoading, error } = useQuery({
         queryKey: ["crm-clients"],
         queryFn: () => api.get<{ items: Client[] }>("/crm/clients", { getToken }),
     });
 
-    const addClient = useMutation({
-        mutationFn: (body: typeof form) => api.post("/crm/clients", body, { getToken }),
-        onSuccess: () => {
-            toast.success("Client added");
-            queryClient.invalidateQueries({ queryKey: ["crm-clients"] });
-            setAddOpen(false);
-            setForm({ name: "", email: "", phone: "", company: "" });
-        },
+    const addClient = useMutationWithToast<ClientInput>({
+        mutationFn: (input) => api.post("/crm/clients", input, { getToken }),
+        successMessage: "Client added",
+        invalidateKeys: [["crm-clients"]],
+        onSuccess: () => setAddOpen(false),
     });
 
     const clients = data?.items ?? [];
@@ -67,7 +69,7 @@ export default function CRMPage() {
                     </p>
                 </div>
                 <Button onClick={() => setAddOpen(true)} className="gap-2">
-                    <span>+</span> Add Client
+                    <span aria-hidden="true">+</span> Add Client
                 </Button>
             </div>
 
@@ -84,6 +86,10 @@ export default function CRMPage() {
                         <Skeleton key={i} className="h-20 w-full rounded-lg" />
                     ))}
                 </div>
+            ) : error ? (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                    Failed to load clients: {error instanceof Error ? error.message : "Unknown error"}
+                </div>
             ) : filtered.length === 0 ? (
                 <Card>
                     <CardContent className="py-12 text-center text-muted-foreground">
@@ -98,9 +104,21 @@ export default function CRMPage() {
                                 <CardTitle className="text-sm font-medium">{client.name}</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-1">
-                                {client.email && <p className="text-xs text-muted-foreground">📧 {client.email}</p>}
-                                {client.phone && <p className="text-xs text-muted-foreground">📞 {client.phone}</p>}
-                                {client.company && <p className="text-xs text-muted-foreground">🏢 {client.company}</p>}
+                                {client.email && (
+                                    <p className="text-xs text-muted-foreground">
+                                        <span aria-hidden="true">📧 </span>{client.email}
+                                    </p>
+                                )}
+                                {client.phone && (
+                                    <p className="text-xs text-muted-foreground">
+                                        <span aria-hidden="true">📞 </span>{client.phone}
+                                    </p>
+                                )}
+                                {client.company && (
+                                    <p className="text-xs text-muted-foreground">
+                                        <span aria-hidden="true">🏢 </span>{client.company}
+                                    </p>
+                                )}
                                 {client.cases?.length > 0 && (
                                     <div className="flex gap-1 mt-2 flex-wrap">
                                         {client.cases.map((caseId) => (
@@ -117,25 +135,18 @@ export default function CRMPage() {
             )}
 
             {/* Add Client Dialog */}
-            <Dialog open={addOpen} onOpenChange={setAddOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Add Client</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-3">
-                        <Input placeholder="Full name *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-                        <Input placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-                        <Input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                        <Input placeholder="Company" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-                        <Button onClick={() => addClient.mutate(form)} disabled={!form.name || addClient.isPending}>
-                            {addClient.isPending ? "Adding..." : "Add Client"}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <FormDialog
+                open={addOpen}
+                onOpenChange={setAddOpen}
+                title="Add Client"
+                description="Add a new client to your directory."
+                schema={clientSchema}
+                defaultValues={{ name: "", email: "", phone: "", company: "" }}
+                fields={clientFields}
+                onSubmit={async (data) => { await addClient.mutateAsync(data); }}
+                submitLabel="Add Client"
+                isLoading={addClient.isPending}
+            />
         </div>
     );
 }

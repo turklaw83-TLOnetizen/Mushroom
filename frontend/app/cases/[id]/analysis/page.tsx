@@ -150,7 +150,7 @@ function ModuleDetail({ label, icon, description, data, onClose }: ModuleDetailP
                         </CardTitle>
                         <p className="text-sm text-muted-foreground mt-1">{description}</p>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">✕</Button>
+                    <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0" aria-label="Close">✕</Button>
                 </CardHeader>
                 <CardContent className="pt-4">{renderValue(data)}</CardContent>
             </Card>
@@ -368,7 +368,7 @@ export default function AnalysisPage() {
                                             <span className="ml-auto text-xs text-blue-400">processing</span>
                                         )}
                                         {hasData && !isCurrentlyProcessing && (
-                                            <span className="ml-auto text-xs text-emerald-400">✓</span>
+                                            <span className="ml-auto text-xs text-emerald-400" aria-hidden="true">✓</span>
                                         )}
                                     </div>
                                     <p className="text-xs text-muted-foreground">

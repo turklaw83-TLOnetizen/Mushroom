@@ -53,7 +53,7 @@ export default function StrategyPage() {
         <div className="space-y-4">
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">🎯 Strategy Notes</CardTitle>
+                    <CardTitle className="text-base flex items-center gap-2"><span aria-hidden="true">🎯</span> Strategy Notes</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {data?.strategy_notes ? (
@@ -68,7 +68,7 @@ export default function StrategyPage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">😈 Devil&apos;s Advocate</CardTitle>
+                    <CardTitle className="text-base flex items-center gap-2"><span aria-hidden="true">😈</span> Devil&apos;s Advocate</CardTitle>
                 </CardHeader>
                 <CardContent>
                     {data?.devils_advocate_notes ? (
@@ -82,7 +82,7 @@ export default function StrategyPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-base flex items-center gap-2">🗳️ Voir Dire</CardTitle>
+                        <CardTitle className="text-base flex items-center gap-2"><span aria-hidden="true">🗳️</span> Voir Dire</CardTitle>
                     </CardHeader>
                     <CardContent>
                         {data?.voir_dire && Object.keys(data.voir_dire).length > 0 ? (

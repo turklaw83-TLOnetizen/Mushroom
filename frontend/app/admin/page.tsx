@@ -13,36 +13,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-interface HealthData {
-    status: string;
-    database: string;
-    version: string;
-    uptime_seconds?: number;
-    latency_ms?: number;
-}
+import type { HealthData, UserItem, TeamStats } from "@/types/api";
 
 interface EmailStats {
     pending?: number;
     approved?: number;
     dismissed?: number;
-}
-
-interface UserItem {
-    id: string;
-    name: string;
-    initials: string;
-    role: string;
-    email: string;
-    active: boolean;
-}
-
-interface TeamStats {
-    total_users: number;
-    active_users: number;
-    admins: number;
-    attorneys: number;
-    paralegals: number;
 }
 
 function StatCard({

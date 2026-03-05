@@ -3,13 +3,13 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
-import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { usePrep } from "@/hooks/use-prep";
 import { useRole } from "@/hooks/use-role";
+import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { DataPage } from "@/components/shared/data-page";
 import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -17,15 +17,7 @@ import { DetailPanel, type DetailField } from "@/components/shared/detail-panel"
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-interface EvidenceItem {
-    id: string;
-    description: string;
-    type: string;
-    source: string;
-    foundation: string;
-    tags: string[];
-}
+import type { EvidenceItem } from "@/types/api";
 
 const evidenceSchema = z.object({
     description: z.string().min(1, "Description is required").max(2000),
@@ -55,22 +47,38 @@ export default function EvidencePage() {
     const { getToken } = useAuth();
     const { activePrepId, isLoading: prepLoading } = usePrep();
     const { canEdit, canDelete } = useRole();
-    const queryClient = useQueryClient();
     const [dialogOpen, setDialogOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<EvidenceItem | null>(null);
     const [detailItem, setDetailItem] = useState<EvidenceItem | null>(null);
-    const [isCreating, setIsCreating] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
+
+    const queryKey = ["evidence", caseId, activePrepId];
+    const basePath = `/cases/${caseId}/preparations/${activePrepId}/evidence`;
 
     const query = useQuery({
-        queryKey: ["evidence", caseId, activePrepId],
-        queryFn: () =>
-            api.get<EvidenceItem[]>(
-                `/cases/${caseId}/preparations/${activePrepId}/evidence`,
-                { getToken },
-            ),
+        queryKey,
+        queryFn: () => api.get<EvidenceItem[]>(basePath, { getToken }),
         enabled: !!activePrepId,
+    });
+
+    const createMutation = useMutationWithToast<EvidenceInput>({
+        mutationFn: (data) => api.post(basePath, data, { getToken }),
+        successMessage: "Evidence added",
+        invalidateKeys: [queryKey],
+        onSuccess: () => setDialogOpen(false),
+    });
+
+    const deleteMutation = useMutationWithToast<string>({
+        mutationFn: (id) => api.delete(`${basePath}/${id}`, { getToken }),
+        successMessage: "Evidence removed",
+        invalidateKeys: [queryKey],
+        onSuccess: () => setDeleteTarget(null),
+    });
+
+    const updateMutation = useMutationWithToast<EvidenceInput>({
+        mutationFn: (data) => api.put(`${basePath}/${detailItem?.id}`, data, { getToken }),
+        successMessage: "Evidence updated",
+        invalidateKeys: [queryKey],
+        onSuccess: () => setDetailItem(null),
     });
 
     if (!activePrepId && !prepLoading) {
@@ -80,56 +88,6 @@ export default function EvidencePage() {
             </div>
         );
     }
-
-    const invalidate = () => queryClient.invalidateQueries({ queryKey: ["evidence", caseId, activePrepId] });
-
-    const handleCreate = async (data: EvidenceInput) => {
-        setIsCreating(true);
-        try {
-            await api.post(`/cases/${caseId}/preparations/${activePrepId}/evidence`, data, { getToken });
-            toast.success("Evidence added");
-            setDialogOpen(false);
-            invalidate();
-        } catch (err) {
-            toast.error("Failed", { description: err instanceof Error ? err.message : "Unknown error" });
-        } finally {
-            setIsCreating(false);
-        }
-    };
-
-    const handleDelete = async () => {
-        if (!deleteTarget) return;
-        setIsDeleting(true);
-        try {
-            await api.delete(`/cases/${caseId}/preparations/${activePrepId}/evidence/${deleteTarget.id}`, { getToken });
-            toast.success("Evidence removed");
-            invalidate();
-        } catch (err) {
-            toast.error("Failed", { description: err instanceof Error ? err.message : "Unknown error" });
-        } finally {
-            setIsDeleting(false);
-            setDeleteTarget(null);
-        }
-    };
-
-    const handleUpdate = async (data: EvidenceInput) => {
-        if (!detailItem) return;
-        setIsSaving(true);
-        try {
-            await api.put(
-                `/cases/${caseId}/preparations/${activePrepId}/evidence/${detailItem.id}`,
-                data,
-                { getToken },
-            );
-            toast.success("Evidence updated");
-            setDetailItem(null);
-            invalidate();
-        } catch (err) {
-            toast.error("Failed", { description: err instanceof Error ? err.message : "Unknown error" });
-        } finally {
-            setIsSaving(false);
-        }
-    };
 
     return (
         <DataPage
@@ -197,9 +155,9 @@ export default function EvidencePage() {
                     schema={evidenceSchema}
                     defaultValues={{ description: "", type: "", source: "", foundation: "" }}
                     fields={createFields}
-                    onSubmit={handleCreate}
+                    onSubmit={async (data) => { await createMutation.mutateAsync(data); }}
                     submitLabel="Add Evidence"
-                    isLoading={isCreating}
+                    isLoading={createMutation.isPending}
                 />
             )}
             <ConfirmDialog
@@ -208,8 +166,8 @@ export default function EvidencePage() {
                 title="Remove Evidence"
                 description={`Remove "${deleteTarget?.description?.slice(0, 60)}"?`}
                 confirmLabel="Remove"
-                onConfirm={handleDelete}
-                isLoading={isDeleting}
+                onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget.id); }}
+                isLoading={deleteMutation.isPending}
             />
             {detailItem && (
                 <DetailPanel
@@ -220,9 +178,9 @@ export default function EvidencePage() {
                     schema={evidenceSchema}
                     values={detailItem as EvidenceInput}
                     fields={detailFields}
-                    onSave={handleUpdate}
+                    onSave={async (data) => { await updateMutation.mutateAsync(data); }}
                     readOnly={!canEdit}
-                    isLoading={isSaving}
+                    isLoading={updateMutation.isPending}
                     onDelete={canDelete ? () => {
                         setDeleteTarget(detailItem);
                         setDetailItem(null);

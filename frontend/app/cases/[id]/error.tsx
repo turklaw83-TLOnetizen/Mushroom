@@ -15,7 +15,7 @@ export default function CaseError({
         <div className="flex items-center justify-center p-12">
             <Card className="max-w-md w-full border-destructive/50">
                 <CardContent className="pt-6 text-center space-y-4">
-                    <div className="text-4xl">⚠️</div>
+                    <div className="text-4xl" aria-hidden="true">⚠️</div>
                     <h2 className="text-lg font-semibold">Something went wrong</h2>
                     <p className="text-sm text-muted-foreground">
                         {error.message || "An unexpected error occurred while loading this case."}

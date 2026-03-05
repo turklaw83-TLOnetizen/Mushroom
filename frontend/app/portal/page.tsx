@@ -166,7 +166,7 @@ export default function ClientPortalPage() {
                                     <div className="space-y-2">
                                         {calendarData.items.slice(0, 5).map((evt: any, i: number) => (
                                             <div key={i} className="flex items-center gap-2 text-sm">
-                                                <span>📅</span>
+                                                <span aria-hidden="true">📅</span>
                                                 <span className="truncate">{evt.title}</span>
                                                 <span className="text-xs text-muted-foreground ml-auto">
                                                     {evt.date}

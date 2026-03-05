@@ -6,22 +6,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api-client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-
-interface Task {
-    id: string;
-    title: string;
-    description: string;
-    status: string;
-    priority: string;
-    due_date: string;
-    assigned_to: string;
-    case_id?: string;
-    case_name?: string;
-}
+import type { Task } from "@/types/api";
 
 const priorityColor: Record<string, string> = {
     high: "text-red-400 border-red-400/30",
@@ -31,17 +20,16 @@ const priorityColor: Record<string, string> = {
 
 const statusColumns = ["pending", "in_progress", "completed"];
 const statusLabels: Record<string, string> = {
-    pending: "📋 To Do",
-    in_progress: "🔄 In Progress",
-    completed: "✅ Done",
+    pending: "To Do",
+    in_progress: "In Progress",
+    completed: "Done",
 };
 
 export default function TasksPage() {
     const { getToken } = useAuth();
     const [search, setSearch] = useState("");
 
-    // Fetch tasks across all cases via notifications (which aggregates tasks)
-    const { data, isLoading } = useQuery({
+    const { data, isLoading, error } = useQuery({
         queryKey: ["all-tasks"],
         queryFn: () => api.get<{ items: Task[] }>("/notifications", { getToken }),
     });
@@ -80,6 +68,10 @@ export default function TasksPage() {
                             ))}
                         </div>
                     ))}
+                </div>
+            ) : error ? (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+                    Failed to load tasks: {error instanceof Error ? error.message : "Unknown error"}
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -123,7 +115,7 @@ export default function TasksPage() {
                                                         )}
                                                         {task.due_date && (
                                                             <span className="text-[10px] text-muted-foreground">
-                                                                📅 {task.due_date}
+                                                                <span aria-hidden="true">📅 </span>{task.due_date}
                                                             </span>
                                                         )}
                                                         {task.case_name && (
