@@ -59,6 +59,9 @@ export default function CommsPage() {
     const [editOpen, setEditOpen] = useState(false);
     const [dismissId, setDismissId] = useState<string | null>(null);
     const [platform, setPlatform] = useState("generic");
+    const [emailSubject, setEmailSubject] = useState("");
+    const [emailBody, setEmailBody] = useState("");
+    const [showCSVFallback, setShowCSVFallback] = useState(false);
 
     // ---- Queries ----
     const { data: statsData } = useQuery({
@@ -154,6 +157,27 @@ export default function CommsPage() {
             invalidateAll();
         },
         onError: () => toast.error("Upload failed"),
+    });
+
+    const ingestEmailMut = useMutation({
+        mutationFn: (vars: { subject: string; body: string; sender_email?: string }) =>
+            api.post<{ status: string; transaction?: FeedTransaction; classified?: boolean; suggested_client?: string; message?: string }>(
+                "/payment-feed/ingest-email", vars, { getToken },
+            ),
+        onSuccess: (data) => {
+            if (data.status === "no_payment_found") {
+                toast.error(data.message || "No payment found in email");
+            } else {
+                const msg = data.classified
+                    ? `Payment detected — suggested match: ${data.suggested_client}`
+                    : "Payment imported — needs classification";
+                toast.success(msg);
+                setEmailSubject("");
+                setEmailBody("");
+            }
+            invalidateAll();
+        },
+        onError: () => toast.error("Failed to process email"),
     });
 
     const classifyMut = useMutation({
@@ -356,34 +380,86 @@ export default function CommsPage() {
 
                 {/* ---- PAYMENT FEED TAB ---- */}
                 <TabsContent value="feed" className="space-y-4">
-                    <div className="flex items-center gap-3">
-                        <Select value={platform} onValueChange={setPlatform}>
-                            <SelectTrigger className="w-36">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="venmo">Venmo</SelectItem>
-                                <SelectItem value="cashapp">Cash App</SelectItem>
-                                <SelectItem value="chime">Chime</SelectItem>
-                                <SelectItem value="generic">Other Bank</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".csv"
-                            className="hidden"
-                            onChange={handleFileUpload}
-                        />
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={uploadMut.isPending}
-                        >
-                            {uploadMut.isPending ? "Uploading..." : "Upload CSV"}
-                        </Button>
-                    </div>
+                    {/* Email Ingest — Primary Input */}
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-medium">
+                                📧 Forward Payment Email
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <p className="text-xs text-muted-foreground">
+                                Paste the subject and body of a Venmo, Cash App, or Chime notification email.
+                                The platform is auto-detected.
+                            </p>
+                            <div className="space-y-2">
+                                <Input
+                                    placeholder="Email subject (e.g. 'John Smith paid you $150.00')"
+                                    value={emailSubject}
+                                    onChange={(e) => setEmailSubject(e.target.value)}
+                                />
+                                <textarea
+                                    placeholder="Paste the full email body here..."
+                                    value={emailBody}
+                                    onChange={(e) => setEmailBody(e.target.value)}
+                                    rows={5}
+                                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        size="sm"
+                                        onClick={() => ingestEmailMut.mutate({
+                                            subject: emailSubject,
+                                            body: emailBody,
+                                        })}
+                                        disabled={!emailSubject.trim() || !emailBody.trim() || ingestEmailMut.isPending}
+                                    >
+                                        {ingestEmailMut.isPending ? "Processing..." : "Process Email"}
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-xs"
+                                        onClick={() => setShowCSVFallback(!showCSVFallback)}
+                                    >
+                                        {showCSVFallback ? "Hide CSV Upload" : "Upload CSV Instead"}
+                                    </Button>
+                                </div>
+                            </div>
+
+                            {/* CSV Upload — Secondary/Fallback */}
+                            {showCSVFallback && (
+                                <div className="flex items-center gap-3 pt-2 border-t">
+                                    <Select value={platform} onValueChange={setPlatform}>
+                                        <SelectTrigger className="w-36">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="venmo">Venmo</SelectItem>
+                                            <SelectItem value="cashapp">Cash App</SelectItem>
+                                            <SelectItem value="chime">Chime</SelectItem>
+                                            <SelectItem value="generic">Other Bank</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept=".csv"
+                                        className="hidden"
+                                        onChange={handleFileUpload}
+                                    />
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        disabled={uploadMut.isPending}
+                                    >
+                                        {uploadMut.isPending ? "Uploading..." : "Upload CSV"}
+                                    </Button>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
 
                     {feedLoading ? (
                         <div className="space-y-3">
@@ -394,7 +470,7 @@ export default function CommsPage() {
                     ) : feed.length === 0 ? (
                         <Card>
                             <CardContent className="py-12 text-center text-muted-foreground">
-                                No pending transactions. Upload a CSV from Venmo, Cash App, or Chime.
+                                No pending transactions. Paste a forwarded payment email above to get started.
                             </CardContent>
                         </Card>
                     ) : (

@@ -1,5 +1,7 @@
 # ---- Payment Feed Router --------------------------------------------------
-# Upload CSV exports from Chime/Venmo/Cash App, parse, classify, and record.
+# Primary: ingest forwarded payment notification emails.
+# Secondary: upload CSV exports from Chime/Venmo/Cash App.
+# Classify, confirm, and record transactions.
 
 import asyncio
 import logging
@@ -33,7 +35,45 @@ class ReclassifyRequest(BaseModel):
     client_name: str = Field(default="", max_length=200)
 
 
+class IngestEmailRequest(BaseModel):
+    subject: str = Field(..., min_length=1, max_length=1000)
+    body: str = Field(..., min_length=1, max_length=50000)
+    sender_email: str = Field(default="", max_length=500)
+
+
 # ---- Endpoints -----------------------------------------------------------
+
+@router.post("/ingest-email")
+async def ingest_email_endpoint(
+    request: IngestEmailRequest,
+    user: dict = Depends(require_role("admin", "attorney", "paralegal")),
+):
+    """
+    Ingest a forwarded payment notification email.
+    Auto-detects platform (Venmo/Cash App/Chime), parses transaction
+    details, classifies to a client, and saves to the feed.
+    """
+    try:
+        from core.payment_feed import ingest_email
+        txn = await asyncio.to_thread(
+            ingest_email, request.subject, request.body, request.sender_email,
+        )
+        if not txn:
+            return {
+                "status": "no_payment_found",
+                "message": "Could not extract a payment from this email. "
+                           "Make sure it's a Venmo, Cash App, or Chime notification.",
+            }
+        return {
+            "status": "imported",
+            "transaction": txn,
+            "classified": txn.get("status") == "classified",
+            "suggested_client": txn.get("suggested_client_name", ""),
+        }
+    except Exception:
+        logger.exception("Failed to ingest email")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @router.post("/upload")
 async def upload_csv(

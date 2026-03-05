@@ -63,6 +63,9 @@ google-auth-oauthlib>=1.0.0
 # Calendar sync (optional)
 google-api-python-client>=2.0.0
 
+# Payment processing
+stripe>=8.0.0
+
 # Email (billing)
 # Uses stdlib smtplib - no extra dependency
 

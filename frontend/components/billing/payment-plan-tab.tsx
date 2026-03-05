@@ -5,10 +5,11 @@
 
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { z } from "zod";
 import { api } from "@/lib/api-client";
 import { useRole } from "@/hooks/use-role";
+import { toast } from "sonner";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -19,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PaymentSchedule } from "./payment-schedule";
 import { RecordPaymentDialog, type PaymentInput } from "./record-payment-dialog";
 import { AIPlanGenerator } from "./ai-plan-generator";
-import type { PaymentPlan, PaymentPlanStatus } from "@/types/api";
+import type { PaymentPlan, PaymentPlanStatus, StripeConfig, StripePaymentLink } from "@/types/api";
 
 // ---- Manual Create Plan Schema ------------------------------------------
 
@@ -208,6 +209,7 @@ export function PaymentPlanTab({ clientId, clientName }: PaymentPlanTabProps) {
                     key={plan.id}
                     plan={plan}
                     clientId={clientId}
+                    clientName={clientName}
                     expanded={effectiveExpanded === plan.id}
                     onToggle={() => setExpandedPlan(effectiveExpanded === plan.id ? null : plan.id)}
                     onRecordPayment={() => setRecordPlanId(plan.id)}
@@ -336,6 +338,7 @@ function DeletePlanDialog({
 function PlanCard({
     plan,
     clientId,
+    clientName,
     expanded,
     onToggle,
     onRecordPayment,
@@ -344,6 +347,7 @@ function PlanCard({
 }: {
     plan: PaymentPlan;
     clientId: string;
+    clientName?: string;
     expanded: boolean;
     onToggle: () => void;
     onRecordPayment: () => void;
@@ -351,6 +355,38 @@ function PlanCard({
     canEdit: boolean;
 }) {
     const { getToken } = useAuth();
+
+    const stripeConfigQuery = useQuery({
+        queryKey: ["stripe-config"],
+        queryFn: () => api.get<StripeConfig>("/stripe/config", { getToken }),
+        staleTime: 60_000,
+    });
+
+    const stripeLinksQuery = useQuery({
+        queryKey: ["stripe-links", clientId, plan.id],
+        queryFn: () => api.get<{ items: StripePaymentLink[] }>(`/stripe/payment-links?client_id=${clientId}`, { getToken }),
+        enabled: expanded && !!stripeConfigQuery.data?.configured,
+    });
+
+    const createLinkMut = useMutation({
+        mutationFn: (vars: { amount: number; description: string }) =>
+            api.post<StripePaymentLink>("/stripe/payment-link", {
+                client_id: clientId,
+                plan_id: plan.id,
+                amount: vars.amount,
+                description: vars.description,
+                client_name: clientName || "",
+            }, { getToken }),
+        onSuccess: (data) => {
+            toast.success("Payment link created");
+            // Copy to clipboard
+            navigator.clipboard.writeText(data.url).then(() => {
+                toast.info("Link copied to clipboard");
+            }).catch(() => {});
+            stripeLinksQuery.refetch();
+        },
+        onError: () => toast.error("Failed to create payment link"),
+    });
 
     const statusQuery = useQuery({
         queryKey: ["payment-plan-status", clientId, plan.id],
@@ -486,6 +522,19 @@ function PlanCard({
                                     <Button size="sm" onClick={onRecordPayment}>
                                         Record Payment
                                     </Button>
+                                    {stripeConfigQuery.data?.configured && status && status.next_due_amount > 0 && (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => createLinkMut.mutate({
+                                                amount: status.next_due_amount,
+                                                description: `Payment — ${clientName || "Client"} — $${status.next_due_amount.toLocaleString()}`,
+                                            })}
+                                            disabled={createLinkMut.isPending}
+                                        >
+                                            {createLinkMut.isPending ? "Creating..." : "💳 Send Payment Link"}
+                                        </Button>
+                                    )}
                                     <Button
                                         size="sm"
                                         variant="outline"
@@ -521,6 +570,50 @@ function PlanCard({
                             >
                                 Delete
                             </Button>
+                        </div>
+                    )}
+
+                    {/* Stripe Payment Links */}
+                    {stripeConfigQuery.data?.configured && (stripeLinksQuery.data?.items?.length ?? 0) > 0 && (
+                        <div className="pt-2 border-t">
+                            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">
+                                Payment Links
+                            </p>
+                            <div className="divide-y">
+                                {stripeLinksQuery.data!.items
+                                    .filter((l) => l.plan_id === plan.id)
+                                    .map((link) => (
+                                    <div key={link.id} className="flex items-center justify-between py-2">
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                ${link.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                <Badge
+                                                    variant={link.status === "paid" ? "default" : "outline"}
+                                                    className="ml-2 text-[10px]"
+                                                >
+                                                    {link.status}
+                                                </Badge>
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {new Date(link.created_at).toLocaleDateString()}
+                                                {" · "}
+                                                {link.description}
+                                            </p>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="text-xs"
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(link.url);
+                                                toast.success("Link copied to clipboard");
+                                            }}
+                                        >
+                                            Copy Link
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
