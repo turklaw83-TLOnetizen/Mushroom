@@ -987,22 +987,22 @@ PAYMENT_FREQUENCIES = ["weekly", "biweekly", "monthly"]
 PLAN_STATUSES = ["active", "completed", "paused", "cancelled"]
 
 
-def _payment_plan_path(case_id: str) -> str:
-    return os.path.join(_DATA_DIR, "cases", case_id, "payment_plan.json")
+def _payment_plan_path(client_id: str) -> str:
+    return os.path.join(_DATA_DIR, "crm", "payment_plans", client_id, "payment_plan.json")
 
 
-def load_payment_plan(case_id: str) -> Optional[Dict]:
-    """Load the payment plan for a case. Returns None if no plan exists."""
-    path = _payment_plan_path(case_id)
+def load_payment_plan(client_id: str) -> Optional[Dict]:
+    """Load the payment plan for a client. Returns None if no plan exists."""
+    path = _payment_plan_path(client_id)
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     return None
 
 
-def _save_payment_plan(case_id: str, plan: Dict) -> None:
+def _save_payment_plan(client_id: str, plan: Dict) -> None:
     """Save a payment plan to disk."""
-    path = _payment_plan_path(case_id)
+    path = _payment_plan_path(client_id)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     plan["updated_at"] = datetime.now().isoformat()
     with open(path, "w", encoding="utf-8") as f:
@@ -1070,7 +1070,7 @@ def _generate_schedule(
 
 
 def create_payment_plan(
-    case_id: str,
+    client_id: str,
     total_amount: float,
     down_payment: float,
     recurring_amount: float,
@@ -1082,7 +1082,7 @@ def create_payment_plan(
     late_fee_grace_days: int = 3,
     created_by: str = "",
 ) -> Dict:
-    """Create a payment plan for a case. Returns the created plan."""
+    """Create a payment plan for a client. Returns the created plan."""
     schedule = _generate_schedule(
         total_amount, down_payment, recurring_amount, frequency, start_date,
     )
@@ -1091,7 +1091,7 @@ def create_payment_plan(
 
     plan = {
         "id": uuid.uuid4().hex[:8],
-        "case_id": case_id,
+        "client_id": client_id,
         "client_name": client_name,
         "total_amount": round(total_amount, 2),
         "down_payment": round(down_payment, 2),
@@ -1122,14 +1122,14 @@ def create_payment_plan(
         ],
     }
 
-    _save_payment_plan(case_id, plan)
-    logger.info("Created payment plan for case %s: $%.2f", case_id, total_amount)
+    _save_payment_plan(client_id, plan)
+    logger.info("Created payment plan for client %s: $%.2f", client_id, total_amount)
     return plan
 
 
-def update_payment_plan(case_id: str, updates: Dict, updated_by: str = "") -> bool:
+def update_payment_plan(client_id: str, updates: Dict, updated_by: str = "") -> bool:
     """Update plan parameters. Returns True if plan exists."""
-    plan = load_payment_plan(case_id)
+    plan = load_payment_plan(client_id)
     if not plan:
         return False
 
@@ -1149,12 +1149,12 @@ def update_payment_plan(case_id: str, updates: Dict, updated_by: str = "") -> bo
             "user": updated_by,
         })
 
-    _save_payment_plan(case_id, plan)
+    _save_payment_plan(client_id, plan)
     return True
 
 
 def record_plan_payment(
-    case_id: str,
+    client_id: str,
     amount: float,
     method: str = "",
     payer_name: str = "",
@@ -1166,7 +1166,7 @@ def record_plan_payment(
     """Record a payment against the plan. Auto-applies to oldest pending
     scheduled payment if scheduled_payment_id is not provided.
     Returns payment ID on success, None on failure."""
-    plan = load_payment_plan(case_id)
+    plan = load_payment_plan(client_id)
     if not plan or plan.get("status") not in ("active", "paused"):
         return None
 
@@ -1237,14 +1237,14 @@ def record_plan_payment(
         "user": recorded_by,
     })
 
-    _save_payment_plan(case_id, plan)
-    logger.info("Recorded payment of $%.2f for case %s", amount, case_id)
+    _save_payment_plan(client_id, plan)
+    logger.info("Recorded payment of $%.2f for client %s", amount, client_id)
     return payment_id
 
 
-def get_plan_status(case_id: str) -> Dict:
+def get_plan_status(client_id: str) -> Dict:
     """Calculate current plan status summary."""
-    plan = load_payment_plan(case_id)
+    plan = load_payment_plan(client_id)
     if not plan:
         return {
             "status": "no_plan",
@@ -1307,10 +1307,10 @@ def get_plan_status(case_id: str) -> Dict:
     }
 
 
-def mark_overdue_payments(case_id: str) -> int:
+def mark_overdue_payments(client_id: str) -> int:
     """Scan scheduled payments and mark any past-due pending items as 'overdue'.
     Apply late fees if configured. Returns count of newly overdue items."""
-    plan = load_payment_plan(case_id)
+    plan = load_payment_plan(client_id)
     if not plan or plan["status"] != "active":
         return 0
 
@@ -1339,49 +1339,56 @@ def mark_overdue_payments(case_id: str) -> int:
             "details": f"{count} payment(s) marked overdue",
             "user": "system",
         })
-        _save_payment_plan(case_id, plan)
+        _save_payment_plan(client_id, plan)
 
     return count
 
 
-def delete_payment_plan(case_id: str) -> bool:
+def delete_payment_plan(client_id: str) -> bool:
     """Delete a payment plan. Returns True if one existed."""
-    path = _payment_plan_path(case_id)
+    path = _payment_plan_path(client_id)
     if os.path.exists(path):
         os.remove(path)
+        # Also remove the directory if empty
+        parent = os.path.dirname(path)
+        try:
+            os.rmdir(parent)
+        except OSError:
+            pass
         return True
     return False
 
 
-def get_ar_overview(case_mgr) -> Dict:
-    """Aggregate AR data across all cases with payment plans."""
-    cases = case_mgr.list_cases() if case_mgr else []
-    plans = []
+def get_ar_overview() -> Dict:
+    """Aggregate AR data across all clients with payment plans."""
+    # Scan the payment_plans directory for all clients with plans
+    plans_dir = os.path.join(_DATA_DIR, "crm", "payment_plans")
+    plan_summaries = []
     total_receivable = 0
     total_collected = 0
     total_overdue = 0
     overdue_count = 0
     active_count = 0
 
-    for case_meta in cases:
-        cid = case_meta.get("id", "") if isinstance(case_meta, dict) else getattr(case_meta, "id", "")
-        plan = load_payment_plan(cid)
+    if not os.path.isdir(plans_dir):
+        return {
+            "total_plans": 0, "active_plans": 0,
+            "total_receivable": 0, "total_collected": 0,
+            "total_overdue": 0, "overdue_count": 0, "plans": [],
+        }
+
+    for client_dir in os.listdir(plans_dir):
+        client_id = client_dir
+        plan = load_payment_plan(client_id)
         if not plan:
             continue
 
-        status = get_plan_status(cid)
+        status = get_plan_status(client_id)
         total_paid = status["total_paid"]
         remaining = status["remaining"]
 
-        case_name = ""
-        if isinstance(case_meta, dict):
-            case_name = case_meta.get("name", case_meta.get("title", ""))
-        else:
-            case_name = getattr(case_meta, "name", getattr(case_meta, "title", ""))
-
-        plans.append({
-            "case_id": cid,
-            "case_name": case_name,
+        plan_summaries.append({
+            "client_id": client_id,
             "client_name": plan.get("client_name", ""),
             "total_amount": plan["total_amount"],
             "total_paid": total_paid,
@@ -1399,19 +1406,19 @@ def get_ar_overview(case_mgr) -> Dict:
             active_count += 1
 
     return {
-        "total_plans": len(plans),
+        "total_plans": len(plan_summaries),
         "active_plans": active_count,
         "total_receivable": round(total_receivable, 2),
         "total_collected": round(total_collected, 2),
         "total_overdue": round(total_overdue, 2),
         "overdue_count": overdue_count,
-        "plans": plans,
+        "plans": plan_summaries,
     }
 
 
 def parse_payment_plan_from_text(
     natural_text: str,
-    case_id: str = "",
+    client_id: str = "",
     client_name: str = "",
 ) -> Dict:
     """Use LLM to parse natural language into structured payment plan parameters.

@@ -224,12 +224,10 @@ def billing_summary(
 def ar_overview(
     user: dict = Depends(require_role("admin", "attorney")),
 ):
-    """Firm-wide accounts receivable overview across all cases."""
+    """Firm-wide accounts receivable overview across all clients."""
     try:
         from core.billing import get_ar_overview
-        from core.case_manager import CaseManager
-        cm = CaseManager()
-        return get_ar_overview(cm)
+        return get_ar_overview()
     except ImportError:
         return {"total_plans": 0, "active_plans": 0, "total_receivable": 0,
                 "total_collected": 0, "total_overdue": 0, "overdue_count": 0, "plans": []}
