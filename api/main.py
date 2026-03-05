@@ -178,6 +178,8 @@ from api.routers.ai_chat import router as ai_chat_router
 from api.routers.on_demand import router as on_demand_router
 from api.routers.module_notes import router as module_notes_router
 from api.routers.payment_plans import router as payment_plans_router
+from api.routers.comms import router as comms_router
+from api.routers.payment_feed import router as payment_feed_router
 
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
@@ -218,6 +220,8 @@ app.include_router(ai_chat_router, prefix="/api/v1")
 app.include_router(on_demand_router, prefix="/api/v1")
 app.include_router(module_notes_router, prefix="/api/v1")
 app.include_router(payment_plans_router, prefix="/api/v1")
+app.include_router(comms_router, prefix="/api/v1")
+app.include_router(payment_feed_router, prefix="/api/v1")
 
 
 # ---- Health Check (Fix #12: actually pings DB) ---------------------------
