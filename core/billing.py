@@ -979,7 +979,7 @@ def get_aging_report() -> dict:
 
 
 # ===================================================================
-#  8.  PAYMENT PLANS
+#  8.  PAYMENT PLANS  (multi-plan per client + revenue tracking)
 # ===================================================================
 
 PAYMENT_METHODS = ["cash", "check", "card", "wire", "zelle", "venmo", "retainer"]
@@ -987,26 +987,57 @@ PAYMENT_FREQUENCIES = ["weekly", "biweekly", "monthly"]
 PLAN_STATUSES = ["active", "completed", "paused", "cancelled"]
 
 
-def _payment_plan_path(client_id: str) -> str:
-    return os.path.join(_DATA_DIR, "crm", "payment_plans", client_id, "payment_plan.json")
+def _payment_plans_path(client_id: str) -> str:
+    return os.path.join(_DATA_DIR, "crm", "payment_plans", client_id, "plans.json")
 
 
-def load_payment_plan(client_id: str) -> Optional[Dict]:
-    """Load the payment plan for a client. Returns None if no plan exists."""
-    path = _payment_plan_path(client_id)
+def load_payment_plans(client_id: str) -> List[Dict]:
+    """Load all payment plans for a client. Returns empty list if none."""
+    path = _payment_plans_path(client_id)
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
+    # Backward compat: migrate old single-plan file if it exists
+    old_path = os.path.join(_DATA_DIR, "crm", "payment_plans", client_id, "payment_plan.json")
+    if os.path.exists(old_path):
+        with open(old_path, "r", encoding="utf-8") as f:
+            old_plan = json.load(f)
+        plans = [old_plan]
+        _save_all_plans(client_id, plans)
+        os.remove(old_path)
+        logger.info("Migrated legacy payment_plan.json -> plans.json for client %s", client_id)
+        return plans
+    return []
+
+
+def load_payment_plan(client_id: str, plan_id: str) -> Optional[Dict]:
+    """Load a single payment plan by ID. Returns None if not found."""
+    for p in load_payment_plans(client_id):
+        if p.get("id") == plan_id:
+            return p
     return None
 
 
-def _save_payment_plan(client_id: str, plan: Dict) -> None:
-    """Save a payment plan to disk."""
-    path = _payment_plan_path(client_id)
+def _save_all_plans(client_id: str, plans: List[Dict]) -> None:
+    """Save the full plans list to disk."""
+    path = _payment_plans_path(client_id)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    plan["updated_at"] = datetime.now().isoformat()
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(plan, f, indent=2, ensure_ascii=False)
+        json.dump(plans, f, indent=2, ensure_ascii=False)
+
+
+def _save_plan(client_id: str, plan: Dict) -> None:
+    """Upsert a single plan within the client's plans list."""
+    plans = load_payment_plans(client_id)
+    plan["updated_at"] = datetime.now().isoformat()
+    for i, p in enumerate(plans):
+        if p.get("id") == plan.get("id"):
+            plans[i] = plan
+            _save_all_plans(client_id, plans)
+            return
+    # New plan — append
+    plans.append(plan)
+    _save_all_plans(client_id, plans)
 
 
 def _generate_schedule(
@@ -1082,7 +1113,7 @@ def create_payment_plan(
     late_fee_grace_days: int = 3,
     created_by: str = "",
 ) -> Dict:
-    """Create a payment plan for a client. Returns the created plan."""
+    """Create a new payment plan for a client. Multiple plans allowed."""
     schedule = _generate_schedule(
         total_amount, down_payment, recurring_amount, frequency, start_date,
     )
@@ -1122,14 +1153,14 @@ def create_payment_plan(
         ],
     }
 
-    _save_payment_plan(client_id, plan)
-    logger.info("Created payment plan for client %s: $%.2f", client_id, total_amount)
+    _save_plan(client_id, plan)
+    logger.info("Created payment plan %s for client %s: $%.2f", plan["id"], client_id, total_amount)
     return plan
 
 
-def update_payment_plan(client_id: str, updates: Dict, updated_by: str = "") -> bool:
+def update_payment_plan(client_id: str, plan_id: str, updates: Dict, updated_by: str = "") -> bool:
     """Update plan parameters. Returns True if plan exists."""
-    plan = load_payment_plan(client_id)
+    plan = load_payment_plan(client_id, plan_id)
     if not plan:
         return False
 
@@ -1149,12 +1180,13 @@ def update_payment_plan(client_id: str, updates: Dict, updated_by: str = "") -> 
             "user": updated_by,
         })
 
-    _save_payment_plan(client_id, plan)
+    _save_plan(client_id, plan)
     return True
 
 
 def record_plan_payment(
     client_id: str,
+    plan_id: str,
     amount: float,
     method: str = "",
     payer_name: str = "",
@@ -1163,10 +1195,10 @@ def record_plan_payment(
     date_str: str = "",
     recorded_by: str = "",
 ) -> Optional[str]:
-    """Record a payment against the plan. Auto-applies to oldest pending
+    """Record a payment against a specific plan. Auto-applies to oldest pending
     scheduled payment if scheduled_payment_id is not provided.
     Returns payment ID on success, None on failure."""
-    plan = load_payment_plan(client_id)
+    plan = load_payment_plan(client_id, plan_id)
     if not plan or plan.get("status") not in ("active", "paused"):
         return None
 
@@ -1237,29 +1269,17 @@ def record_plan_payment(
         "user": recorded_by,
     })
 
-    _save_payment_plan(client_id, plan)
-    logger.info("Recorded payment of $%.2f for client %s", amount, client_id)
+    _save_plan(client_id, plan)
+    logger.info("Recorded payment of $%.2f for client %s plan %s", amount, client_id, plan_id)
     return payment_id
 
 
-def get_plan_status(client_id: str) -> Dict:
-    """Calculate current plan status summary."""
-    plan = load_payment_plan(client_id)
-    if not plan:
-        return {
-            "status": "no_plan",
-            "total_amount": 0, "total_paid": 0, "remaining": 0,
-            "next_due_date": None, "next_due_amount": 0,
-            "overdue_amount": 0, "overdue_count": 0,
-            "payments_made": 0, "payments_remaining": 0,
-            "percent_complete": 0,
-        }
-
+def _compute_plan_status(plan: Dict) -> Dict:
+    """Calculate status summary for a single plan dict (no disk I/O)."""
     total = plan["total_amount"]
     total_paid = sum(p["amount"] for p in plan.get("payments", []))
     remaining = max(0, total - total_paid)
 
-    # Find overdue
     today = date.today().isoformat()
     overdue = [
         sp for sp in plan["scheduled_payments"]
@@ -1267,14 +1287,12 @@ def get_plan_status(client_id: str) -> Dict:
     ]
     overdue_amount = sum(sp["amount"] - sp.get("paid_amount", 0) for sp in overdue)
 
-    # Find next due
     pending = [
         sp for sp in plan["scheduled_payments"]
         if sp["status"] in ("pending", "partial") and sp["due_date"] >= today
     ]
     next_due = pending[0] if pending else None
 
-    # Determine status
     if plan["status"] in ("paused", "cancelled", "completed"):
         status = plan["status"]
     elif all(sp["status"] in ("paid", "waived") for sp in plan["scheduled_payments"]):
@@ -1293,6 +1311,7 @@ def get_plan_status(client_id: str) -> Dict:
     total_count = len(plan["scheduled_payments"])
 
     return {
+        "plan_id": plan.get("id", ""),
         "status": status,
         "total_amount": round(total, 2),
         "total_paid": round(total_paid, 2),
@@ -1307,61 +1326,95 @@ def get_plan_status(client_id: str) -> Dict:
     }
 
 
+def get_plan_status(client_id: str, plan_id: str) -> Dict:
+    """Calculate current plan status summary for a specific plan."""
+    plan = load_payment_plan(client_id, plan_id)
+    if not plan:
+        return {
+            "plan_id": plan_id,
+            "status": "no_plan",
+            "total_amount": 0, "total_paid": 0, "remaining": 0,
+            "next_due_date": None, "next_due_amount": 0,
+            "overdue_amount": 0, "overdue_count": 0,
+            "payments_made": 0, "payments_remaining": 0,
+            "percent_complete": 0,
+        }
+    return _compute_plan_status(plan)
+
+
 def mark_overdue_payments(client_id: str) -> int:
-    """Scan scheduled payments and mark any past-due pending items as 'overdue'.
+    """Scan ALL active plans for a client and mark past-due items as 'overdue'.
     Apply late fees if configured. Returns count of newly overdue items."""
-    plan = load_payment_plan(client_id)
-    if not plan or plan["status"] != "active":
+    plans = load_payment_plans(client_id)
+    if not plans:
         return 0
 
     today = date.today()
-    grace = plan.get("late_fee_grace_days", 3)
-    late_fee = plan.get("late_fee_amount", 0)
-    count = 0
+    total_count = 0
+    changed = False
 
-    for sp in plan["scheduled_payments"]:
-        if sp["status"] not in ("pending", "partial"):
+    for plan in plans:
+        if plan.get("status") != "active":
             continue
-        due = datetime.strptime(sp["due_date"], "%Y-%m-%d").date()
-        if today > due + timedelta(days=grace):
-            if sp["status"] != "overdue":
-                sp["status"] = "overdue"
-                count += 1
-                # Apply late fee if configured and not already applied
-                if late_fee > 0 and sp.get("late_fee_applied", 0) == 0:
-                    sp["late_fee_applied"] = late_fee
-                    sp["amount"] = round(sp["amount"] + late_fee, 2)
 
-    if count > 0:
-        plan["history"].append({
-            "timestamp": datetime.now().isoformat(),
-            "action": "overdue_marked",
-            "details": f"{count} payment(s) marked overdue",
-            "user": "system",
-        })
-        _save_payment_plan(client_id, plan)
+        grace = plan.get("late_fee_grace_days", 3)
+        late_fee = plan.get("late_fee_amount", 0)
+        count = 0
 
-    return count
+        for sp in plan["scheduled_payments"]:
+            if sp["status"] not in ("pending", "partial"):
+                continue
+            due = datetime.strptime(sp["due_date"], "%Y-%m-%d").date()
+            if today > due + timedelta(days=grace):
+                if sp["status"] != "overdue":
+                    sp["status"] = "overdue"
+                    count += 1
+                    if late_fee > 0 and sp.get("late_fee_applied", 0) == 0:
+                        sp["late_fee_applied"] = late_fee
+                        sp["amount"] = round(sp["amount"] + late_fee, 2)
+
+        if count > 0:
+            plan["history"].append({
+                "timestamp": datetime.now().isoformat(),
+                "action": "overdue_marked",
+                "details": f"{count} payment(s) marked overdue",
+                "user": "system",
+            })
+            plan["updated_at"] = datetime.now().isoformat()
+            total_count += count
+            changed = True
+
+    if changed:
+        _save_all_plans(client_id, plans)
+
+    return total_count
 
 
-def delete_payment_plan(client_id: str) -> bool:
-    """Delete a payment plan. Returns True if one existed."""
-    path = _payment_plan_path(client_id)
-    if os.path.exists(path):
-        os.remove(path)
-        # Also remove the directory if empty
+def delete_payment_plan(client_id: str, plan_id: str) -> bool:
+    """Delete a specific payment plan. Returns True if found and removed."""
+    plans = load_payment_plans(client_id)
+    original_len = len(plans)
+    plans = [p for p in plans if p.get("id") != plan_id]
+    if len(plans) == original_len:
+        return False
+
+    if plans:
+        _save_all_plans(client_id, plans)
+    else:
+        # No plans left — remove file and directory
+        path = _payment_plans_path(client_id)
+        if os.path.exists(path):
+            os.remove(path)
         parent = os.path.dirname(path)
         try:
             os.rmdir(parent)
         except OSError:
             pass
-        return True
-    return False
+    return True
 
 
 def get_ar_overview() -> Dict:
-    """Aggregate AR data across all clients with payment plans."""
-    # Scan the payment_plans directory for all clients with plans
+    """Aggregate AR data across all clients — active/behind plans only (money still owed)."""
     plans_dir = os.path.join(_DATA_DIR, "crm", "payment_plans")
     plan_summaries = []
     total_receivable = 0
@@ -1379,31 +1432,33 @@ def get_ar_overview() -> Dict:
 
     for client_dir in os.listdir(plans_dir):
         client_id = client_dir
-        plan = load_payment_plan(client_id)
-        if not plan:
-            continue
+        for plan in load_payment_plans(client_id):
+            # AR only tracks plans that still have outstanding balances
+            if plan.get("status") in ("cancelled",):
+                continue
 
-        status = get_plan_status(client_id)
-        total_paid = status["total_paid"]
-        remaining = status["remaining"]
+            status = _compute_plan_status(plan)
+            total_paid = status["total_paid"]
+            remaining = status["remaining"]
 
-        plan_summaries.append({
-            "client_id": client_id,
-            "client_name": plan.get("client_name", ""),
-            "total_amount": plan["total_amount"],
-            "total_paid": total_paid,
-            "remaining": remaining,
-            "next_due_date": status["next_due_date"],
-            "status": status["status"],
-            "overdue_amount": status["overdue_amount"],
-        })
+            plan_summaries.append({
+                "plan_id": plan.get("id", ""),
+                "client_id": client_id,
+                "client_name": plan.get("client_name", ""),
+                "total_amount": plan["total_amount"],
+                "total_paid": total_paid,
+                "remaining": remaining,
+                "next_due_date": status["next_due_date"],
+                "status": status["status"],
+                "overdue_amount": status["overdue_amount"],
+            })
 
-        total_receivable += plan["total_amount"]
-        total_collected += total_paid
-        total_overdue += status["overdue_amount"]
-        overdue_count += status["overdue_count"]
-        if plan["status"] == "active":
-            active_count += 1
+            total_receivable += plan["total_amount"]
+            total_collected += total_paid
+            total_overdue += status["overdue_amount"]
+            overdue_count += status["overdue_count"]
+            if plan.get("status") == "active":
+                active_count += 1
 
     return {
         "total_plans": len(plan_summaries),
@@ -1412,6 +1467,59 @@ def get_ar_overview() -> Dict:
         "total_collected": round(total_collected, 2),
         "total_overdue": round(total_overdue, 2),
         "overdue_count": overdue_count,
+        "plans": plan_summaries,
+    }
+
+
+def get_revenue_overview() -> Dict:
+    """Firm-wide revenue tracker — includes ALL plans (active + completed).
+    Shows total revenue collected, broken down by status."""
+    plans_dir = os.path.join(_DATA_DIR, "crm", "payment_plans")
+    plan_summaries = []
+    total_revenue = 0
+    total_outstanding = 0
+    completed_revenue = 0
+    active_revenue = 0
+
+    if not os.path.isdir(plans_dir):
+        return {
+            "total_plans": 0, "total_revenue": 0, "completed_revenue": 0,
+            "active_revenue": 0, "total_outstanding": 0, "plans": [],
+        }
+
+    for client_dir in os.listdir(plans_dir):
+        client_id = client_dir
+        for plan in load_payment_plans(client_id):
+            status = _compute_plan_status(plan)
+            total_paid = status["total_paid"]
+
+            plan_summaries.append({
+                "plan_id": plan.get("id", ""),
+                "client_id": client_id,
+                "client_name": plan.get("client_name", ""),
+                "total_amount": plan["total_amount"],
+                "total_paid": total_paid,
+                "remaining": status["remaining"],
+                "status": status["status"],
+                "created_at": plan.get("created_at", ""),
+                "start_date": plan.get("start_date", ""),
+                "frequency": plan.get("frequency", ""),
+                "notes": plan.get("notes", ""),
+            })
+
+            total_revenue += total_paid
+            total_outstanding += status["remaining"]
+            if plan.get("status") == "completed":
+                completed_revenue += total_paid
+            elif plan.get("status") == "active":
+                active_revenue += total_paid
+
+    return {
+        "total_plans": len(plan_summaries),
+        "total_revenue": round(total_revenue, 2),
+        "completed_revenue": round(completed_revenue, 2),
+        "active_revenue": round(active_revenue, 2),
+        "total_outstanding": round(total_outstanding, 2),
         "plans": plan_summaries,
     }
 
