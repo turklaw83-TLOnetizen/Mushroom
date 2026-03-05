@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RepAgreementSection } from "@/components/crm/rep-agreement-section";
 import type { Client } from "@/types/api";
 
 // ---- Form Schema --------------------------------------------------------
@@ -128,6 +129,10 @@ export default function CRMPage() {
                                         ))}
                                     </div>
                                 )}
+                                <RepAgreementSection
+                                    clientId={client.id}
+                                    agreement={client.rep_agreement ?? null}
+                                />
                             </CardContent>
                         </Card>
                     ))}

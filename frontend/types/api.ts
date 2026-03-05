@@ -143,6 +143,13 @@ export interface FileItem {
 }
 
 // ---- Client (CRM) ----
+export interface RepAgreement {
+    filename: string;
+    uploaded_at: string;
+    uploaded_by: string;
+    size_bytes: number;
+}
+
 export interface Client {
     id: string;
     name: string;
@@ -151,6 +158,88 @@ export interface Client {
     company: string;
     cases: string[];
     created_at: string;
+    rep_agreement?: RepAgreement | null;
+}
+
+// ---- Payment Plan ----
+export interface ScheduledPayment {
+    id: string;
+    due_date: string;
+    amount: number;
+    type: "down_payment" | "recurring" | "final";
+    status: "pending" | "paid" | "partial" | "overdue" | "waived";
+    paid_amount: number;
+    paid_date: string | null;
+    late_fee_applied: number;
+}
+
+export interface PaymentRecord {
+    id: string;
+    date: string;
+    amount: number;
+    method: string;
+    payer_name: string;
+    note: string;
+    scheduled_payment_id: string | null;
+    recorded_by: string;
+    recorded_at: string;
+}
+
+export interface PaymentPlan {
+    id: string;
+    case_id: string;
+    client_name: string;
+    total_amount: number;
+    down_payment: number;
+    recurring_amount: number;
+    frequency: "weekly" | "biweekly" | "monthly";
+    start_date: string;
+    end_date: string;
+    status: "active" | "completed" | "paused" | "cancelled";
+    late_fee_amount: number;
+    late_fee_grace_days: number;
+    notes: string;
+    created_at: string;
+    updated_at: string;
+    scheduled_payments: ScheduledPayment[];
+    payments: PaymentRecord[];
+    history: Array<{ timestamp: string; action: string; details: string; user: string }>;
+}
+
+export interface PaymentPlanStatus {
+    total_amount: number;
+    total_paid: number;
+    remaining: number;
+    next_due_date: string | null;
+    next_due_amount: number;
+    status: "on_track" | "behind" | "ahead" | "completed" | "paused" | "cancelled" | "no_plan";
+    overdue_amount: number;
+    overdue_count: number;
+    payments_made: number;
+    payments_remaining: number;
+    percent_complete: number;
+}
+
+export interface PaymentPlanSummary {
+    case_id: string;
+    case_name: string;
+    client_name: string;
+    total_amount: number;
+    total_paid: number;
+    remaining: number;
+    next_due_date: string | null;
+    status: string;
+    overdue_amount: number;
+}
+
+export interface AROverview {
+    total_plans: number;
+    active_plans: number;
+    total_receivable: number;
+    total_collected: number;
+    total_overdue: number;
+    overdue_count: number;
+    plans: PaymentPlanSummary[];
 }
 
 // ---- Task ----

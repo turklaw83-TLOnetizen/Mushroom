@@ -374,6 +374,110 @@ def get_all_clients_grouped(case_mgr=None) -> List[Dict]:
     return result
 
 
+# -- Rep Agreements --
+
+_REP_AGREEMENTS_DIR = os.path.join(_SCRIPT_DIR, os.pardir, "data", "crm", "rep_agreements")
+
+
+def _rep_agreement_dir(client_id: str) -> str:
+    """Return (and ensure) the directory for a client's rep agreement."""
+    d = os.path.join(_REP_AGREEMENTS_DIR, client_id)
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def save_rep_agreement(
+    client_id: str,
+    file_data: bytes,
+    filename: str,
+    uploaded_by: str = "",
+) -> bool:
+    """Save a rep agreement file for a client. Replaces any existing agreement.
+    Updates the client record with metadata. Returns True on success."""
+    client = get_client(client_id)
+    if not client:
+        return False
+
+    safe_name = os.path.basename(filename)
+    if not safe_name:
+        safe_name = "rep_agreement"
+
+    # Delete any existing file in the directory
+    d = _rep_agreement_dir(client_id)
+    for existing in os.listdir(d):
+        existing_path = os.path.join(d, existing)
+        if os.path.isfile(existing_path):
+            os.remove(existing_path)
+
+    # Write new file
+    file_path = os.path.join(d, safe_name)
+    # Path traversal check
+    real_path = os.path.realpath(file_path)
+    real_dir = os.path.realpath(d)
+    if not real_path.startswith(real_dir):
+        logger.warning("Path traversal attempt in rep agreement: %s", filename)
+        return False
+
+    with open(file_path, "wb") as f:
+        f.write(file_data)
+
+    # Update client record with metadata
+    update_client(client_id, {
+        "rep_agreement": {
+            "filename": safe_name,
+            "uploaded_at": datetime.now().isoformat(),
+            "uploaded_by": uploaded_by,
+            "size_bytes": len(file_data),
+        },
+    })
+    logger.info("Saved rep agreement for client %s: %s", client_id, safe_name)
+    return True
+
+
+def get_rep_agreement_path(client_id: str) -> Optional[str]:
+    """Return the full path to the client's rep agreement file, or None."""
+    client = get_client(client_id)
+    if not client:
+        return None
+    meta = client.get("rep_agreement")
+    if not meta or not meta.get("filename"):
+        return None
+    path = os.path.join(_rep_agreement_dir(client_id), meta["filename"])
+    if os.path.isfile(path):
+        return path
+    return None
+
+
+def delete_rep_agreement(client_id: str) -> bool:
+    """Delete the rep agreement file and clear metadata from client record."""
+    client = get_client(client_id)
+    if not client:
+        return False
+    meta = client.get("rep_agreement")
+    if not meta:
+        return False
+
+    # Delete the file
+    d = _rep_agreement_dir(client_id)
+    for existing in os.listdir(d):
+        existing_path = os.path.join(d, existing)
+        if os.path.isfile(existing_path):
+            os.remove(existing_path)
+
+    # Clear metadata
+    update_client(client_id, {"rep_agreement": None})
+    logger.info("Deleted rep agreement for client %s", client_id)
+    return True
+
+
+def get_rep_agreement_metadata(client_id: str) -> Optional[Dict]:
+    """Return rep_agreement metadata from the client record, or None."""
+    client = get_client(client_id)
+    if not client:
+        return None
+    return client.get("rep_agreement")
+
+
 # -- Stats --
 def get_crm_stats() -> Dict:
     """Aggregate CRM statistics for dashboard display."""
