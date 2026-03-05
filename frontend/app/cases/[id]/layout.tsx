@@ -22,6 +22,7 @@ const tabs = [
     { label: "Files", href: "/files" },
     { label: "Analysis", href: "/analysis" },
     { label: "Witnesses", href: "/witnesses" },
+    { label: "Mock Exam", href: "/mock-exam" },
     { label: "Evidence", href: "/evidence" },
     { label: "Strategy", href: "/strategy" },
     { label: "Documents", href: "/documents" },

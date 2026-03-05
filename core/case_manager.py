@@ -768,6 +768,23 @@ class CaseManager:
     def load_witness_prep(self, case_id: str, prep_id: str) -> List[Dict]:
         return self.storage.load_prep_json(case_id, prep_id, "witness_prep.json", [])
 
+    # ==== Mock Examination Sessions =======================================
+
+    def save_mock_exam_sessions(self, case_id: str, prep_id: str,
+                                 sessions: List[Dict]) -> None:
+        self.storage.save_prep_json(case_id, prep_id, "mock_exam_sessions.json", sessions)
+
+    def load_mock_exam_sessions(self, case_id: str, prep_id: str) -> List[Dict]:
+        return self.storage.load_prep_json(case_id, prep_id, "mock_exam_sessions.json", [])
+
+    def save_mock_exam_data(self, case_id: str, prep_id: str,
+                             session_id: str, data: Dict) -> None:
+        self.storage.save_prep_json(case_id, prep_id, f"mock_exam_{session_id}.json", data)
+
+    def load_mock_exam_data(self, case_id: str, prep_id: str,
+                             session_id: str) -> Optional[Dict]:
+        return self.storage.load_prep_json(case_id, prep_id, f"mock_exam_{session_id}.json", None)
+
     # ==== Journal =========================================================
 
     def load_journal(self, case_id: str) -> List[Dict]:
