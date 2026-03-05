@@ -1,5 +1,5 @@
 // ---- Settings Page ------------------------------------------------------
-// Integration toggles, backup status, and system preferences.
+// Integration management, backup status, and system preferences.
 "use client";
 
 import { useState } from "react";
@@ -10,7 +10,24 @@ import { api } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    useGoogleCalStatus,
+    useGoogleCalendars,
+    useConnectGoogleCal,
+    useGoogleCalCallback,
+    useDisconnectGoogleCal,
+    useSaveCalendarChoice,
+    useSyncGoogleCal,
+} from "@/hooks/use-settings";
 
 interface BackupStatus {
     dropbox: { available: boolean };
@@ -32,6 +49,201 @@ function SettingRow({ label, description, children }: {
         </div>
     );
 }
+
+// ---- Google Calendar Settings Section -----------------------------------
+
+function GoogleCalendarSection() {
+    const { data: status, isLoading: statusLoading } = useGoogleCalStatus();
+    const { data: calendarsData } = useGoogleCalendars(!!status?.connected);
+    const connectMutation = useConnectGoogleCal();
+    const callbackMutation = useGoogleCalCallback();
+    const disconnectMutation = useDisconnectGoogleCal();
+    const saveCalendarMutation = useSaveCalendarChoice();
+    const syncMutation = useSyncGoogleCal();
+
+    const [showAuthCodeInput, setShowAuthCodeInput] = useState(false);
+    const [authCode, setAuthCode] = useState("");
+    const [authUrl, setAuthUrl] = useState("");
+
+    const handleConnect = async () => {
+        try {
+            const result = await connectMutation.mutateAsync();
+            if (result.auth_url) {
+                setAuthUrl(result.auth_url);
+                setShowAuthCodeInput(true);
+                window.open(result.auth_url, "_blank");
+            }
+        } catch {
+            toast.error("Failed to start OAuth flow");
+        }
+    };
+
+    const handleCallback = async () => {
+        if (!authCode.trim()) return;
+        try {
+            await callbackMutation.mutateAsync({ auth_code: authCode.trim() });
+            toast.success("Google Calendar connected");
+            setShowAuthCodeInput(false);
+            setAuthCode("");
+            setAuthUrl("");
+        } catch {
+            toast.error("Failed to connect. Check the auth code and try again.");
+        }
+    };
+
+    const handleDisconnect = async () => {
+        try {
+            await disconnectMutation.mutateAsync();
+            toast.success("Google Calendar disconnected");
+        } catch {
+            toast.error("Failed to disconnect");
+        }
+    };
+
+    const handleCalendarChange = async (calendarId: string) => {
+        const cal = calendarsData?.items?.find((c) => c.id === calendarId);
+        try {
+            await saveCalendarMutation.mutateAsync({
+                calendar_id: calendarId,
+                calendar_name: cal?.summary ?? "",
+            });
+            toast.success(`Calendar set to "${cal?.summary || calendarId}"`);
+        } catch {
+            toast.error("Failed to save calendar selection");
+        }
+    };
+
+    const handleSync = async () => {
+        try {
+            const result = await syncMutation.mutateAsync({});
+            const r = result.result;
+            toast.success(
+                `Synced: ${r.pushed} pushed, ${r.skipped} skipped, ${r.failed} failed`,
+            );
+        } catch {
+            toast.error("Sync failed");
+        }
+    };
+
+    if (statusLoading) {
+        return <Skeleton className="h-24 w-full" />;
+    }
+
+    // Not connected
+    if (!status?.connected) {
+        return (
+            <div className="space-y-3 py-2">
+                <SettingRow
+                    label="Google Calendar"
+                    description="Sync case events and deadlines to Google Calendar"
+                >
+                    {!status?.has_credentials ? (
+                        <Badge variant="secondary" className="text-xs">
+                            Not configured (set GOOGLE_CLIENT_ID)
+                        </Badge>
+                    ) : showAuthCodeInput ? (
+                        <div className="flex items-center gap-2">
+                            <Input
+                                placeholder="Paste auth code"
+                                value={authCode}
+                                onChange={(e) => setAuthCode(e.target.value)}
+                                className="w-48 h-8 text-xs"
+                            />
+                            <Button
+                                size="sm"
+                                onClick={handleCallback}
+                                disabled={callbackMutation.isPending || !authCode.trim()}
+                            >
+                                {callbackMutation.isPending ? "Connecting..." : "Submit"}
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                    setShowAuthCodeInput(false);
+                                    setAuthCode("");
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    ) : (
+                        <Button
+                            size="sm"
+                            onClick={handleConnect}
+                            disabled={connectMutation.isPending}
+                        >
+                            {connectMutation.isPending ? "Starting..." : "Connect"}
+                        </Button>
+                    )}
+                </SettingRow>
+                {showAuthCodeInput && authUrl && (
+                    <p className="text-xs text-muted-foreground pl-1">
+                        A Google authorization page opened in a new tab. Grant access, then
+                        paste the code here.
+                    </p>
+                )}
+            </div>
+        );
+    }
+
+    // Connected
+    const calendars = calendarsData?.items ?? [];
+
+    return (
+        <div className="space-y-0">
+            <SettingRow
+                label="Google Calendar"
+                description={`Connected as ${status.email || "unknown"}`}
+            >
+                <div className="flex items-center gap-2">
+                    <Badge variant="default" className="text-xs">Connected</Badge>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSync}
+                        disabled={syncMutation.isPending}
+                    >
+                        {syncMutation.isPending ? "Syncing..." : "Sync Now"}
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        onClick={handleDisconnect}
+                        disabled={disconnectMutation.isPending}
+                    >
+                        Disconnect
+                    </Button>
+                </div>
+            </SettingRow>
+            {calendars.length > 0 && (
+                <SettingRow
+                    label="Target Calendar"
+                    description="Select which Google Calendar to sync events to"
+                >
+                    <Select
+                        value={status.calendar_id || "primary"}
+                        onValueChange={handleCalendarChange}
+                    >
+                        <SelectTrigger className="w-56 h-8 text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {calendars.map((cal) => (
+                                <SelectItem key={cal.id} value={cal.id}>
+                                    {cal.summary}{cal.primary ? " (Primary)" : ""}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </SettingRow>
+            )}
+        </div>
+    );
+}
+
+// ---- Main Settings Page -------------------------------------------------
 
 export default function SettingsPage() {
     const { getToken } = useAuth();
@@ -74,11 +286,9 @@ export default function SettingsPage() {
                         <Badge variant="outline" className="text-xs">Configured via API Key</Badge>
                     </SettingRow>
                     <SettingRow label="Gmail Integration" description="Import and classify emails to cases">
-                        <Badge variant="outline" className="text-xs">Configured via OAuth</Badge>
+                        <Badge variant="secondary" className="text-xs">Coming soon</Badge>
                     </SettingRow>
-                    <SettingRow label="Google Calendar" description="Sync case events and deadlines">
-                        <Badge variant="outline" className="text-xs">Configured via OAuth</Badge>
-                    </SettingRow>
+                    <GoogleCalendarSection />
                 </CardContent>
             </Card>
 

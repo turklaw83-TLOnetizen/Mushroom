@@ -1,14 +1,18 @@
 "use client";
-// ---- Admin Health Dashboard ---------------------------------------------
-// System health, router counts, running jobs, email queue stats.
+// ---- Admin Dashboard ----------------------------------------------------
+// System health, user management, router counts, email queue stats.
 export const dynamic = "force-dynamic";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface HealthData {
     status: string;
@@ -22,6 +26,23 @@ interface EmailStats {
     pending?: number;
     approved?: number;
     dismissed?: number;
+}
+
+interface UserItem {
+    id: string;
+    name: string;
+    initials: string;
+    role: string;
+    email: string;
+    active: boolean;
+}
+
+interface TeamStats {
+    total_users: number;
+    active_users: number;
+    admins: number;
+    attorneys: number;
+    paralegals: number;
 }
 
 function StatCard({
@@ -63,6 +84,134 @@ function formatUptime(seconds: number): string {
     return `${h}h ${m}m`;
 }
 
+const ROLE_OPTIONS = ["admin", "attorney", "paralegal"];
+
+function UserManagementSection() {
+    const { getToken } = useAuth();
+    const queryClient = useQueryClient();
+    const [editingUserId, setEditingUserId] = useState<string | null>(null);
+
+    const { data: usersData, isLoading } = useQuery({
+        queryKey: ["admin-users"],
+        queryFn: () =>
+            api.get<{ items: UserItem[]; total: number }>("/users?include_inactive=true&per_page=100", { getToken }),
+    });
+
+    const { data: teamStats } = useQuery({
+        queryKey: ["team-stats"],
+        queryFn: () => api.get<TeamStats>("/users/team-stats", { getToken }),
+    });
+
+    const updateUser = useMutation({
+        mutationFn: ({ userId, updates }: { userId: string; updates: { role?: string } }) =>
+            api.patch<{ status: string }>(`/users/${userId}`, updates, { getToken }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+            queryClient.invalidateQueries({ queryKey: ["team-stats"] });
+            toast.success("User updated");
+            setEditingUserId(null);
+        },
+        onError: () => toast.error("Failed to update user"),
+    });
+
+    const users = usersData?.items ?? [];
+
+    return (
+        <div className="space-y-4">
+            {/* Team Stats Row */}
+            {teamStats && (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <StatCard title="Total Users" value={teamStats.total_users} />
+                    <StatCard title="Active" value={teamStats.active_users} variant="success" />
+                    <StatCard title="Admins" value={teamStats.admins} />
+                    <StatCard title="Attorneys" value={teamStats.attorneys} />
+                    <StatCard title="Paralegals" value={teamStats.paralegals} />
+                </div>
+            )}
+
+            {/* User Table */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base">Team Members</CardTitle>
+                    <CardDescription>Manage user roles and access</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {isLoading ? (
+                        <div className="space-y-2">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <Skeleton key={i} className="h-12 w-full" />
+                            ))}
+                        </div>
+                    ) : users.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-4">No users found</p>
+                    ) : (
+                        <div className="divide-y">
+                            {users.map((u) => (
+                                <div key={u.id} className="flex items-center justify-between py-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
+                                            {u.initials || u.name?.slice(0, 2).toUpperCase() || "?"}
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium">
+                                                {u.name || u.id}
+                                                {!u.active && (
+                                                    <Badge variant="secondary" className="ml-2 text-[10px]">
+                                                        Inactive
+                                                    </Badge>
+                                                )}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">{u.email || u.id}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {editingUserId === u.id ? (
+                                            <Select
+                                                defaultValue={u.role}
+                                                onValueChange={(role) => {
+                                                    updateUser.mutate({ userId: u.id, updates: { role } });
+                                                }}
+                                            >
+                                                <SelectTrigger className="w-32 h-8 text-xs">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {ROLE_OPTIONS.map((r) => (
+                                                        <SelectItem key={r} value={r} className="text-xs capitalize">
+                                                            {r}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        ) : (
+                                            <>
+                                                <Badge
+                                                    variant={u.role === "admin" ? "default" : "outline"}
+                                                    className="text-xs capitalize"
+                                                >
+                                                    {u.role}
+                                                </Badge>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 text-xs"
+                                                    onClick={() => setEditingUserId(u.id)}
+                                                >
+                                                    Edit
+                                                </Button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
 export default function AdminPage() {
     const { getToken } = useAuth();
 
@@ -92,7 +241,7 @@ export default function AdminPage() {
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Admin Dashboard</h1>
                 <p className="text-sm text-muted-foreground mt-1">
-                    System health and operational status
+                    System health, user management, and operational status
                 </p>
             </div>
 
@@ -127,6 +276,9 @@ export default function AdminPage() {
                 </div>
             )}
 
+            {/* User Management */}
+            <UserManagementSection />
+
             {/* Operational Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card>
@@ -152,8 +304,8 @@ export default function AdminPage() {
                         <p className="text-3xl font-bold">{emailStats?.pending ?? 0}</p>
                         <p className="text-xs text-muted-foreground mt-1">Pending review</p>
                         <div className="flex gap-3 mt-3 text-xs text-muted-foreground">
-                            <span>✅ {emailStats?.approved ?? 0} approved</span>
-                            <span>🚫 {emailStats?.dismissed ?? 0} dismissed</span>
+                            <span>{emailStats?.approved ?? 0} approved</span>
+                            <span>{emailStats?.dismissed ?? 0} dismissed</span>
                         </div>
                     </CardContent>
                 </Card>

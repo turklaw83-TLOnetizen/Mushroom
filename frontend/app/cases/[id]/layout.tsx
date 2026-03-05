@@ -29,6 +29,11 @@ const tabs = [
     { label: "Billing", href: "/billing" },
     { label: "Calendar", href: "/calendar" },
     { label: "Compliance", href: "/compliance" },
+    { label: "Timeline", href: "/timeline" },
+    { label: "Exhibits", href: "/exhibits" },
+    { label: "E-Sign", href: "/esign" },
+    { label: "Transcription", href: "/transcription" },
+    { label: "Exports", href: "/exports" },
     { label: "Activity", href: "/activity" },
 ];
 

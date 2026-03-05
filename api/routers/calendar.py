@@ -33,6 +33,7 @@ class EventResponse(BaseModel):
 
 class CreateEventRequest(BaseModel):
     case_id: str = Field(default="", max_length=200)
+    client_id: str = Field(default="", max_length=200)
     title: str = Field(..., min_length=1, max_length=500)
     date: str = Field(..., max_length=20)
     time: str = Field(default="", max_length=10)
@@ -83,6 +84,7 @@ def create_event(
             description=body.description,
             location=body.location,
             case_id=body.case_id,
+            client_id=body.client_id,
         )
         return {"status": "created", "id": event_id}
     except ImportError:

@@ -101,6 +101,7 @@ export function useCreateCalendarEvent() {
             description?: string;
             location?: string;
             case_id?: string;
+            client_id?: string;
         }) =>
             api.post<{ status: string; id: string }>("/calendar/events", input, {
                 getToken,
