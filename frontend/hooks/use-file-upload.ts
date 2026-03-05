@@ -7,6 +7,50 @@ import { useAuth } from "@clerk/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+// Recursively read all files from a directory entry
+async function readEntryRecursive(entry: FileSystemEntry): Promise<File[]> {
+    if (entry.isFile) {
+        return new Promise<File[]>((resolve) => {
+            (entry as FileSystemFileEntry).file(
+                (f) => resolve([f]),
+                () => resolve([]),
+            );
+        });
+    }
+    if (entry.isDirectory) {
+        const dirReader = (entry as FileSystemDirectoryEntry).createReader();
+        const files: File[] = [];
+        const readBatch = (): Promise<FileSystemEntry[]> =>
+            new Promise((resolve) => dirReader.readEntries(resolve, () => resolve([])));
+        let batch = await readBatch();
+        while (batch.length > 0) {
+            for (const child of batch) {
+                files.push(...(await readEntryRecursive(child)));
+            }
+            batch = await readBatch();
+        }
+        return files;
+    }
+    return [];
+}
+
+async function extractDroppedFiles(dt: DataTransfer): Promise<File[]> {
+    const items = dt.items;
+    if (items && items.length > 0 && typeof items[0].webkitGetAsEntry === "function") {
+        const entries: FileSystemEntry[] = [];
+        for (let i = 0; i < items.length; i++) {
+            const entry = items[i].webkitGetAsEntry();
+            if (entry) entries.push(entry);
+        }
+        const allFiles: File[] = [];
+        for (const entry of entries) {
+            allFiles.push(...(await readEntryRecursive(entry)));
+        }
+        return allFiles;
+    }
+    return Array.from(dt.files);
+}
+
 interface UploadProgress {
     /** 0 to 100 */
     percent: number;
@@ -25,14 +69,14 @@ interface UseFileUploadOptions {
     invalidateKeys?: unknown[][];
     /** Accepted file types (e.g. [".pdf", ".docx"]) */
     accept?: string[];
-    /** Max file size in bytes (default 50MB) */
+    /** Max file size in bytes (default 20GB) */
     maxSize?: number;
     /** Called on successful upload */
     onSuccess?: () => void;
 }
 
 export function useFileUpload(options: UseFileUploadOptions) {
-    const { uploadPath, invalidateKeys = [], accept, maxSize = 50 * 1024 * 1024, onSuccess } = options;
+    const { uploadPath, invalidateKeys = [], accept, maxSize = 20 * 1024 * 1024 * 1024, onSuccess } = options;
     const { getToken } = useAuth();
     const queryClient = useQueryClient();
 
@@ -129,12 +173,12 @@ export function useFileUpload(options: UseFileUploadOptions) {
     }, []);
 
     const onDrop = useCallback(
-        (e: DragEvent) => {
+        async (e: DragEvent) => {
             e.preventDefault();
             e.stopPropagation();
             setIsDragOver(false);
-            const files = Array.from(e.dataTransfer.files);
-            uploadFiles(files);
+            const extracted = await extractDroppedFiles(e.dataTransfer);
+            uploadFiles(extracted);
         },
         [uploadFiles],
     );

@@ -1,5 +1,5 @@
 // ---- File Upload Component -----------------------------------------------
-// Drag-and-drop file upload with progress tracking.
+// Drag-and-drop file/folder upload with progress tracking.
 "use client";
 
 import { useState, useCallback, useRef } from "react";
@@ -11,11 +11,12 @@ import { Badge } from "@/components/ui/badge";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+const MAX_SIZE_BYTES = 20 * 1024 * 1024 * 1024; // 20 GB
+
 interface FileUploadProps {
     caseId: string;
     onUploadComplete?: () => void;
     accept?: string;
-    maxFiles?: number;
     maxSizeMB?: number;
 }
 
@@ -26,34 +27,94 @@ interface UploadingFile {
     error?: string;
 }
 
+function formatSizeLimit(mb: number): string {
+    if (mb >= 1024) return `${(mb / 1024).toFixed(0)}GB`;
+    return `${mb}MB`;
+}
+
+function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+// Recursively read all files from a dropped directory entry
+async function readEntryRecursive(entry: FileSystemEntry): Promise<File[]> {
+    if (entry.isFile) {
+        return new Promise<File[]>((resolve) => {
+            (entry as FileSystemFileEntry).file(
+                (f) => resolve([f]),
+                () => resolve([]),
+            );
+        });
+    }
+    if (entry.isDirectory) {
+        const dirReader = (entry as FileSystemDirectoryEntry).createReader();
+        const files: File[] = [];
+        // readEntries may return partial results — call until empty
+        const readBatch = (): Promise<FileSystemEntry[]> =>
+            new Promise((resolve) => dirReader.readEntries(resolve, () => resolve([])));
+        let batch = await readBatch();
+        while (batch.length > 0) {
+            for (const child of batch) {
+                files.push(...(await readEntryRecursive(child)));
+            }
+            batch = await readBatch();
+        }
+        return files;
+    }
+    return [];
+}
+
+// Extract files from a DataTransfer, traversing directories
+async function extractFilesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
+    const items = dt.items;
+    // Check if webkitGetAsEntry is supported (Chrome/Edge/Firefox)
+    if (items && items.length > 0 && typeof items[0].webkitGetAsEntry === "function") {
+        const allFiles: File[] = [];
+        const entries: FileSystemEntry[] = [];
+        for (let i = 0; i < items.length; i++) {
+            const entry = items[i].webkitGetAsEntry();
+            if (entry) entries.push(entry);
+        }
+        for (const entry of entries) {
+            allFiles.push(...(await readEntryRecursive(entry)));
+        }
+        return allFiles;
+    }
+    // Fallback: just use the flat file list
+    return Array.from(dt.files);
+}
+
 export function FileUpload({
     caseId,
     onUploadComplete,
     accept = "*",
-    maxFiles = 10,
-    maxSizeMB = 50,
+    maxSizeMB = MAX_SIZE_BYTES / (1024 * 1024),
 }: FileUploadProps) {
     const { getToken } = useAuth();
     const [dragOver, setDragOver] = useState(false);
     const [files, setFiles] = useState<UploadingFile[]>([]);
     const [isUploading, setIsUploading] = useState(false);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const folderInputRef = useRef<HTMLInputElement>(null);
+
+    const maxSizeBytes = maxSizeMB * 1024 * 1024;
 
     const addFiles = useCallback(
-        (newFiles: FileList | File[]) => {
-            const arr = Array.from(newFiles);
-            const valid = arr.filter((f) => {
-                if (f.size > maxSizeMB * 1024 * 1024) {
-                    toast.error(`${f.name} exceeds ${maxSizeMB}MB limit`);
+        (newFiles: File[]) => {
+            const valid = newFiles.filter((f) => {
+                if (f.size > maxSizeBytes) {
+                    toast.error(`${f.name} exceeds ${formatSizeLimit(maxSizeMB)} limit`);
                     return false;
                 }
+                // Skip hidden/system files from folder drops
+                if (f.name.startsWith(".")) return false;
                 return true;
             });
 
-            if (files.length + valid.length > maxFiles) {
-                toast.error(`Maximum ${maxFiles} files allowed`);
-                return;
-            }
+            if (valid.length === 0) return;
 
             setFiles((prev) => [
                 ...prev,
@@ -63,33 +124,38 @@ export function FileUpload({
                     status: "pending" as const,
                 })),
             ]);
+
+            if (valid.length !== newFiles.length) {
+                const skipped = newFiles.length - valid.length;
+                toast.info(`${skipped} file(s) skipped (too large or hidden)`);
+            }
         },
-        [files.length, maxFiles, maxSizeMB],
+        [maxSizeBytes, maxSizeMB],
     );
 
     const handleDrop = useCallback(
-        (e: React.DragEvent) => {
+        async (e: React.DragEvent) => {
             e.preventDefault();
             setDragOver(false);
-            if (e.dataTransfer.files.length) {
-                addFiles(e.dataTransfer.files);
+            const extracted = await extractFilesFromDataTransfer(e.dataTransfer);
+            if (extracted.length > 0) {
+                addFiles(extracted);
             }
         },
         [addFiles],
     );
 
     const uploadAll = async () => {
+        const pendingFiles = files.filter((f) => f.status === "pending");
+        if (pendingFiles.length === 0) return;
+
         setIsUploading(true);
         const token = await getToken();
 
         const formData = new FormData();
-        files.forEach((f) => {
-            if (f.status === "pending") {
-                formData.append("files", f.file);
-            }
-        });
+        pendingFiles.forEach((f) => formData.append("files", f.file));
 
-        // Mark all as uploading
+        // Mark all pending as uploading
         setFiles((prev) =>
             prev.map((f) =>
                 f.status === "pending" ? { ...f, status: "uploading" as const, progress: 50 } : f,
@@ -114,7 +180,7 @@ export function FileUpload({
             setFiles((prev) =>
                 prev.map((f) => ({ ...f, status: "done" as const, progress: 100 })),
             );
-            toast.success(`${files.length} file(s) uploaded`);
+            toast.success(`${pendingFiles.length} file(s) uploaded`);
             onUploadComplete?.();
 
             // Clear after 2s
@@ -145,6 +211,8 @@ export function FileUpload({
 
     const clearAll = () => setFiles([]);
 
+    const pendingCount = files.filter((f) => f.status === "pending").length;
+
     return (
         <div className="space-y-3">
             {/* Drop Zone */}
@@ -155,7 +223,7 @@ export function FileUpload({
                 }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                onClick={() => inputRef.current?.click()}
+                onClick={() => fileInputRef.current?.click()}
                 className={`
           border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
           transition-colors duration-200
@@ -166,74 +234,118 @@ export function FileUpload({
         `}
             >
                 <input
-                    ref={inputRef}
+                    ref={fileInputRef}
                     type="file"
                     multiple
                     accept={accept}
-                    onChange={(e) => e.target.files && addFiles(e.target.files)}
+                    onChange={(e) => {
+                        if (e.target.files) addFiles(Array.from(e.target.files));
+                        e.target.value = "";
+                    }}
+                    className="hidden"
+                />
+                {/* Hidden folder input */}
+                <input
+                    ref={folderInputRef}
+                    type="file"
+                    // @ts-expect-error webkitdirectory is not in the HTMLInputElement type
+                    webkitdirectory=""
+                    multiple
+                    onChange={(e) => {
+                        if (e.target.files) addFiles(Array.from(e.target.files));
+                        e.target.value = "";
+                    }}
                     className="hidden"
                 />
                 <div className="text-3xl mb-2">📁</div>
                 <p className="text-sm font-medium">
-                    {dragOver ? "Drop files here" : "Drag & drop files, or click to browse"}
+                    {dragOver ? "Drop files or folders here" : "Drag & drop files or folders, or click to browse"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                    Up to {maxFiles} files, {maxSizeMB}MB max each
+                    {formatSizeLimit(maxSizeMB)} max per file &middot; No file count limit
                 </p>
+                <Button
+                    variant="link"
+                    size="sm"
+                    className="text-xs mt-1 h-auto p-0"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        folderInputRef.current?.click();
+                    }}
+                >
+                    Or select a folder
+                </Button>
             </div>
 
             {/* File List */}
             {files.length > 0 && (
                 <div className="space-y-2">
-                    {files.map((f, i) => (
-                        <Card key={i}>
-                            <CardContent className="flex items-center justify-between py-2.5">
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    <span className="text-lg shrink-0">
-                                        {f.status === "done" ? "✅" : f.status === "error" ? "❌" : "📄"}
-                                    </span>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-sm font-medium truncate">{f.file.name}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {(f.file.size / 1024).toFixed(0)} KB
-                                            {f.error && (
-                                                <span className="text-destructive"> · {f.error}</span>
-                                            )}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Badge
-                                        variant="outline"
-                                        className={
-                                            f.status === "done"
-                                                ? "text-emerald-400 border-emerald-500/30"
-                                                : f.status === "error"
-                                                    ? "text-red-400 border-red-500/30"
-                                                    : f.status === "uploading"
-                                                        ? "text-blue-400 border-blue-500/30 animate-pulse"
-                                                        : "text-zinc-400"
-                                        }
-                                    >
-                                        {f.status}
-                                    </Badge>
-                                    {f.status === "pending" && (
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-6 w-6"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                removeFile(i);
-                                            }}
-                                        >
-                                            ✕
-                                        </Button>
-                                    )}
-                                </div>
+                    {files.length > 20 ? (
+                        // Compact summary for large batches
+                        <Card>
+                            <CardContent className="py-3">
+                                <p className="text-sm font-medium">
+                                    {files.length} files queued
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                    {files.filter((f) => f.status === "done").length} done
+                                    {files.filter((f) => f.status === "error").length > 0 &&
+                                        ` · ${files.filter((f) => f.status === "error").length} failed`}
+                                    {pendingCount > 0 && ` · ${pendingCount} pending`}
+                                </p>
                             </CardContent>
                         </Card>
-                    ))}
+                    ) : (
+                        files.map((f, i) => (
+                            <Card key={i}>
+                                <CardContent className="flex items-center justify-between py-2.5">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <span className="text-lg shrink-0">
+                                            {f.status === "done" ? "✅" : f.status === "error" ? "❌" : "📄"}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-medium truncate">{f.file.name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {formatFileSize(f.file.size)}
+                                                {f.error && (
+                                                    <span className="text-destructive"> · {f.error}</span>
+                                                )}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Badge
+                                            variant="outline"
+                                            className={
+                                                f.status === "done"
+                                                    ? "text-emerald-400 border-emerald-500/30"
+                                                    : f.status === "error"
+                                                        ? "text-red-400 border-red-500/30"
+                                                        : f.status === "uploading"
+                                                            ? "text-blue-400 border-blue-500/30 animate-pulse"
+                                                            : "text-zinc-400"
+                                            }
+                                        >
+                                            {f.status}
+                                        </Badge>
+                                        {f.status === "pending" && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    removeFile(i);
+                                                }}
+                                            >
+                                                ✕
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))
+                    )}
 
                     <div className="flex justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={clearAll} disabled={isUploading}>
@@ -242,9 +354,9 @@ export function FileUpload({
                         <Button
                             size="sm"
                             onClick={uploadAll}
-                            disabled={isUploading || files.every((f) => f.status !== "pending")}
+                            disabled={isUploading || pendingCount === 0}
                         >
-                            {isUploading ? "Uploading..." : `Upload ${files.filter((f) => f.status === "pending").length} file(s)`}
+                            {isUploading ? "Uploading..." : `Upload ${pendingCount} file(s)`}
                         </Button>
                     </div>
                 </div>
