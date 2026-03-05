@@ -3,6 +3,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
@@ -14,7 +15,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { RepAgreementSection } from "@/components/crm/rep-agreement-section";
 import type { Client } from "@/types/api";
 
 // ---- Form Schema --------------------------------------------------------
@@ -36,6 +36,7 @@ const clientFields: FieldConfig<ClientInput>[] = [
 
 export default function CRMPage() {
     const { getToken } = useAuth();
+    const router = useRouter();
     const [search, setSearch] = useState("");
     const [addOpen, setAddOpen] = useState(false);
 
@@ -100,39 +101,40 @@ export default function CRMPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filtered.map((client) => (
-                        <Card key={client.id} className="hover:border-primary/30 transition-colors">
+                        <Card
+                            key={client.id}
+                            className="hover:border-primary/30 transition-colors cursor-pointer"
+                            onClick={() => router.push(`/crm/${client.id}`)}
+                        >
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">{client.name}</CardTitle>
+                                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                                    {client.name}
+                                    {client.rep_agreement && (
+                                        <Badge variant="outline" className="text-[10px] ml-2">
+                                            Rep Agreement
+                                        </Badge>
+                                    )}
+                                </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-1">
                                 {client.email && (
-                                    <p className="text-xs text-muted-foreground">
-                                        <span aria-hidden="true">📧 </span>{client.email}
-                                    </p>
+                                    <p className="text-xs text-muted-foreground">{client.email}</p>
                                 )}
                                 {client.phone && (
-                                    <p className="text-xs text-muted-foreground">
-                                        <span aria-hidden="true">📞 </span>{client.phone}
-                                    </p>
+                                    <p className="text-xs text-muted-foreground">{client.phone}</p>
                                 )}
                                 {client.company && (
-                                    <p className="text-xs text-muted-foreground">
-                                        <span aria-hidden="true">🏢 </span>{client.company}
-                                    </p>
+                                    <p className="text-xs text-muted-foreground">{client.company}</p>
                                 )}
                                 {client.cases?.length > 0 && (
                                     <div className="flex gap-1 mt-2 flex-wrap">
                                         {client.cases.map((caseId) => (
-                                            <Badge key={caseId} variant="outline" className="text-[10px]">
+                                            <Badge key={caseId} variant="secondary" className="text-[10px]">
                                                 {caseId.slice(0, 8)}
                                             </Badge>
                                         ))}
                                     </div>
                                 )}
-                                <RepAgreementSection
-                                    clientId={client.id}
-                                    agreement={client.rep_agreement ?? null}
-                                />
                             </CardContent>
                         </Card>
                     ))}

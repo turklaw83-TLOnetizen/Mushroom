@@ -21,12 +21,12 @@ interface ParsedPlanParams {
 }
 
 interface AIPlanGeneratorProps {
-    caseId: string;
+    clientId: string;
     clientName?: string;
     onPlanParsed: (params: ParsedPlanParams) => void;
 }
 
-export function AIPlanGenerator({ caseId, clientName, onPlanParsed }: AIPlanGeneratorProps) {
+export function AIPlanGenerator({ clientId, clientName, onPlanParsed }: AIPlanGeneratorProps) {
     const { getToken } = useAuth();
     const [input, setInput] = useState("");
     const [parsed, setParsed] = useState<ParsedPlanParams | null>(null);
@@ -34,7 +34,7 @@ export function AIPlanGenerator({ caseId, clientName, onPlanParsed }: AIPlanGene
     const parseMutation = useMutation({
         mutationFn: () =>
             api.post<{ status: string; plan_params: ParsedPlanParams }>(
-                `/cases/${caseId}/payment-plan/ai-generate`,
+                `/crm/clients/${clientId}/payment-plan/ai-generate`,
                 { text: input, client_name: clientName || "" },
                 { getToken },
             ),

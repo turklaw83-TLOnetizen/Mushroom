@@ -187,7 +187,7 @@ export interface PaymentRecord {
 
 export interface PaymentPlan {
     id: string;
-    case_id: string;
+    client_id: string;
     client_name: string;
     total_amount: number;
     down_payment: number;
@@ -221,8 +221,7 @@ export interface PaymentPlanStatus {
 }
 
 export interface PaymentPlanSummary {
-    case_id: string;
-    case_name: string;
+    client_id: string;
     client_name: string;
     total_amount: number;
     total_paid: number;

@@ -1,5 +1,5 @@
 // ---- Payment Plan Tab ----------------------------------------------------
-// Main tab content for payment plan management within the billing page.
+// Main tab content for payment plan management within a client's page.
 "use client";
 
 import { useState } from "react";
@@ -74,10 +74,11 @@ const STATUS_LABELS: Record<string, string> = {
 // ---- Component ----------------------------------------------------------
 
 interface PaymentPlanTabProps {
-    caseId: string;
+    clientId: string;
+    clientName?: string;
 }
 
-export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
+export function PaymentPlanTab({ clientId, clientName }: PaymentPlanTabProps) {
     const { getToken } = useAuth();
     const queryClient = useQueryClient();
     const { canEdit } = useRole();
@@ -86,20 +87,20 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
     const [deleteOpen, setDeleteOpen] = useState(false);
 
     const planKeys = {
-        plan: ["payment-plan", caseId],
-        status: ["payment-plan-status", caseId],
+        plan: ["payment-plan", clientId],
+        status: ["payment-plan-status", clientId],
     };
 
     // Fetch plan
     const planQuery = useQuery({
         queryKey: planKeys.plan,
-        queryFn: () => api.get<{ plan: PaymentPlan | null }>(`/cases/${caseId}/payment-plan`, { getToken }),
+        queryFn: () => api.get<{ plan: PaymentPlan | null }>(`/crm/clients/${clientId}/payment-plan`, { getToken }),
     });
 
     // Fetch status
     const statusQuery = useQuery({
         queryKey: planKeys.status,
-        queryFn: () => api.get<PaymentPlanStatus>(`/cases/${caseId}/payment-plan/status`, { getToken }),
+        queryFn: () => api.get<PaymentPlanStatus>(`/crm/clients/${clientId}/payment-plan/status`, { getToken }),
     });
 
     const plan = planQuery.data?.plan ?? null;
@@ -112,7 +113,7 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
 
     // Create plan mutation
     const createPlan = useMutationWithToast<CreatePlanInput>({
-        mutationFn: (data) => api.post(`/cases/${caseId}/payment-plan`, data, { getToken }),
+        mutationFn: (data) => api.post(`/crm/clients/${clientId}/payment-plan`, data, { getToken }),
         successMessage: "Payment plan created",
         invalidateKeys: [planKeys.plan, planKeys.status],
         onSuccess: () => setCreateOpen(false),
@@ -120,7 +121,7 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
 
     // Record payment mutation
     const recordPayment = useMutationWithToast<PaymentInput>({
-        mutationFn: (data) => api.post(`/cases/${caseId}/payment-plan/payments`, data, { getToken }),
+        mutationFn: (data) => api.post(`/crm/clients/${clientId}/payment-plan/payments`, data, { getToken }),
         successMessage: "Payment recorded",
         invalidateKeys: [planKeys.plan, planKeys.status],
         onSuccess: () => setRecordOpen(false),
@@ -128,14 +129,14 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
 
     // Update plan status (pause/resume/cancel)
     const updatePlanStatus = useMutationWithToast<{ status: string }>({
-        mutationFn: (data) => api.put(`/cases/${caseId}/payment-plan`, data, { getToken }),
+        mutationFn: (data) => api.put(`/crm/clients/${clientId}/payment-plan`, data, { getToken }),
         successMessage: "Plan updated",
         invalidateKeys: [planKeys.plan, planKeys.status],
     });
 
     // Delete plan mutation
     const deletePlan = useMutationWithToast<void>({
-        mutationFn: () => api.delete(`/cases/${caseId}/payment-plan`, { getToken }),
+        mutationFn: () => api.delete(`/crm/clients/${clientId}/payment-plan`, { getToken }),
         successMessage: "Payment plan deleted",
         invalidateKeys: [planKeys.plan, planKeys.status],
         onSuccess: () => setDeleteOpen(false),
@@ -156,7 +157,7 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
             recurring_amount: params.recurring_amount,
             frequency: params.frequency,
             start_date: params.start_date,
-            client_name: "",
+            client_name: clientName || "",
             notes: params.notes || "",
         });
     };
@@ -164,7 +165,7 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
     // Loading state
     if (planQuery.isLoading) {
         return (
-            <div className="space-y-4 mt-4">
+            <div className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {Array.from({ length: 4 }).map((_, i) => (
                         <Skeleton key={i} className="h-20 rounded-lg" />
@@ -178,7 +179,7 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
     // No plan yet — show creation UI
     if (!plan) {
         return (
-            <div className="space-y-4 mt-4">
+            <div className="space-y-4">
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-base">Create Payment Plan</CardTitle>
@@ -191,7 +192,8 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
                         {canEdit && (
                             <>
                                 <AIPlanGenerator
-                                    caseId={caseId}
+                                    clientId={clientId}
+                                    clientName={clientName}
                                     onPlanParsed={handleAIParsed}
                                 />
                                 <div className="flex items-center gap-3">
@@ -224,7 +226,7 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
                             recurring_amount: 0,
                             frequency: "monthly",
                             start_date: new Date().toISOString().split("T")[0],
-                            client_name: "",
+                            client_name: clientName || "",
                             notes: "",
                         }}
                         fields={createPlanFields}
@@ -242,7 +244,7 @@ export function PaymentPlanTab({ caseId }: PaymentPlanTabProps) {
     const statusVariant = STATUS_COLORS[status?.status || plan.status] || "outline";
 
     return (
-        <div className="space-y-4 mt-4">
+        <div className="space-y-4">
             {/* Status Cards */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <Card>
