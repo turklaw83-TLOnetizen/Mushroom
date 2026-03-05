@@ -172,6 +172,8 @@ from api.routers.gdpr import router as gdpr_router
 from api.routers.batch import router as batch_router
 from api.metrics import router as metrics_router
 from api.websockets.workers_ws import router as ws_router
+from api.routers.mock_exam import router as mock_exam_router
+from api.websockets.mock_exam_ws import router as mock_exam_ws_router
 
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
@@ -206,6 +208,8 @@ app.include_router(gdpr_router, prefix="/api/v1")
 app.include_router(batch_router, prefix="/api/v1")
 app.include_router(metrics_router, prefix="/api/v1")
 app.include_router(ws_router, prefix="/api/v1")
+app.include_router(mock_exam_router, prefix="/api/v1")
+app.include_router(mock_exam_ws_router, prefix="/api/v1")
 
 
 # ---- Health Check (Fix #12: actually pings DB) ---------------------------
