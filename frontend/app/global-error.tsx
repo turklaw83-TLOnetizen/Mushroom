@@ -20,7 +20,7 @@ export default function GlobalError({
             <body className="font-sans antialiased bg-background text-foreground">
                 <div className="flex min-h-screen items-center justify-center p-6">
                     <div className="max-w-md text-center space-y-4">
-                        <div className="text-5xl">💥</div>
+                        <div className="text-5xl" aria-hidden="true">💥</div>
                         <h1 className="text-2xl font-bold">Something went wrong</h1>
                         <p className="text-sm text-muted-foreground">
                             {error.message || "An unexpected error occurred."}

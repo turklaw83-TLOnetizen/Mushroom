@@ -16,14 +16,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-
-interface FileItem {
-    filename: string;
-    size: number;
-    tags: string[];
-    uploaded_at?: string;
-    ocr_status?: string;
-}
+import type { FileItem } from "@/types/api";
 
 function formatSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
@@ -57,7 +50,7 @@ export default function FilesPage() {
                 <Card key={i} className="hover:bg-accent/30 transition-colors cursor-pointer">
                     <CardContent className="flex items-center justify-between py-3">
                         <div className="flex items-center gap-3">
-                            <span className="text-2xl">📄</span>
+                            <span className="text-2xl" aria-hidden="true">📄</span>
                             <div>
                                 <p className="font-medium text-sm">{file.filename}</p>
                                 <p className="text-xs text-muted-foreground">

@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -247,24 +248,16 @@ function GoogleCalendarSection() {
 
 export default function SettingsPage() {
     const { getToken } = useAuth();
-    const [backingUp, setBackingUp] = useState(false);
 
     const { data: backup, isLoading } = useQuery({
         queryKey: ["backup-status"],
         queryFn: () => api.get<BackupStatus>("/backup/status", { getToken }),
     });
 
-    const handleBackup = async (target: string) => {
-        setBackingUp(true);
-        try {
-            await api.post("/backup/run", { target }, { getToken });
-            toast.success(`${target} backup complete`);
-        } catch {
-            toast.error("Backup failed");
-        } finally {
-            setBackingUp(false);
-        }
-    };
+    const backupMutation = useMutationWithToast<string>({
+        mutationFn: (target) => api.post("/backup/run", { target }, { getToken }),
+        successMessage: "Backup complete",
+    });
 
     return (
         <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
@@ -315,10 +308,10 @@ export default function SettingsPage() {
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => handleBackup("dropbox")}
-                                            disabled={backingUp}
+                                            onClick={() => backupMutation.mutate("dropbox")}
+                                            disabled={backupMutation.isPending}
                                         >
-                                            {backingUp ? "Running..." : "Backup Now"}
+                                            {backupMutation.isPending ? "Running..." : "Backup Now"}
                                         </Button>
                                     )}
                                 </div>
@@ -332,10 +325,10 @@ export default function SettingsPage() {
                                         <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => handleBackup("b2")}
-                                            disabled={backingUp}
+                                            onClick={() => backupMutation.mutate("b2")}
+                                            disabled={backupMutation.isPending}
                                         >
-                                            {backingUp ? "Running..." : "Backup Now"}
+                                            {backupMutation.isPending ? "Running..." : "Backup Now"}
                                         </Button>
                                     )}
                                 </div>

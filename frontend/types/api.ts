@@ -133,3 +133,72 @@ export interface CaseFile {
     tags: string[];
     page_count?: number;
 }
+
+export interface FileItem {
+    filename: string;
+    size: number;
+    tags: string[];
+    uploaded_at?: string;
+    ocr_status?: string;
+}
+
+// ---- Client (CRM) ----
+export interface Client {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    company: string;
+    cases: string[];
+    created_at: string;
+}
+
+// ---- Task ----
+export interface Task {
+    id: string;
+    title: string;
+    description: string;
+    status: string;
+    priority: string;
+    due_date: string;
+    assigned_to: string;
+    case_id?: string;
+    case_name?: string;
+}
+
+// ---- Evidence Item (case-level) ----
+export interface EvidenceItem {
+    id: string;
+    description: string;
+    type: string;
+    source: string;
+    foundation: string;
+    tags: string[];
+}
+
+// ---- User ----
+export interface UserItem {
+    id: string;
+    name: string;
+    initials: string;
+    role: string;
+    email: string;
+    active: boolean;
+}
+
+// ---- Health / Admin ----
+export interface HealthData {
+    status: string;
+    database: string;
+    version: string;
+    uptime_seconds?: number;
+    latency_ms?: number;
+}
+
+export interface TeamStats {
+    total_users: number;
+    active_users: number;
+    admins: number;
+    attorneys: number;
+    paralegals: number;
+}

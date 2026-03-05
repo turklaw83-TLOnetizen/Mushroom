@@ -74,7 +74,7 @@ export function NotificationBell() {
                 onClick={() => setOpen(!open)}
                 aria-label="Notifications"
             >
-                <span className="text-lg">🔔</span>
+                <span className="text-lg" aria-hidden="true">🔔</span>
                 {count > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                         {count > 99 ? "99+" : count}

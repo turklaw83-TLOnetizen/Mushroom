@@ -80,7 +80,7 @@ export default function ProfilePage() {
                     <div className="mt-4 grid grid-cols-2 gap-2">
                         {["View Cases", "Edit Cases", "Run Analysis", "Export Documents", "Manage Billing", "Admin Access"].map((perm) => (
                             <div key={perm} className="flex items-center gap-2 text-xs">
-                                <span className="text-green-400">✓</span>
+                                <span className="text-green-400" aria-hidden="true">✓</span>
                                 <span>{perm}</span>
                             </div>
                         ))}
@@ -95,7 +95,7 @@ export default function ProfilePage() {
                 </CardHeader>
                 <CardContent>
                     <div className="flex items-center gap-3 py-2">
-                        <span className="text-lg">🖥️</span>
+                        <span className="text-lg" aria-hidden="true">🖥️</span>
                         <div>
                             <p className="text-sm font-medium">Current Session</p>
                             <p className="text-xs text-muted-foreground">

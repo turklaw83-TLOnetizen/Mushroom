@@ -15,7 +15,7 @@ export function TabErrorFallback({
 }) {
     return (
         <div className="flex flex-col items-center justify-center min-h-[300px] gap-4 p-8">
-            <span className="text-4xl">⚠️</span>
+            <span className="text-4xl" aria-hidden="true">⚠️</span>
             <div className="text-center space-y-2 max-w-md">
                 <h2 className="text-lg font-semibold">
                     {tabName ? `${tabName} failed to load` : "Something went wrong"}
