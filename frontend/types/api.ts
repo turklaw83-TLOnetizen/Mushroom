@@ -397,6 +397,7 @@ export interface FeedTransaction {
     sender: string;
     note: string;
     type: string;
+    source?: "csv" | "email";
     status: "unclassified" | "classified" | "recorded" | "dismissed";
     suggested_client_id: string | null;
     suggested_plan_id: string | null;
@@ -406,4 +407,44 @@ export interface FeedTransaction {
     imported_at: string;
     recorded_payment_id?: string;
     dismissed_reason?: string;
+}
+
+// ---- Stripe ----
+export interface StripePaymentLink {
+    id: string;
+    stripe_link_id: string;
+    url: string;
+    client_id: string;
+    plan_id: string;
+    client_name: string;
+    amount_cents: number;
+    amount: number;
+    description: string;
+    status: "active" | "paid" | "expired";
+    created_at: string;
+    paid_at: string | null;
+    payment_intent_id: string | null;
+}
+
+export interface StripeCheckoutSession {
+    id: string;
+    stripe_session_id: string;
+    url: string;
+    client_id: string;
+    plan_id: string;
+    client_name: string;
+    amount_cents: number;
+    amount: number;
+    description: string;
+    status: "pending" | "paid" | "expired";
+    created_at: string;
+    paid_at: string | null;
+    payment_intent_id: string | null;
+}
+
+export interface StripeConfig {
+    configured: boolean;
+    public_key: string;
+    webhook_configured: boolean;
+    base_url: string;
 }

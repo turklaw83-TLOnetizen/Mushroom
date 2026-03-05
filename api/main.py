@@ -180,6 +180,7 @@ from api.routers.module_notes import router as module_notes_router
 from api.routers.payment_plans import router as payment_plans_router
 from api.routers.comms import router as comms_router
 from api.routers.payment_feed import router as payment_feed_router
+from api.routers.stripe_pay import router as stripe_pay_router
 
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
@@ -222,6 +223,7 @@ app.include_router(module_notes_router, prefix="/api/v1")
 app.include_router(payment_plans_router, prefix="/api/v1")
 app.include_router(comms_router, prefix="/api/v1")
 app.include_router(payment_feed_router, prefix="/api/v1")
+app.include_router(stripe_pay_router, prefix="/api/v1")
 
 
 # ---- Health Check (Fix #12: actually pings DB) ---------------------------

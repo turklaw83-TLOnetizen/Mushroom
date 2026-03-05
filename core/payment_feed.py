@@ -1,7 +1,9 @@
 """
 payment_feed.py -- Payment Monitoring & Classification
-Upload CSV exports from Chime, Venmo, Cash App (or generic bank CSVs),
-parse transactions, AI-classify to clients, and record confirmed payments.
+Primary: Parse forwarded payment notification emails from Venmo, Cash App,
+and Chime to detect incoming payments automatically.
+Secondary: Upload CSV exports as a fallback.
+AI-classify transactions to clients and record confirmed payments.
 Storage: data/comms/payment_feed.json
 """
 
@@ -10,6 +12,7 @@ import io
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -344,7 +347,317 @@ def parse_generic_csv(file_data: str) -> List[Dict]:
 
 
 # ===================================================================
-#  2.  HELPERS
+#  2.  EMAIL NOTIFICATION PARSERS  — primary ingest method
+# ===================================================================
+# Users forward payment notification emails from Venmo, Cash App, or
+# Chime.  Each parser extracts amount, sender, note, and date from
+# the email subject + body text.
+
+def parse_venmo_email(subject: str, body: str) -> Optional[Dict]:
+    """
+    Parse a Venmo payment notification email.
+    Subject patterns:
+      "John Smith paid you $150.00"
+      "You've been paid $50.00"
+    Body contains sender name, amount, note, and date.
+    """
+    txn: Dict = {
+        "id": f"txn_{uuid.uuid4().hex[:8]}",
+        "platform": "venmo",
+        "source": "email",
+        "status": "unclassified",
+        "suggested_client_id": None,
+        "suggested_plan_id": None,
+        "confidence": 0.0,
+        "classification_reason": "",
+        "imported_at": datetime.now().isoformat(),
+    }
+
+    # -- Extract amount --
+    amount = _extract_amount(subject) or _extract_amount(body)
+    if not amount or amount <= 0:
+        return None
+    txn["amount"] = round(amount, 2)
+
+    # -- Extract sender from subject --
+    # "John Smith paid you $150.00"
+    m = re.match(r"^(.+?)\s+paid\s+you\s+\$", subject, re.IGNORECASE)
+    if m:
+        txn["sender"] = m.group(1).strip()
+    else:
+        # Try body: "From: John Smith" or "John Smith sent you"
+        m2 = re.search(r"(?:from|paid by)[:\s]+([A-Z][a-z]+ [A-Z][a-z]+)", body, re.IGNORECASE)
+        if m2:
+            txn["sender"] = m2.group(1).strip()
+        else:
+            m3 = re.search(r"^([A-Z][a-z]+ [A-Z][a-z]+)\s+(?:paid|sent)", body, re.IGNORECASE | re.MULTILINE)
+            txn["sender"] = m3.group(1).strip() if m3 else ""
+
+    # -- Extract note/memo --
+    note_match = re.search(
+        r"(?:note|memo|message|for)[:\s]*[\"']?(.+?)[\"']?\s*(?:\n|$|View|Transfer)",
+        body, re.IGNORECASE,
+    )
+    txn["note"] = note_match.group(1).strip()[:200] if note_match else ""
+
+    # -- Extract date --
+    txn["date"] = _extract_date_from_text(body)
+    txn["type"] = "payment"
+    txn["raw_status"] = "complete"
+
+    return txn
+
+
+def parse_cashapp_email(subject: str, body: str) -> Optional[Dict]:
+    """
+    Parse a Cash App payment notification email.
+    Subject patterns:
+      "John Smith sent you $100"
+      "You received $75.00"
+      "$50.00 received from John Smith"
+    """
+    txn: Dict = {
+        "id": f"txn_{uuid.uuid4().hex[:8]}",
+        "platform": "cashapp",
+        "source": "email",
+        "status": "unclassified",
+        "suggested_client_id": None,
+        "suggested_plan_id": None,
+        "confidence": 0.0,
+        "classification_reason": "",
+        "imported_at": datetime.now().isoformat(),
+    }
+
+    amount = _extract_amount(subject) or _extract_amount(body)
+    if not amount or amount <= 0:
+        return None
+    txn["amount"] = round(amount, 2)
+
+    # -- Sender --
+    # "$100 received from John Smith"
+    m = re.search(r"received\s+from\s+(.+?)(?:\s*$|\s+on\s+)", subject, re.IGNORECASE)
+    if m:
+        txn["sender"] = m.group(1).strip()
+    else:
+        # "John Smith sent you $100"
+        m2 = re.match(r"^(.+?)\s+sent\s+you\s+\$", subject, re.IGNORECASE)
+        if m2:
+            txn["sender"] = m2.group(1).strip()
+        else:
+            m3 = re.search(r"(?:from|sent by)[:\s]+([A-Z][a-z]+ [A-Z][a-z]+)", body, re.IGNORECASE)
+            txn["sender"] = m3.group(1).strip() if m3 else ""
+
+    # -- Note --
+    note_match = re.search(
+        r"(?:note|memo|for|message)[:\s]*[\"']?(.+?)[\"']?\s*(?:\n|$|View|Cash App)",
+        body, re.IGNORECASE,
+    )
+    txn["note"] = note_match.group(1).strip()[:200] if note_match else ""
+
+    # -- Cashtag ($username) in body --
+    cashtag = re.search(r"\$([a-zA-Z][a-zA-Z0-9_]+)", body)
+    if cashtag and not txn["sender"]:
+        txn["sender"] = f"${cashtag.group(1)}"
+
+    txn["date"] = _extract_date_from_text(body)
+    txn["type"] = "payment"
+    txn["raw_status"] = "complete"
+
+    return txn
+
+
+def parse_chime_email(subject: str, body: str) -> Optional[Dict]:
+    """
+    Parse a Chime deposit/transfer notification email.
+    Subject patterns:
+      "You received a $250.00 deposit"
+      "Direct deposit received: $1,500.00"
+      "You've received $100.00 from John Smith"
+    """
+    txn: Dict = {
+        "id": f"txn_{uuid.uuid4().hex[:8]}",
+        "platform": "chime",
+        "source": "email",
+        "status": "unclassified",
+        "suggested_client_id": None,
+        "suggested_plan_id": None,
+        "confidence": 0.0,
+        "classification_reason": "",
+        "imported_at": datetime.now().isoformat(),
+    }
+
+    amount = _extract_amount(subject) or _extract_amount(body)
+    if not amount or amount <= 0:
+        return None
+    txn["amount"] = round(amount, 2)
+
+    # -- Sender --
+    m = re.search(r"from\s+(.+?)(?:\s*$|\s+on\s+|\s+via\s+)", subject, re.IGNORECASE)
+    if m:
+        txn["sender"] = m.group(1).strip()
+    else:
+        m2 = re.search(r"(?:from|sender|deposited by)[:\s]+([A-Z][a-z]+ [A-Z][a-z]+)", body, re.IGNORECASE)
+        txn["sender"] = m2.group(1).strip() if m2 else ""
+
+    # -- Description from body --
+    desc_match = re.search(
+        r"(?:description|memo|reference|details)[:\s]*(.+?)(?:\n|$)",
+        body, re.IGNORECASE,
+    )
+    txn["note"] = desc_match.group(1).strip()[:200] if desc_match else subject
+
+    txn["date"] = _extract_date_from_text(body)
+    txn["type"] = "deposit"
+    txn["raw_status"] = ""
+
+    return txn
+
+
+def detect_platform_from_email(
+    sender_email: str, subject: str, body: str,
+) -> str:
+    """Auto-detect which payment platform sent the notification email."""
+    combined = f"{sender_email} {subject} {body}".lower()
+    if "venmo" in combined:
+        return "venmo"
+    if "cash app" in combined or "cashapp" in combined or "square" in combined:
+        return "cashapp"
+    if "chime" in combined:
+        return "chime"
+    return "unknown"
+
+
+def ingest_email(
+    subject: str,
+    body: str,
+    sender_email: str = "",
+) -> Optional[Dict]:
+    """
+    Main email ingestion entry-point.
+    Auto-detects platform, parses the notification, classifies, and saves.
+    Returns the created transaction dict or None if parsing failed.
+    """
+    platform = detect_platform_from_email(sender_email, subject, body)
+
+    parsers = {
+        "venmo": parse_venmo_email,
+        "cashapp": parse_cashapp_email,
+        "chime": parse_chime_email,
+    }
+
+    parser = parsers.get(platform)
+    if not parser:
+        # Try all parsers as fallback
+        for p in [parse_venmo_email, parse_cashapp_email, parse_chime_email]:
+            txn = p(subject, body)
+            if txn:
+                break
+        else:
+            # Last resort: try to extract any dollar amount
+            txn = _parse_generic_email(subject, body)
+    else:
+        txn = parser(subject, body)
+
+    if not txn:
+        logger.info("Could not parse payment email: %s", subject[:80])
+        return None
+
+    # Run classification
+    try:
+        from core.crm import _load_all as load_all_clients
+        from core.billing import load_payment_plans
+
+        clients = load_all_clients()
+        plans_by_client: Dict[str, List[Dict]] = {}
+        for c in clients:
+            cid = c.get("id", "")
+            if cid:
+                plans_by_client[cid] = load_payment_plans(cid)
+
+        classified = classify_transactions([txn], clients, plans_by_client)
+        txn = classified[0]
+
+        if txn["status"] == "unclassified":
+            ai_result = classify_with_ai([txn], clients)
+            txn = ai_result[0]
+
+    except Exception:
+        logger.exception("Classification failed for email ingest")
+
+    # Save to feed
+    feed = _load_feed()
+    feed.append(txn)
+    _save_feed(feed)
+
+    logger.info(
+        "Ingested email payment: $%.2f from '%s' (%s)",
+        txn["amount"], txn.get("sender", "?"), platform,
+    )
+    return txn
+
+
+def _parse_generic_email(subject: str, body: str) -> Optional[Dict]:
+    """Fallback parser for unrecognized email formats — extracts any dollar amount."""
+    amount = _extract_amount(subject) or _extract_amount(body)
+    if not amount or amount <= 0:
+        return None
+
+    return {
+        "id": f"txn_{uuid.uuid4().hex[:8]}",
+        "platform": "email",
+        "source": "email",
+        "date": _extract_date_from_text(body),
+        "amount": round(amount, 2),
+        "sender": _extract_sender_from_description(subject),
+        "note": subject,
+        "type": "",
+        "raw_status": "",
+        "status": "unclassified",
+        "suggested_client_id": None,
+        "suggested_plan_id": None,
+        "confidence": 0.0,
+        "classification_reason": "",
+        "imported_at": datetime.now().isoformat(),
+    }
+
+
+def _extract_amount(text: str) -> Optional[float]:
+    """Extract a dollar amount from text. Returns the first positive amount found."""
+    matches = re.findall(r"\$\s*([\d,]+(?:\.\d{1,2})?)", text)
+    for m in matches:
+        try:
+            val = float(m.replace(",", ""))
+            if val > 0:
+                return val
+        except ValueError:
+            continue
+    return None
+
+
+def _extract_date_from_text(text: str) -> str:
+    """Try to find a date in email body text."""
+    # "March 5, 2026" or "Mar 5, 2026"
+    m = re.search(
+        r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})",
+        text, re.IGNORECASE,
+    )
+    if m:
+        return _parse_date(m.group(1))
+
+    # "03/05/2026" or "2026-03-05"
+    m2 = re.search(r"(\d{1,2}/\d{1,2}/\d{2,4})", text)
+    if m2:
+        return _parse_date(m2.group(1))
+
+    m3 = re.search(r"(\d{4}-\d{2}-\d{2})", text)
+    if m3:
+        return m3.group(1)
+
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+# ===================================================================
+#  3.  HELPERS
 # ===================================================================
 
 def _parse_date(date_str: str) -> str:
@@ -391,7 +704,7 @@ def _extract_sender_from_description(description: str) -> str:
 
 
 # ===================================================================
-#  3.  AI CLASSIFICATION  — match transactions to clients
+#  4.  AI CLASSIFICATION  — match transactions to clients
 # ===================================================================
 
 def classify_transactions(
@@ -563,7 +876,7 @@ def classify_with_ai(
 
 
 # ===================================================================
-#  4.  FEED CRUD  — manage imported transactions
+#  5.  FEED CRUD  — manage imported transactions
 # ===================================================================
 
 def import_transactions(file_data: str, platform: str) -> List[Dict]:
