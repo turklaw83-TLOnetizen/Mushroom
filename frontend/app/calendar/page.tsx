@@ -1,7 +1,7 @@
 // ---- Master Calendar Page ------------------------------------------------
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,8 @@ import {
     useCreateCalendarEvent,
     type CalendarEvent,
 } from "@/hooks/use-calendar";
+import { useClients, useClientCases } from "@/hooks/use-clients";
+import { useCases } from "@/hooks/use-cases";
 
 const EVENT_TYPES = [
     "Court Date",
@@ -38,6 +40,8 @@ const EVENT_TYPES = [
     "Internal",
     "Other",
 ];
+
+const NONE_VALUE = "__none__";
 
 const statusColors: Record<string, string> = {
     scheduled: "bg-blue-500/15 text-blue-400 border-blue-500/30",
@@ -59,11 +63,27 @@ export default function MasterCalendarPage() {
     const [newTime, setNewTime] = useState("");
     const [newType, setNewType] = useState("Other");
     const [newLocation, setNewLocation] = useState("");
+    const [newClientId, setNewClientId] = useState("");
+    const [newCaseId, setNewCaseId] = useState("");
 
     const { data: monthData, isLoading: monthLoading } = useMonthCalendar(year, month);
     const { data: upcoming } = useUpcomingEvents(14);
     const { data: stats } = useCalendarStats();
     const createEvent = useCreateCalendarEvent();
+
+    // Client/case data for Quick Add
+    const { data: clientsData } = useClients();
+    const clients = clientsData?.items ?? [];
+    const { data: clientCasesData } = useClientCases(newClientId || null);
+    const linkedCaseIds = clientCasesData?.case_ids ?? [];
+    const { data: casesData } = useCases(1, 200);
+    const allCases = casesData?.items ?? [];
+
+    // Filter cases to only those linked to the selected client
+    const clientCases = useMemo(() => {
+        if (!newClientId || linkedCaseIds.length === 0) return [];
+        return allCases.filter((c) => linkedCaseIds.includes(c.id));
+    }, [newClientId, linkedCaseIds, allCases]);
 
     const navigateMonth = (delta: number) => {
         let newMonth = month + delta;
@@ -102,6 +122,8 @@ export default function MasterCalendarPage() {
                 time: newTime,
                 type: newType,
                 location: newLocation.trim(),
+                client_id: newClientId,
+                case_id: newCaseId,
             });
             toast.success("Event created", { description: newTitle });
             setNewTitle("");
@@ -109,6 +131,8 @@ export default function MasterCalendarPage() {
             setNewTime("");
             setNewType("Other");
             setNewLocation("");
+            setNewClientId("");
+            setNewCaseId("");
         } catch (err) {
             toast.error("Failed to create event", {
                 description: err instanceof Error ? err.message : "Unknown error",
@@ -311,6 +335,54 @@ export default function MasterCalendarPage() {
                                     ))}
                                 </SelectContent>
                             </Select>
+
+                            {/* Client picker */}
+                            <Select
+                                value={newClientId || NONE_VALUE}
+                                onValueChange={(v) => {
+                                    setNewClientId(v === NONE_VALUE ? "" : v);
+                                    setNewCaseId("");
+                                }}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Client (optional)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={NONE_VALUE}>
+                                        No client
+                                    </SelectItem>
+                                    {clients.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            {c.name || `${c.last_name}, ${c.first_name}`}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+
+                            {/* Case picker — shown only when client selected and has cases */}
+                            {newClientId && clientCases.length > 0 && (
+                                <Select
+                                    value={newCaseId || NONE_VALUE}
+                                    onValueChange={(v) =>
+                                        setNewCaseId(v === NONE_VALUE ? "" : v)
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Case (optional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={NONE_VALUE}>
+                                            No specific case
+                                        </SelectItem>
+                                        {clientCases.map((c) => (
+                                            <SelectItem key={c.id} value={c.id}>
+                                                {c.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+
                             <Input
                                 placeholder="Location"
                                 value={newLocation}

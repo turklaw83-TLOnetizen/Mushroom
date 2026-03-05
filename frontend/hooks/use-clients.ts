@@ -19,6 +19,10 @@ interface ClientListResponse {
     items: ClientItem[];
 }
 
+interface ClientCasesResponse {
+    case_ids: string[];
+}
+
 export interface CreateClientInput {
     first_name: string;
     last_name: string;
@@ -42,6 +46,17 @@ export function useClients(query: string = "") {
             }),
         // Keep previous data while new query loads for smoother UX
         placeholderData: (prev) => prev,
+    });
+}
+
+export function useClientCases(clientId: string | null) {
+    const { getToken } = useAuth();
+
+    return useQuery({
+        queryKey: ["client-cases", clientId],
+        queryFn: () =>
+            api.get<ClientCasesResponse>(`/crm/clients/${clientId}/cases`, { getToken }),
+        enabled: !!clientId,
     });
 }
 
