@@ -15,17 +15,12 @@ const clerkKey =
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
     "pk_test_YnVpbGQuY2xlcmsuYWNjb3VudHMuZGV2JA";
 
-// In production, Clerk JS is served through an nginx proxy at /__clerk
-// instead of the clerk.turkclaw.net subdomain (avoids DNS verification delays).
-const clerkProxyUrl = process.env.NEXT_PUBLIC_CLERK_PROXY_URL || undefined;
-
 export function ThemeAwareClerk({ children }: { children: React.ReactNode }) {
     const theme = useUIStore((s) => s.theme);
 
     return (
         <ClerkProvider
             publishableKey={clerkKey}
-            proxyUrl={clerkProxyUrl}
             appearance={{
                 baseTheme: theme === "dark" ? dark : undefined,
                 variables: { colorPrimary: "#6366f1" },
