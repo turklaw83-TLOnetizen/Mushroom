@@ -414,16 +414,20 @@ class DocumentIngester:
 
         if file_ext == ".pdf":
             return self._process_pdf(file_path, vision_model, force_ocr=force_ocr)
-        elif file_ext in [".jpg", ".jpeg", ".png"]:
+        elif file_ext in (".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".heic", ".heif", ".webp"):
             return self._process_image(file_path, vision_model)
-        elif file_ext in [".mp3", ".wav", ".m4a", ".mp4", ".mpeg", ".mpga", ".webm", ".avi", ".mov", ".mkv", ".ogg", ".flac", ".aac"]:
+        elif file_ext in (".mp3", ".wav", ".m4a", ".mp4", ".mpeg", ".mpga", ".webm", ".avi", ".mov", ".mkv", ".ogg", ".flac", ".aac", ".wma"):
             return self._process_media(file_path)
         elif file_ext == ".docx":
              return self._process_docx(file_path)
-        elif file_ext == ".txt":
+        elif file_ext in (".txt", ".md", ".rtf", ".log", ".json", ".xml", ".html", ".htm", ".css", ".js", ".py", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".env.example"):
              return self._process_txt(file_path)
-        elif file_ext in [".xlsx", ".xls", ".csv"]:
+        elif file_ext in (".xlsx", ".xls", ".csv", ".tsv"):
              return self._process_spreadsheet(file_path)
+        elif file_ext == ".pptx":
+             return self._process_pptx(file_path)
+        elif file_ext == ".doc":
+             return self._process_doc(file_path)
 
         raise ValueError(f"Unsupported file type: {file_ext}")
 
@@ -666,6 +670,93 @@ class DocumentIngester:
         except Exception as e:
             logger.warning(f"Error processing TXT {file_path}: {e}")
             raise e
+
+    def _process_pptx(self, file_path: str) -> List[Document]:
+        """Extract text from a .pptx PowerPoint file."""
+        filename = os.path.basename(file_path)
+        try:
+            from pptx import Presentation
+            prs = Presentation(file_path)
+            parts = []
+            for slide_num, slide in enumerate(prs.slides, 1):
+                slide_texts = []
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for paragraph in shape.text_frame.paragraphs:
+                            text = paragraph.text.strip()
+                            if text:
+                                slide_texts.append(text)
+                    if shape.has_table:
+                        for row in shape.table.rows:
+                            row_text = " | ".join(
+                                cell.text.strip() for cell in row.cells if cell.text.strip()
+                            )
+                            if row_text:
+                                slide_texts.append(row_text)
+                if slide_texts:
+                    parts.append(f"--- Slide {slide_num} ---\n" + "\n".join(slide_texts))
+            text = "\n\n".join(parts)
+            if not text.strip():
+                return []
+            return self.text_splitter.create_documents(
+                [text],
+                metadatas=[{
+                    "source": filename,
+                    "page": 1,
+                    "file_path": file_path,
+                    "type": "pptx",
+                    "section_title": self._detect_section_title(text),
+                }],
+            )
+        except ImportError:
+            logger.warning("python-pptx not installed — falling back to text extraction")
+            return self._process_txt(file_path)
+        except Exception as e:
+            logger.warning(f"Error processing PPTX {file_path}: {e}")
+            raise e
+
+    def _process_doc(self, file_path: str) -> List[Document]:
+        """Extract text from a legacy .doc file using textract or antiword."""
+        filename = os.path.basename(file_path)
+        text = ""
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["antiword", file_path],
+                capture_output=True, text=True, timeout=60,
+            )
+            if result.returncode == 0:
+                text = result.stdout
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        if not text.strip():
+            try:
+                import textract
+                raw = textract.process(file_path)
+                text = raw.decode("utf-8", errors="replace")
+            except ImportError:
+                logger.warning(
+                    f"Cannot process .doc file {filename}: install antiword or textract"
+                )
+                # Last resort: read as raw text
+                return self._process_txt(file_path)
+            except Exception as e:
+                logger.warning(f"Error processing DOC {file_path}: {e}")
+                raise e
+
+        if not text.strip():
+            return []
+        return self.text_splitter.create_documents(
+            [text],
+            metadatas=[{
+                "source": filename,
+                "page": 1,
+                "file_path": file_path,
+                "type": "doc",
+                "section_title": self._detect_section_title(text),
+            }],
+        )
 
     def _assess_text_quality(self, text: str) -> Dict:
         """
