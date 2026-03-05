@@ -1,5 +1,6 @@
 # ---- Payment Plan Router --------------------------------------------------
-# CRUD for per-client payment plans, payment recording, AI plan generation.
+# CRUD for per-client payment plans (multiple plans per client),
+# payment recording, and AI plan generation.
 
 import asyncio
 import logging
@@ -52,24 +53,21 @@ class AIPaymentPlanRequest(BaseModel):
     client_name: str = Field(default="", max_length=400)
 
 
-# ---- Endpoints -----------------------------------------------------------
+# ---- List / Create (no plan_id) ------------------------------------------
 
 @router.get("")
-def get_payment_plan(
+def list_plans(
     client_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Get the payment plan for a client."""
+    """Get all payment plans for a client."""
     try:
-        from core.billing import load_payment_plan, mark_overdue_payments
-        # Mark overdue on read (lazy check)
+        from core.billing import load_payment_plans, mark_overdue_payments
         mark_overdue_payments(client_id)
-        plan = load_payment_plan(client_id)
-        if not plan:
-            return {"plan": None}
-        return {"plan": plan}
+        plans = load_payment_plans(client_id)
+        return {"plans": plans}
     except Exception:
-        logger.exception("Failed to load payment plan")
+        logger.exception("Failed to load payment plans")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -79,16 +77,9 @@ def create_plan(
     body: CreatePaymentPlanRequest,
     user: dict = Depends(require_role("admin", "attorney")),
 ):
-    """Create a payment plan for a client."""
+    """Create a new payment plan for a client (multiple allowed)."""
     try:
-        from core.billing import load_payment_plan, create_payment_plan
-        existing = load_payment_plan(client_id)
-        if existing and existing.get("status") == "active":
-            raise HTTPException(
-                status_code=409,
-                detail="Client already has an active payment plan. Delete or cancel it first.",
-            )
-
+        from core.billing import create_payment_plan
         user_name = user.get("name", user.get("user_id", ""))
         plan = create_payment_plan(
             client_id=client_id,
@@ -104,96 +95,8 @@ def create_plan(
             created_by=user_name,
         )
         return {"status": "created", "plan": plan}
-    except HTTPException:
-        raise
     except Exception:
         logger.exception("Failed to create payment plan")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.put("")
-def update_plan(
-    client_id: str,
-    body: UpdatePaymentPlanRequest,
-    user: dict = Depends(require_role("admin", "attorney")),
-):
-    """Update payment plan parameters."""
-    try:
-        from core.billing import update_payment_plan
-        updates = body.model_dump(exclude_none=True)
-        if not updates:
-            return {"status": "no_changes"}
-        user_name = user.get("name", user.get("user_id", ""))
-        if not update_payment_plan(client_id, updates, updated_by=user_name):
-            raise HTTPException(status_code=404, detail="No payment plan found")
-        return {"status": "updated"}
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Failed to update payment plan")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.delete("")
-def delete_plan(
-    client_id: str,
-    user: dict = Depends(require_role("admin", "attorney")),
-):
-    """Delete the payment plan for a client."""
-    try:
-        from core.billing import delete_payment_plan
-        if not delete_payment_plan(client_id):
-            raise HTTPException(status_code=404, detail="No payment plan found")
-        return {"status": "deleted"}
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Failed to delete payment plan")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.post("/payments")
-def record_payment(
-    client_id: str,
-    body: RecordPaymentRequest,
-    user: dict = Depends(require_role("admin", "attorney", "paralegal")),
-):
-    """Record a payment against the plan."""
-    try:
-        from core.billing import record_plan_payment
-        user_name = user.get("name", user.get("user_id", ""))
-        payment_id = record_plan_payment(
-            client_id=client_id,
-            amount=body.amount,
-            method=body.method,
-            payer_name=body.payer_name,
-            note=body.note,
-            scheduled_payment_id=body.scheduled_payment_id,
-            date_str=body.date,
-            recorded_by=user_name,
-        )
-        if not payment_id:
-            raise HTTPException(status_code=404, detail="No active payment plan found")
-        return {"status": "recorded", "payment_id": payment_id}
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Failed to record payment")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.get("/status")
-def plan_status(
-    client_id: str,
-    user: dict = Depends(get_current_user),
-):
-    """Get computed plan status summary."""
-    try:
-        from core.billing import get_plan_status, mark_overdue_payments
-        mark_overdue_payments(client_id)
-        return get_plan_status(client_id)
-    except Exception:
-        logger.exception("Failed to get plan status")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -219,4 +122,117 @@ async def ai_generate_plan(
         raise
     except Exception:
         logger.exception("Failed to parse payment plan")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---- Single Plan Operations (with plan_id) -------------------------------
+
+@router.get("/{plan_id}")
+def get_plan(
+    client_id: str,
+    plan_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Get a specific payment plan."""
+    try:
+        from core.billing import load_payment_plan
+        plan = load_payment_plan(client_id, plan_id)
+        if not plan:
+            raise HTTPException(status_code=404, detail="Payment plan not found")
+        return {"plan": plan}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to load payment plan")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.put("/{plan_id}")
+def update_plan(
+    client_id: str,
+    plan_id: str,
+    body: UpdatePaymentPlanRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Update payment plan parameters."""
+    try:
+        from core.billing import update_payment_plan
+        updates = body.model_dump(exclude_none=True)
+        if not updates:
+            return {"status": "no_changes"}
+        user_name = user.get("name", user.get("user_id", ""))
+        if not update_payment_plan(client_id, plan_id, updates, updated_by=user_name):
+            raise HTTPException(status_code=404, detail="No payment plan found")
+        return {"status": "updated"}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to update payment plan")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/{plan_id}")
+def delete_plan(
+    client_id: str,
+    plan_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Delete a specific payment plan."""
+    try:
+        from core.billing import delete_payment_plan
+        if not delete_payment_plan(client_id, plan_id):
+            raise HTTPException(status_code=404, detail="No payment plan found")
+        return {"status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to delete payment plan")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/{plan_id}/payments")
+def record_payment(
+    client_id: str,
+    plan_id: str,
+    body: RecordPaymentRequest,
+    user: dict = Depends(require_role("admin", "attorney", "paralegal")),
+):
+    """Record a payment against a specific plan."""
+    try:
+        from core.billing import record_plan_payment
+        user_name = user.get("name", user.get("user_id", ""))
+        payment_id = record_plan_payment(
+            client_id=client_id,
+            plan_id=plan_id,
+            amount=body.amount,
+            method=body.method,
+            payer_name=body.payer_name,
+            note=body.note,
+            scheduled_payment_id=body.scheduled_payment_id,
+            date_str=body.date,
+            recorded_by=user_name,
+        )
+        if not payment_id:
+            raise HTTPException(status_code=404, detail="No active payment plan found")
+        return {"status": "recorded", "payment_id": payment_id}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to record payment")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{plan_id}/status")
+def plan_status(
+    client_id: str,
+    plan_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Get computed plan status summary for a specific plan."""
+    try:
+        from core.billing import get_plan_status, mark_overdue_payments
+        mark_overdue_payments(client_id)
+        return get_plan_status(client_id, plan_id)
+    except Exception:
+        logger.exception("Failed to get plan status")
         raise HTTPException(status_code=500, detail="Internal server error")

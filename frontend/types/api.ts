@@ -207,6 +207,7 @@ export interface PaymentPlan {
 }
 
 export interface PaymentPlanStatus {
+    plan_id: string;
     total_amount: number;
     total_paid: number;
     remaining: number;
@@ -221,14 +222,19 @@ export interface PaymentPlanStatus {
 }
 
 export interface PaymentPlanSummary {
+    plan_id: string;
     client_id: string;
     client_name: string;
     total_amount: number;
     total_paid: number;
     remaining: number;
-    next_due_date: string | null;
+    next_due_date?: string | null;
     status: string;
-    overdue_amount: number;
+    overdue_amount?: number;
+    created_at?: string;
+    start_date?: string;
+    frequency?: string;
+    notes?: string;
 }
 
 export interface AROverview {
@@ -238,6 +244,15 @@ export interface AROverview {
     total_collected: number;
     total_overdue: number;
     overdue_count: number;
+    plans: PaymentPlanSummary[];
+}
+
+export interface RevenueOverview {
+    total_plans: number;
+    total_revenue: number;
+    completed_revenue: number;
+    active_revenue: number;
+    total_outstanding: number;
     plans: PaymentPlanSummary[];
 }
 

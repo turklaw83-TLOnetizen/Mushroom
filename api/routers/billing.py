@@ -231,3 +231,18 @@ def ar_overview(
     except ImportError:
         return {"total_plans": 0, "active_plans": 0, "total_receivable": 0,
                 "total_collected": 0, "total_overdue": 0, "overdue_count": 0, "plans": []}
+
+
+# ---- Revenue Overview ----------------------------------------------------
+
+@router.get("/revenue-overview")
+def revenue_overview(
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Firm-wide revenue tracker — all plans including completed."""
+    try:
+        from core.billing import get_revenue_overview
+        return get_revenue_overview()
+    except ImportError:
+        return {"total_plans": 0, "total_revenue": 0, "completed_revenue": 0,
+                "active_revenue": 0, "total_outstanding": 0, "plans": []}
