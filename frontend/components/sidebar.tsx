@@ -161,6 +161,7 @@ export function Sidebar() {
                         <NavItem href="/calendar" label="Calendar" icon="📅" active={pathname === "/calendar"} collapsed={!sidebarOpen} />
                         <NavItem href="/crm" label="Clients" icon="👥" active={pathname === "/crm"} collapsed={!sidebarOpen} />
                         <NavItem href="/email" label="Email" icon="📧" active={pathname === "/email"} collapsed={!sidebarOpen} />
+                        <NavItem href="/comms" label="Comms" icon="💬" active={pathname === "/comms"} collapsed={!sidebarOpen} />
                         <NavItem href="/conflicts" label="Conflicts" icon="⚖️" active={pathname === "/conflicts"} collapsed={!sidebarOpen} />
                         <NavItem href="/analytics" label="Analytics" icon="📊" active={pathname === "/analytics"} collapsed={!sidebarOpen} />
                         <NavItem href="/workflows" label="Workflows" icon="🔄" active={pathname === "/workflows"} collapsed={!sidebarOpen} />

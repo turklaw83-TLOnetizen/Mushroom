@@ -305,3 +305,105 @@ export interface TeamStats {
     attorneys: number;
     paralegals: number;
 }
+
+// ---- Client Communications ----
+export interface CommQueueItem {
+    id: string;
+    client_id: string;
+    case_id: string;
+    trigger_type: string;
+    trigger_id: string;
+    channel: string;
+    subject: string;
+    body_html: string;
+    body_sms: string;
+    status: "pending" | "approved" | "sent" | "failed" | "dismissed";
+    priority: string;
+    scheduled_for: string;
+    created_at: string;
+    reviewed_at: string | null;
+    reviewed_by: string | null;
+    sent_at: string | null;
+    send_result: string | null;
+    dismissed_reason: string;
+    metadata: {
+        client_name?: string;
+        client_email?: string;
+        client_phone?: string;
+        case_name?: string;
+        amount_due?: number;
+        due_date?: string;
+        event_title?: string;
+    };
+}
+
+export interface CommTemplate {
+    id: string;
+    name: string;
+    trigger_type: string;
+    channel: string;
+    subject_template: string;
+    body_template: string;
+    sms_template: string;
+    ai_enhance: boolean;
+    active: boolean;
+    created_at: string;
+    updated_at?: string;
+}
+
+export interface CommLogEntry {
+    id: string;
+    comm_id: string;
+    client_id: string;
+    case_id: string;
+    channel: string;
+    subject: string;
+    body: string;
+    sent_at: string;
+    sent_to: string;
+    status: string;
+    trigger_type: string;
+    approved_by: string;
+}
+
+export interface CommSettings {
+    triggers: Record<string, {
+        active: boolean;
+        days_before?: number[];
+        days_after?: number[];
+        days_after_intake?: number[];
+        use_event_reminder_days?: boolean;
+        channels: string[];
+    }>;
+    firm_name: string;
+    default_sender_name: string;
+    updated_at?: string | null;
+}
+
+export interface CommQueueStats {
+    pending: number;
+    approved: number;
+    sent: number;
+    failed: number;
+    dismissed: number;
+}
+
+// ---- Payment Feed ----
+export interface FeedTransaction {
+    id: string;
+    platform: string;
+    date: string;
+    amount: number;
+    sender: string;
+    note: string;
+    type: string;
+    status: "unclassified" | "classified" | "recorded" | "dismissed";
+    suggested_client_id: string | null;
+    suggested_plan_id: string | null;
+    suggested_client_name?: string;
+    confidence: number;
+    classification_reason: string;
+    imported_at: string;
+    recorded_payment_id?: string;
+    dismissed_reason?: string;
+}
