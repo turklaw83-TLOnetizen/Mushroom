@@ -54,6 +54,14 @@ class Case(Base):
     purged_file_count = Column(Integer, default=0)
     closed_at = Column(DateTime(timezone=True), nullable=True)
     assigned_to = Column(JSONB, default=list)  # List[str] of user_ids
+    docket_number = Column(String(128), default="")
+    charges = Column(Text, default="")  # criminal cases only
+    court_name = Column(String(256), default="")
+    date_of_incident = Column(String(32), default="")  # ISO date string
+    opposing_counsel = Column(String(256), default="")
+    jurisdiction_type = Column(String(16), default="")  # "state" or "federal"
+    county = Column(String(128), default="")
+    district = Column(String(128), default="")
     metadata_extra = Column(JSONB, default=dict)  # Catch-all for misc metadata
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     last_updated = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -85,6 +93,14 @@ class Case(Base):
             "status": self.status or "active",
             "pinned": self.pinned or False,
             "assigned_to": self.assigned_to or [],
+            "docket_number": self.docket_number or "",
+            "charges": self.charges or "",
+            "court_name": self.court_name or "",
+            "date_of_incident": self.date_of_incident or "",
+            "opposing_counsel": self.opposing_counsel or "",
+            "jurisdiction_type": self.jurisdiction_type or "",
+            "county": self.county or "",
+            "district": self.district or "",
             "created_at": self.created_at.isoformat() if self.created_at else "",
             "last_updated": self.last_updated.isoformat() if self.last_updated else "",
         }
@@ -107,7 +123,9 @@ class Case(Base):
             "case_subcategory", "client_name", "jurisdiction", "phase",
             "sub_phase", "status", "pinned", "assigned_to", "created_at",
             "last_updated", "purged", "purged_at", "purged_file_count",
-            "closed_at",
+            "closed_at", "docket_number", "charges", "court_name",
+            "date_of_incident", "opposing_counsel", "jurisdiction_type",
+            "county", "district",
         }
         extra = {k: v for k, v in d.items() if k not in known_keys}
 
@@ -125,6 +143,14 @@ class Case(Base):
             status=d.get("status", "active"),
             pinned=d.get("pinned", False),
             assigned_to=d.get("assigned_to", []),
+            docket_number=d.get("docket_number", ""),
+            charges=d.get("charges", ""),
+            court_name=d.get("court_name", ""),
+            date_of_incident=d.get("date_of_incident", ""),
+            opposing_counsel=d.get("opposing_counsel", ""),
+            jurisdiction_type=d.get("jurisdiction_type", ""),
+            county=d.get("county", ""),
+            district=d.get("district", ""),
             metadata_extra=extra if extra else {},
         )
 

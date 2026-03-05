@@ -193,6 +193,14 @@ class CaseManager:
         assigned_to: Optional[List[str]] = None,
         client_name: str = "",
         jurisdiction: str = "",
+        docket_number: str = "",
+        charges: str = "",
+        court_name: str = "",
+        date_of_incident: str = "",
+        opposing_counsel: str = "",
+        jurisdiction_type: str = "",
+        county: str = "",
+        district: str = "",
     ) -> str:
         """Create a new case. Returns the case_id."""
         case_id = _sanitize_case_id(case_name)
@@ -208,6 +216,14 @@ class CaseManager:
             "client_name": client_name,
             "jurisdiction": jurisdiction,
             "assigned_to": assigned_to or [],
+            "docket_number": docket_number,
+            "charges": charges,
+            "court_name": court_name,
+            "date_of_incident": date_of_incident,
+            "opposing_counsel": opposing_counsel,
+            "jurisdiction_type": jurisdiction_type,
+            "county": county,
+            "district": district,
             "created_at": now,
             "last_updated": now,
         }

@@ -2,6 +2,7 @@
 # Events, deadlines, and calendar management.
 
 import logging
+from datetime import date
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -20,8 +21,12 @@ class EventResponse(BaseModel):
     date: str = ""
     time: str = ""
     type: str = ""
+    event_type: str = ""
     description: str = ""
     location: str = ""
+    status: str = "scheduled"
+    end_time: str = ""
+    days_until: int | None = None
 
     model_config = {"extra": "allow"}
 
@@ -36,6 +41,12 @@ class CreateEventRequest(BaseModel):
     location: str = Field(default="", max_length=500)
 
 
+class StatusChangeRequest(BaseModel):
+    status: str = Field(..., pattern="^(scheduled|completed|cancelled|rescheduled)$")
+
+
+# ---- Event CRUD ----------------------------------------------------------
+
 @router.get("/events", response_model=List[EventResponse])
 def list_events(
     case_id: str = Query(default="", description="Filter by case"),
@@ -47,6 +58,10 @@ def list_events(
         events = load_events()
         if case_id:
             events = [e for e in events if e.get("case_id") == case_id]
+        # Normalize type field for frontend compatibility
+        for e in events:
+            if not e.get("type"):
+                e["type"] = e.get("event_type", "event")
         return events
     except ImportError:
         return []
@@ -112,6 +127,24 @@ def update_event(
         return {"status": "calendar_module_not_available"}
 
 
+@router.patch("/events/{event_id}/status")
+def change_event_status(
+    event_id: str,
+    body: StatusChangeRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Change an event's status (scheduled/completed/cancelled/rescheduled)."""
+    try:
+        from core.calendar_events import update_event as core_update
+        if not core_update(event_id, {"status": body.status}):
+            raise HTTPException(status_code=404, detail="Event not found")
+        return {"status": "updated", "id": event_id, "new_status": body.status}
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Calendar module not available")
+
+
+# ---- Calendar Views ------------------------------------------------------
+
 @router.get("/upcoming")
 def upcoming_events(
     days: int = Query(default=30, ge=1, le=365),
@@ -123,3 +156,37 @@ def upcoming_events(
         return get_upcoming_events(days=days)
     except ImportError:
         return []
+
+
+@router.get("/month")
+def month_calendar(
+    year: int = Query(default=None, ge=2020, le=2099),
+    month: int = Query(default=None, ge=1, le=12),
+    user: dict = Depends(get_current_user),
+):
+    """Get month calendar grid with events per day cell."""
+    try:
+        from core.calendar_events import get_month_calendar
+        if year is None:
+            year = date.today().year
+        if month is None:
+            month = date.today().month
+        return get_month_calendar(year, month)
+    except ImportError:
+        return {"year": year, "month": month, "month_name": "", "weeks": [], "total_events": 0}
+
+
+@router.get("/stats")
+def calendar_stats(
+    user: dict = Depends(get_current_user),
+):
+    """Get calendar statistics for dashboard display."""
+    try:
+        from core.calendar_events import get_calendar_stats
+        return get_calendar_stats()
+    except ImportError:
+        return {
+            "total_events": 0, "active_events": 0, "upcoming": 0,
+            "this_week": 0, "past_due": 0, "completed": 0,
+            "cancelled": 0, "type_breakdown": {},
+        }

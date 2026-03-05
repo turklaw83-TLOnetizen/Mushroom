@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 
-import { useCases, useCreateCase, type CaseItem } from "@/hooks/use-cases";
+import { useCases, useCreateCase, type CaseItem, type CreateCaseInput } from "@/hooks/use-cases";
 import { api } from "@/lib/api-client";
 import { CaseTable } from "@/components/dashboard/case-table";
 import { NewCaseDialog } from "@/components/dashboard/new-case-dialog";
@@ -38,14 +38,7 @@ export default function DashboardPage() {
     )
     : cases;
 
-  const handleCreate = async (input: {
-    case_name: string;
-    description?: string;
-    case_type?: string;
-    case_category?: string;
-    client_name?: string;
-    jurisdiction?: string;
-  }) => {
+  const handleCreate = async (input: CreateCaseInput) => {
     try {
       const result = await createCase.mutateAsync(input);
       toast.success("Case created", { description: input.case_name });

@@ -44,6 +44,14 @@ class CaseResponse(BaseModel):
     status: str = "active"
     pinned: bool = False
     assigned_to: List[str] = Field(default_factory=list)
+    docket_number: str = ""
+    charges: str = ""
+    court_name: str = ""
+    date_of_incident: str = ""
+    opposing_counsel: str = ""
+    jurisdiction_type: str = ""
+    county: str = ""
+    district: str = ""
     created_at: str = ""
     last_updated: str = ""
 
@@ -58,6 +66,15 @@ class CreateCaseRequest(BaseModel):
     case_type: str = Field(default="criminal", max_length=50)
     client_name: str = Field(default="", max_length=CASE_NAME_MAX)
     jurisdiction: str = Field(default="", max_length=SHORT_TEXT_MAX)
+    docket_number: str = Field(default="", max_length=SHORT_TEXT_MAX)
+    charges: str = Field(default="", max_length=DESCRIPTION_MAX)
+    court_name: str = Field(default="", max_length=SHORT_TEXT_MAX)
+    date_of_incident: str = Field(default="", max_length=32)
+    opposing_counsel: str = Field(default="", max_length=SHORT_TEXT_MAX)
+    jurisdiction_type: str = Field(default="", max_length=16)
+    county: str = Field(default="", max_length=SHORT_TEXT_MAX)
+    district: str = Field(default="", max_length=SHORT_TEXT_MAX)
+    client_id: str = Field(default="", max_length=64)  # link to CRM client
 
 
 class CreateCaseResponse(BaseModel):
@@ -73,6 +90,14 @@ class UpdateCaseRequest(BaseModel):
     case_subcategory: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
     client_name: Optional[str] = Field(default=None, max_length=CASE_NAME_MAX)
     jurisdiction: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+    docket_number: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+    charges: Optional[str] = Field(default=None, max_length=DESCRIPTION_MAX)
+    court_name: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+    date_of_incident: Optional[str] = Field(default=None, max_length=32)
+    opposing_counsel: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+    jurisdiction_type: Optional[str] = Field(default=None, max_length=16)
+    county: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
+    district: Optional[str] = Field(default=None, max_length=SHORT_TEXT_MAX)
 
 
 class SetPhaseRequest(BaseModel):
@@ -141,7 +166,22 @@ def create_case(
         client_name=body.client_name,
         jurisdiction=body.jurisdiction,
         assigned_to=[user["id"]],
+        docket_number=body.docket_number,
+        charges=body.charges,
+        court_name=body.court_name,
+        date_of_incident=body.date_of_incident,
+        opposing_counsel=body.opposing_counsel,
+        jurisdiction_type=body.jurisdiction_type,
+        county=body.county,
+        district=body.district,
     )
+    # Link CRM client if provided
+    if body.client_id:
+        try:
+            from core.crm import link_client_to_case
+            link_client_to_case(body.client_id, case_id)
+        except Exception:
+            logger.warning("Failed to link client %s to case %s", body.client_id, case_id)
     return CreateCaseResponse(case_id=case_id, message=f"Case '{body.case_name}' created")
 
 

@@ -21,6 +21,14 @@ export interface CaseItem {
     status: string;
     pinned: boolean;
     assigned_to: string[];
+    docket_number: string;
+    charges: string;
+    court_name: string;
+    date_of_incident: string;
+    opposing_counsel: string;
+    jurisdiction_type: string;
+    county: string;
+    district: string;
     created_at: string;
     last_updated: string;
 }
@@ -41,6 +49,15 @@ export interface CreateCaseInput {
     case_type?: string;
     client_name?: string;
     jurisdiction?: string;
+    docket_number?: string;
+    charges?: string;
+    court_name?: string;
+    date_of_incident?: string;
+    opposing_counsel?: string;
+    jurisdiction_type?: string;
+    county?: string;
+    district?: string;
+    client_id?: string;
 }
 
 // ---- Queries ------------------------------------------------------------
