@@ -8,6 +8,9 @@ import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { routes } from "@/lib/api-routes";
+import { queryKeys } from "@/lib/query-keys";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { useRole } from "@/hooks/use-role";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import {
@@ -50,12 +53,6 @@ const typeColors: Record<string, string> = {
     "Filing Deadline": "bg-amber-500/15 text-amber-400 border-amber-500/30",
     "Client Meeting": "bg-blue-500/15 text-blue-400 border-blue-500/30",
     "Deposition": "bg-violet-500/15 text-violet-400 border-violet-500/30",
-};
-
-const statusColors: Record<string, string> = {
-    scheduled: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-    completed: "bg-green-500/15 text-green-400 border-green-500/30",
-    cancelled: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
 };
 
 const eventSchema = z.object({
@@ -117,9 +114,9 @@ export default function CalendarPage() {
     const [dayEvents, setDayEvents] = useState<CalEvent[]>([]);
 
     const query = useQuery({
-        queryKey: ["calendar", caseId],
+        queryKey: queryKeys.calendar.events(caseId),
         queryFn: () =>
-            api.get<CalendarEvent[]>("/calendar/events", {
+            api.get<CalendarEvent[]>(routes.calendar.globalEvents, {
                 params: { case_id: caseId },
                 getToken,
             }),
@@ -147,26 +144,26 @@ export default function CalendarPage() {
         : null;
 
     const createMutation = useMutationWithToast<EventInput>({
-        mutationFn: (data) => api.post("/calendar/events", { ...data, case_id: caseId }, { getToken }),
+        mutationFn: (data) => api.post(routes.calendar.globalEvents, { ...data, case_id: caseId }, { getToken }),
         successMessage: "Event created",
-        invalidateKeys: [["calendar", caseId], ["calendar", "month", gridYear, gridMonth]],
+        invalidateKeys: [[...queryKeys.calendar.events(caseId)], ["calendar", "month", gridYear, gridMonth]],
         onSuccess: () => setDialogOpen(false),
     });
 
     const deleteMutation = useMutationWithToast<string>({
-        mutationFn: (eventId) => api.delete(`/calendar/events/${eventId}`, { getToken }),
+        mutationFn: (eventId) => api.delete(routes.calendar.globalEventById(eventId), { getToken }),
         successMessage: "Event deleted",
-        invalidateKeys: [["calendar", caseId], ["calendar", "month", gridYear, gridMonth]],
+        invalidateKeys: [[...queryKeys.calendar.events(caseId)], ["calendar", "month", gridYear, gridMonth]],
         onSuccess: () => setDeleteTarget(null),
     });
 
     const updateMutation = useMutationWithToast<EventInput>({
         mutationFn: (data) => {
             if (!detailEvent) throw new Error("No event selected");
-            return api.put(`/calendar/events/${detailEvent.id}`, { ...data, case_id: caseId }, { getToken });
+            return api.put(routes.calendar.globalEventById(detailEvent.id), { ...data, case_id: caseId }, { getToken });
         },
         successMessage: "Event updated",
-        invalidateKeys: [["calendar", caseId], ["calendar", "month", gridYear, gridMonth]],
+        invalidateKeys: [[...queryKeys.calendar.events(caseId)], ["calendar", "month", gridYear, gridMonth]],
         onSuccess: () => setDetailEvent(null),
     });
 
@@ -269,9 +266,7 @@ export default function CalendarPage() {
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-1">
-                                                    <Badge variant="outline" className={statusColors[evt.status] || statusColors.scheduled}>
-                                                        {evt.status || "scheduled"}
-                                                    </Badge>
+                                                    <StatusBadge status={evt.status || "scheduled"} domain="generic" />
                                                     {canEdit && evt.status === "scheduled" && (
                                                         <>
                                                             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs text-green-500"
@@ -324,9 +319,7 @@ export default function CalendarPage() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         {event.status && event.status !== "scheduled" && (
-                                            <Badge variant="outline" className={statusColors[event.status] || ""}>
-                                                {event.status}
-                                            </Badge>
+                                            <StatusBadge status={event.status} domain="generic" />
                                         )}
                                         <Badge variant="outline" className={typeColors[event.event_type || event.type] || typeColors.event}>
                                             {event.event_type || event.type}

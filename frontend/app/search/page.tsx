@@ -1,5 +1,6 @@
 // ---- Global Search Page --------------------------------------------------
 // Cross-entity search across cases, clients, and tasks.
+// Supports optional in-case filtering via case dropdown.
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
@@ -12,6 +13,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 interface CaseResult {
     id: string;
@@ -44,6 +52,11 @@ interface SearchResponse {
     tasks: TaskResult[];
 }
 
+interface CaseListItem {
+    id: string;
+    name: string;
+}
+
 const priorityColor: Record<string, string> = {
     high: "text-red-400 border-red-400/30",
     medium: "text-amber-400 border-amber-400/30",
@@ -72,6 +85,13 @@ function SearchPageInner() {
     const queryParam = searchParams.get("q") ?? "";
     const [input, setInput] = useState(queryParam);
     const [debouncedQuery, setDebouncedQuery] = useState(queryParam);
+    const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+
+    // Fetch case list for filter dropdown
+    const { data: casesList } = useQuery({
+        queryKey: ["cases-list"],
+        queryFn: () => api.get<CaseListItem[]>("/cases", { getToken }),
+    });
 
     // Debounce input by 300ms and sync to URL
     useEffect(() => {
@@ -89,15 +109,25 @@ function SearchPageInner() {
         setDebouncedQuery(queryParam);
     }, [queryParam]);
 
+    // Switch between global search and in-case search based on filter
+    const searchPath = selectedCaseId
+        ? `/search/case/${selectedCaseId}`
+        : "/search";
+
     const { data, isLoading } = useQuery({
-        queryKey: ["global-search", debouncedQuery],
+        queryKey: ["global-search", debouncedQuery, selectedCaseId],
         queryFn: () =>
-            api.get<SearchResponse>("/search", {
+            api.get<SearchResponse>(searchPath, {
                 params: { q: debouncedQuery },
                 getToken,
             }),
         enabled: !!debouncedQuery,
     });
+
+    // Derive selected case name for badge
+    const selectedCaseName = selectedCaseId
+        ? casesList?.find((c) => c.id === selectedCaseId)?.name ?? selectedCaseId
+        : null;
 
     const cases = data?.cases ?? [];
     const clients = data?.clients ?? [];
@@ -114,13 +144,37 @@ function SearchPageInner() {
                 </p>
             </div>
 
-            <Input
-                placeholder="Type to search cases, clients, tasks..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                className="max-w-2xl text-base h-12"
-                autoFocus
-            />
+            <div className="flex items-center gap-3 max-w-2xl">
+                <Input
+                    placeholder="Type to search cases, clients, tasks..."
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    className="flex-1 text-base h-12"
+                    autoFocus
+                />
+                <Select
+                    value={selectedCaseId ?? "all"}
+                    onValueChange={(v) => setSelectedCaseId(v === "all" ? null : v)}
+                >
+                    <SelectTrigger className="h-12 min-w-[180px]">
+                        <SelectValue placeholder="All Cases" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Cases</SelectItem>
+                        {casesList?.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                                {c.name}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {selectedCaseName && (
+                <Badge variant="secondary" className="text-xs">
+                    Searching in: {selectedCaseName}
+                </Badge>
+            )}
 
             {/* Loading state */}
             {isLoading && hasQuery && (

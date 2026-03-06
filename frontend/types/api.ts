@@ -267,6 +267,7 @@ export interface Task {
     priority: string;
     due_date: string;
     assigned_to: string;
+    category: string;
     case_id?: string;
     case_name?: string;
 }
@@ -553,4 +554,299 @@ export interface CrossCaseDiscoveryItem {
     is_overdue: boolean;
     days_until_due: number | null;
     item_count: number;
+}
+
+// ---- Major Document Drafter ----
+export interface DocOutlineSection {
+    section_num: string;
+    title: string;
+    description: string;
+    estimated_pages: number;
+    instructions?: string;
+}
+
+export interface DocOutline {
+    document_title: string;
+    outline: DocOutlineSection[];
+}
+
+export interface DraftedSection extends DocOutlineSection {
+    content: string;
+    citations_used: DocCitation[];
+}
+
+export interface DocCitation {
+    case_name: string;
+    citation: string;
+    holding: string;
+    relevance: string;
+    source: string;
+}
+
+export interface BriefReview {
+    overall_score: number;
+    grade: string;
+    issues: Array<{
+        category: string;
+        severity: string;
+        section: string;
+        description: string;
+        fix: string;
+    }>;
+    strengths: string[];
+    suggestions: string[];
+}
+
+export interface OpponentAnalysis {
+    opponent_arguments: Array<{
+        number: number;
+        argument: string;
+        section_ref: string;
+        strength: string;
+    }>;
+    opponent_citations: Array<{
+        case_name: string;
+        citation: string;
+        purpose: string;
+    }>;
+    counter_arguments: Array<{
+        opposing_arg_number: number;
+        counter: string;
+        supporting_evidence: string;
+        supporting_law: string;
+    }>;
+    weaknesses: string[];
+    response_strategy: string;
+}
+
+export interface CitationVerification {
+    verified: Array<{
+        case_name: string;
+        citation: string;
+        exists: boolean;
+        citation_correct: boolean;
+        holding_accurate: boolean;
+        still_good_law: boolean;
+        confidence: number;
+        notes: string;
+    }>;
+    flagged: Array<{
+        case_name: string;
+        citation: string;
+        exists: boolean;
+        citation_correct: boolean;
+        holding_accurate: boolean;
+        still_good_law: boolean;
+        confidence: number;
+        notes: string;
+    }>;
+    summary: string;
+}
+
+export interface MajorDraft {
+    id: string;
+    title: string;
+    doc_type: string;
+    doc_subtype: string;
+    outline: DocOutlineSection[];
+    sections: DraftedSection[];
+    citation_library: DocCitation[];
+    review_results?: BriefReview;
+    attorney_info?: Record<string, string>;
+    config?: Record<string, string>;
+    created_at: string;
+    updated_at: string;
+}
+
+export const DOC_TYPES: Record<string, string[]> = {
+    "Appellate Brief": ["Opening Brief", "Reply Brief", "Amicus Brief"],
+    "Post-Conviction Relief": ["PCR Petition", "Habeas Corpus", "Coram Nobis"],
+    "Civil Complaint": ["Initial Complaint", "Amended Complaint", "Counterclaim", "Third-Party Complaint"],
+    "Appellate Motion": ["Motion for Extension", "Motion to Stay", "Motion for Rehearing"],
+    "Major Motion": ["Motion for Summary Judgment", "Motion to Dismiss", "Motion for New Trial"],
+    "Custom Document": [],
+};
+
+// ---- Argument Forge ----
+export interface LegalIssue {
+    id: string;
+    title: string;
+    description: string;
+    frameworks: string[];
+    priority: "high" | "medium" | "low";
+}
+
+export interface ForgeArgument {
+    framework: string;
+    thesis: string;
+    reasoning: string;
+    supporting_law: string;
+    supporting_facts: string;
+    strength: number;
+}
+
+export interface OppositionArgument {
+    responding_to: number;
+    position: string;
+    reasoning: string;
+    legal_basis: string;
+    strength: number;
+}
+
+export interface CounterMatrixEntry {
+    our_argument: string;
+    their_counter: string;
+    our_rebuttal: string;
+    net_advantage: "ours" | "theirs" | "neutral";
+    confidence: number;
+}
+
+export interface OralSegment {
+    topic: string;
+    duration_minutes: number;
+    key_points: string[];
+    transitions: string;
+}
+
+export interface ScoredArgument {
+    argument: string;
+    win_probability: number;
+    risk_factors: string[];
+    recommendation: string;
+}
+
+export interface ArgumentSession {
+    id: string;
+    name: string;
+    created_at: string;
+    issues?: LegalIssue[];
+    arguments?: ForgeArgument[];
+    opposition?: OppositionArgument[];
+    counter_matrix?: CounterMatrixEntry[];
+    oral_prep?: OralSegment[];
+    scores?: ScoredArgument[];
+    overall_confidence?: number;
+}
+
+// ---- Ethical Compliance ----
+export interface ComplianceDashboard {
+    overdue_deadlines: Array<Record<string, unknown>>;
+    upcoming_deadlines: Array<Record<string, unknown>>;
+    communication_gaps: Array<{
+        case_id: string;
+        case_name: string;
+        last_contact: string | null;
+        days_since: number | null;
+        urgency: string;
+        status: string;
+    }>;
+    missing_fee_agreements: Array<Record<string, unknown>>;
+    prospective_count: number;
+    score: number;
+    total_issues: number;
+}
+
+export interface SmartConflictMatch {
+    name: string;
+    matched_name: string;
+    source: string;
+    current_role?: string;
+    other_case?: string;
+    other_case_id?: string;
+    other_role?: string;
+    severity: string;
+    match_type: string;
+    confidence: number;
+    explanation: string;
+}
+
+export interface SmartConflictResult {
+    conflicts: SmartConflictMatch[];
+    prospective_hits: SmartConflictMatch[];
+    cases_scanned: number;
+    entities_checked: number;
+}
+
+export interface ProspectiveClient {
+    id: string;
+    name: string;
+    subject: string;
+    disclosed_info: string;
+    date: string;
+    notes: string;
+    declined_reason: string;
+    created_at: string;
+}
+
+export interface FeeAgreementData {
+    fee_type: string;
+    rate: string;
+    retainer: string;
+    scope: string;
+    signed: boolean;
+    signed_date: string;
+    created_at?: string;
+}
+
+export interface SupervisionEntry {
+    id: string;
+    task: string;
+    assignee: string;
+    supervisor: string;
+    status: string;
+    date: string;
+    notes: string;
+}
+
+// ---- War Game ---------------------------------------------------------------
+
+export interface WarGameRound {
+  type: "theory" | "evidence" | "witnesses" | "elements" | "jury";
+  status: "pending" | "attacking" | "awaiting_response" | "evaluating" | "completed";
+  attack: string | null;
+  response: string | null;
+  evaluation: {
+    score: number;
+    strengths: string[];
+    vulnerabilities: string[];
+    rulings?: { item: string; ruling: "admitted" | "excluded"; reasoning: string }[];
+    witness_scores?: { name: string; credibility: number; vulnerabilities: string[] }[];
+    element_coverage?: { charge: string; element: string; covered: boolean; gap: string }[];
+  } | null;
+}
+
+export interface WarGameReport {
+  overall_score: number;
+  verdict: string;
+  executive_summary?: string;
+  round_scores: { type: string; score: number }[];
+  vulnerabilities: {
+    rank: number;
+    severity: "critical" | "high" | "medium" | "low";
+    area: string;
+    description: string;
+    exploit_scenario: string;
+    mitigation: string;
+  }[];
+  contingency_cards: {
+    trigger: string;
+    response: string;
+    authority: string;
+    evidence_to_cite: string;
+    risk_level: "low" | "medium" | "high";
+  }[];
+  juror_verdicts: { juror: string; vote: string; reasoning: string }[];
+}
+
+export interface WarGameSession {
+  id: string;
+  case_id?: string;
+  prep_id?: string;
+  difficulty: "standard" | "aggressive" | "ruthless";
+  status: "active" | "completed";
+  created_at: string;
+  updated_at: string;
+  rounds: WarGameRound[];
+  report: WarGameReport | null;
+  current_round: number;
 }

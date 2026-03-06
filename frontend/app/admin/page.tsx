@@ -4,6 +4,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
@@ -297,6 +298,49 @@ export default function AdminPage() {
                         </p>
                     </CardContent>
                 </Card>
+            </div>
+
+            {/* Admin Tools */}
+            <div className="space-y-2">
+                <h2 className="text-lg font-semibold tracking-tight">Admin Tools</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Link href="/admin/gdpr">
+                        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium">🔒 GDPR Compliance</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p className="text-xs text-muted-foreground">
+                                    Data export, right to erasure, and consent management
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    <Link href="/admin/batch">
+                        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium">📦 Batch Operations</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p className="text-xs text-muted-foreground">
+                                    Bulk status updates, assignments, exports, and archiving
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                    <Link href="/admin/analytics">
+                        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-sm font-medium">📊 Cost Analytics</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <p className="text-xs text-muted-foreground">
+                                    LLM costs, analysis quality scores, and usage tracking
+                                </p>
+                            </CardContent>
+                        </Card>
+                    </Link>
+                </div>
             </div>
 
             {/* System Info */}

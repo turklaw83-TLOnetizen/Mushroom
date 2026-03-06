@@ -20,22 +20,6 @@ class SnoozeRequest(BaseModel):
     days: int = 3
 
 
-class ChainPreviewRequest(BaseModel):
-    chain_id: str
-    trigger_date: str
-    custom_params: Optional[Dict] = None
-
-
-class ChainApplyRequest(BaseModel):
-    chain_id: str
-    trigger_date: str
-    case_id: str = ""
-    case_name: str = ""
-    custom_params: Optional[Dict] = None
-    create_events: bool = True
-    create_tasks: bool = True
-
-
 class DigestRequest(BaseModel):
     target_date: Optional[str] = None
     recipient_email: Optional[str] = None
@@ -104,75 +88,6 @@ def snooze_item(
         raise
     except Exception:
         logger.exception("Failed to snooze brief item")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-# ---- Deadline Chain Endpoints --------------------------------------------
-
-@router.get("/deadline-chains")
-def list_deadline_chains(
-    category: Optional[str] = Query(default=None, description="Filter by category"),
-    user: dict = Depends(get_current_user),
-):
-    """List all available deadline chain templates."""
-    try:
-        from core.deadline_chains import get_available_chains, get_chain_categories
-        chains = get_available_chains(category=category)
-        categories = get_chain_categories()
-        return {"chains": chains, "categories": categories}
-    except Exception:
-        logger.exception("Failed to list deadline chains")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.post("/deadline-chains/preview")
-def preview_deadline_chain(
-    body: ChainPreviewRequest,
-    user: dict = Depends(get_current_user),
-):
-    """Preview a deadline chain without creating anything."""
-    try:
-        from core.deadline_chains import generate_chain
-        result = generate_chain(
-            body.chain_id,
-            body.trigger_date,
-            custom_params=body.custom_params or {},
-        )
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
-        logger.exception("Failed to preview deadline chain")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.post("/deadline-chains/apply")
-def apply_deadline_chain(
-    body: ChainApplyRequest,
-    user: dict = Depends(get_current_user),
-):
-    """Apply a deadline chain -- creates calendar events and tasks."""
-    try:
-        from core.deadline_chains import generate_chain, apply_chain
-        data_dir = get_data_dir()
-        chain = generate_chain(
-            body.chain_id,
-            body.trigger_date,
-            case_id=body.case_id,
-            case_name=body.case_name,
-            custom_params=body.custom_params or {},
-        )
-        applied = apply_chain(
-            data_dir,
-            chain,
-            create_calendar_events=body.create_events,
-            create_tasks=body.create_tasks,
-        )
-        return {"chain": chain, "applied": applied}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
-        logger.exception("Failed to apply deadline chain")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

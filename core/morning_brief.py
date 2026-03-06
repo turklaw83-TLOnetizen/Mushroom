@@ -51,58 +51,6 @@ _SOURCE_PRIORITY = {
 # Maximum triage items to prevent information overload
 _MAX_TRIAGE_ITEMS = 50
 
-# Jurisdictional deadline chains (days relative to triggering event)
-# Positive = days after, Negative = days before
-_DEADLINE_CHAINS = {
-    "motion_filed": [
-        {"offset": 0, "label": "Motion filed", "type": "filing"},
-        {"offset": 14, "label": "Opposition due", "type": "deadline"},
-        {"offset": 21, "label": "Reply brief due", "type": "deadline"},
-        {"offset": 30, "label": "Hearing date (estimated)", "type": "court_date"},
-    ],
-    "motion_to_suppress": [
-        {"offset": 0, "label": "Motion to Suppress filed", "type": "filing"},
-        {"offset": 14, "label": "State's response due", "type": "deadline"},
-        {"offset": 21, "label": "Reply brief due", "type": "deadline"},
-        {"offset": 30, "label": "Suppression hearing", "type": "court_date"},
-    ],
-    "discovery_request": [
-        {"offset": 0, "label": "Discovery request served", "type": "filing"},
-        {"offset": 30, "label": "Discovery responses due", "type": "deadline"},
-        {"offset": 37, "label": "Meet and confer deadline (if deficient)", "type": "deadline"},
-        {"offset": 45, "label": "Motion to compel deadline", "type": "deadline"},
-    ],
-    "deposition_noticed": [
-        {"offset": 0, "label": "Deposition notice served", "type": "filing"},
-        {"offset": -7, "label": "Prepare witness outline", "type": "task"},
-        {"offset": -3, "label": "Witness prep session", "type": "task"},
-        {"offset": 0, "label": "Deposition date", "type": "deposition"},
-        {"offset": 30, "label": "Transcript review deadline", "type": "deadline"},
-    ],
-    "trial_date_set": [
-        {"offset": 0, "label": "Trial date set", "type": "court_date"},
-        {"offset": -60, "label": "Expert disclosures due", "type": "deadline"},
-        {"offset": -45, "label": "Dispositive motions deadline", "type": "deadline"},
-        {"offset": -30, "label": "Pretrial motions in limine due", "type": "deadline"},
-        {"offset": -21, "label": "Exhibit and witness lists due", "type": "deadline"},
-        {"offset": -14, "label": "Pretrial conference", "type": "court_date"},
-        {"offset": -7, "label": "Jury instructions due", "type": "deadline"},
-        {"offset": -3, "label": "Final witness prep", "type": "task"},
-    ],
-    "complaint_filed": [
-        {"offset": 0, "label": "Complaint filed/served", "type": "filing"},
-        {"offset": 21, "label": "Answer/responsive pleading due", "type": "deadline"},
-        {"offset": 30, "label": "Initial disclosures due", "type": "deadline"},
-        {"offset": 45, "label": "Scheduling conference", "type": "court_date"},
-    ],
-    "appeal_filed": [
-        {"offset": 0, "label": "Notice of appeal filed", "type": "filing"},
-        {"offset": 10, "label": "Transcript order deadline", "type": "deadline"},
-        {"offset": 40, "label": "Appellant's brief due", "type": "deadline"},
-        {"offset": 70, "label": "Appellee's brief due", "type": "deadline"},
-        {"offset": 84, "label": "Reply brief due", "type": "deadline"},
-    ],
-}
 
 
 def _ensure_brief_dir():
@@ -239,64 +187,6 @@ def snooze_brief_item(data_dir: str, item_id: str, days: int = 3) -> bool:
     return True
 
 
-# ===================================================================
-#  COMPONENT 3: Deadline Chain Calculator
-# ===================================================================
-
-def calculate_deadline_chain(
-    event_type: str,
-    event_date: str,
-    case_id: str = "",
-    case_name: str = "",
-    custom_label: str = "",
-) -> List[Dict]:
-    """Calculate the full downstream deadline chain from a triggering event.
-
-    Given a single event (e.g. "Motion to Suppress filed March 10"),
-    generates every downstream deadline based on jurisdictional rules.
-
-    Args:
-        event_type: One of the keys in _DEADLINE_CHAINS (e.g. "motion_filed",
-                    "trial_date_set", "discovery_request").
-        event_date: The date of the triggering event, YYYY-MM-DD.
-        case_id: Optional case ID for linking.
-        case_name: Optional case name for display.
-        custom_label: Optional custom label for the triggering event.
-
-    Returns:
-        List of deadline dicts with fields:
-            date, label, type, case_id, case_name, days_from_trigger
-    """
-    chain_template = _DEADLINE_CHAINS.get(event_type, [])
-    if not chain_template:
-        logger.warning("Unknown deadline chain type: %s", event_type)
-        return []
-
-    try:
-        base_date = date.fromisoformat(event_date)
-    except (ValueError, TypeError):
-        logger.warning("Invalid event_date for deadline chain: %s", event_date)
-        return []
-
-    chain = []
-    for step in chain_template:
-        offset = step["offset"]
-        target_date = base_date + timedelta(days=offset)
-        label = step["label"]
-        if offset == 0 and custom_label:
-            label = custom_label
-
-        chain.append({
-            "date": str(target_date),
-            "label": label,
-            "type": step["type"],
-            "case_id": case_id,
-            "case_name": case_name,
-            "days_from_trigger": offset,
-        })
-
-    chain.sort(key=lambda x: x["date"])
-    return chain
 
 
 # ===================================================================

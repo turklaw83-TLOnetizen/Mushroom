@@ -7,6 +7,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { routes } from "@/lib/api-routes";
+import { queryKeys } from "@/lib/query-keys";
+import { formatDate, COMM_STATUS_COLORS, getStatusColor } from "@/lib/constants";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,52 +78,51 @@ export default function CommsPage() {
 
     // ---- Queries ----
     const { data: statsData } = useQuery({
-        queryKey: ["comms-stats"],
-        queryFn: () => api.get<CommQueueStats>("/comms/queue/stats", { getToken }),
+        queryKey: [...queryKeys.comms.stats],
+        queryFn: () => api.get<CommQueueStats>(routes.comms.stats, { getToken }),
     });
 
     const { data: queueData, isLoading: queueLoading } = useQuery({
-        queryKey: ["comms-queue"],
-        queryFn: () => api.get<{ items: CommQueueItem[] }>("/comms/queue?status=pending", { getToken }),
+        queryKey: [...queryKeys.comms.queue, "pending"],
+        queryFn: () => api.get<{ items: CommQueueItem[] }>(`${routes.comms.queue}?status=pending`, { getToken }),
     });
 
     const { data: approvedData } = useQuery({
-        queryKey: ["comms-queue-approved"],
-        queryFn: () => api.get<{ items: CommQueueItem[] }>("/comms/queue?status=approved", { getToken }),
+        queryKey: [...queryKeys.comms.queue, "approved"],
+        queryFn: () => api.get<{ items: CommQueueItem[] }>(`${routes.comms.queue}?status=approved`, { getToken }),
     });
 
     const { data: logData, isLoading: logLoading } = useQuery({
-        queryKey: ["comms-log"],
-        queryFn: () => api.get<{ items: CommLogEntry[] }>("/comms/log", { getToken }),
+        queryKey: [...queryKeys.comms.log],
+        queryFn: () => api.get<{ items: CommLogEntry[] }>(routes.comms.log, { getToken }),
     });
 
     const { data: templatesData, isLoading: templatesLoading } = useQuery({
-        queryKey: ["comms-templates"],
-        queryFn: () => api.get<{ items: CommTemplate[] }>("/comms/templates", { getToken }),
+        queryKey: [...queryKeys.comms.templates],
+        queryFn: () => api.get<{ items: CommTemplate[] }>(routes.comms.templates, { getToken }),
     });
 
     const { data: settingsData } = useQuery({
-        queryKey: ["comms-settings"],
-        queryFn: () => api.get<CommSettings>("/comms/settings", { getToken }),
+        queryKey: [...queryKeys.comms.settings],
+        queryFn: () => api.get<CommSettings>(routes.comms.settings, { getToken }),
     });
 
     const { data: feedData, isLoading: feedLoading } = useQuery({
-        queryKey: ["payment-feed"],
-        queryFn: () => api.get<{ items: FeedTransaction[] }>("/payment-feed/pending", { getToken }),
+        queryKey: [...queryKeys.paymentFeed.transactions],
+        queryFn: () => api.get<{ items: FeedTransaction[] }>(routes.paymentFeed.transactions, { getToken }),
     });
 
     // ---- Mutations ----
     const invalidateAll = () => {
-        qc.invalidateQueries({ queryKey: ["comms-queue"] });
-        qc.invalidateQueries({ queryKey: ["comms-queue-approved"] });
-        qc.invalidateQueries({ queryKey: ["comms-stats"] });
-        qc.invalidateQueries({ queryKey: ["comms-log"] });
-        qc.invalidateQueries({ queryKey: ["payment-feed"] });
+        qc.invalidateQueries({ queryKey: [...queryKeys.comms.queue] });
+        qc.invalidateQueries({ queryKey: [...queryKeys.comms.stats] });
+        qc.invalidateQueries({ queryKey: [...queryKeys.comms.log] });
+        qc.invalidateQueries({ queryKey: [...queryKeys.paymentFeed.transactions] });
     };
 
     const approveMut = useMutation({
         mutationFn: (vars: { comm_id: string; edited_body?: string; edited_sms?: string }) =>
-            api.post(`/comms/queue/${vars.comm_id}/approve`, {
+            api.post(routes.comms.approve(vars.comm_id), {
                 edited_body: vars.edited_body ?? null,
                 edited_sms: vars.edited_sms ?? null,
             }, { getToken }),
@@ -129,7 +132,7 @@ export default function CommsPage() {
 
     const dismissMut = useMutation({
         mutationFn: (comm_id: string) =>
-            api.post(`/comms/queue/${comm_id}/dismiss`, { reason: "" }, { getToken }),
+            api.post(routes.comms.dismiss(comm_id), { reason: "" }, { getToken }),
         onSuccess: () => { toast.success("Communication dismissed"); invalidateAll(); },
         onError: () => toast.error("Failed to dismiss"),
     });
@@ -159,7 +162,7 @@ export default function CommsPage() {
             formData.append("platform", platform);
             const token = await getToken();
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-            const res = await fetch(`${baseUrl}/api/v1/payment-feed/upload`, {
+            const res = await fetch(`${baseUrl}/api/v1${routes.paymentFeed.upload}`, {
                 method: "POST",
                 headers: { Authorization: `Bearer ${token}` },
                 body: formData,
@@ -177,7 +180,7 @@ export default function CommsPage() {
     const ingestEmailMut = useMutation({
         mutationFn: (vars: { subject: string; body: string; sender_email?: string }) =>
             api.post<{ status: string; transaction?: FeedTransaction; classified?: boolean; suggested_client?: string; message?: string }>(
-                "/payment-feed/ingest-email", vars, { getToken },
+                routes.paymentFeed.ingestEmail, vars, { getToken },
             ),
         onSuccess: (data) => {
             if (data.status === "no_payment_found") {
@@ -207,26 +210,26 @@ export default function CommsPage() {
 
     const dismissTxnMut = useMutation({
         mutationFn: (txn_id: string) =>
-            api.post(`/payment-feed/${txn_id}/dismiss`, { reason: "" }, { getToken }),
+            api.post(routes.paymentFeed.dismiss(txn_id), { reason: "" }, { getToken }),
         onSuccess: () => { toast.success("Transaction dismissed"); invalidateAll(); },
         onError: () => toast.error("Failed to dismiss"),
     });
 
     const toggleTemplateMut = useMutation({
         mutationFn: (vars: { id: string; active: boolean }) =>
-            api.put(`/comms/templates/${vars.id}`, { active: vars.active }, { getToken }),
+            api.put(routes.comms.template(vars.id), { active: vars.active }, { getToken }),
         onSuccess: () => {
             toast.success("Template updated");
-            qc.invalidateQueries({ queryKey: ["comms-templates"] });
+            qc.invalidateQueries({ queryKey: [...queryKeys.comms.templates] });
         },
     });
 
     const saveSettingsMut = useMutation({
         mutationFn: (updates: Partial<CommSettings>) =>
-            api.put("/comms/settings", updates, { getToken }),
+            api.put(routes.comms.settings, updates, { getToken }),
         onSuccess: () => {
             toast.success("Settings saved");
-            qc.invalidateQueries({ queryKey: ["comms-settings"] });
+            qc.invalidateQueries({ queryKey: [...queryKeys.comms.settings] });
         },
     });
 
@@ -582,15 +585,10 @@ export default function CommsPage() {
                                                     <TriggerBadge type={entry.trigger_type} />
                                                 </div>
                                                 <p className="text-xs text-muted-foreground">
-                                                    Sent to {entry.sent_to} · {new Date(entry.sent_at).toLocaleDateString()} · Approved by {entry.approved_by || "—"}
+                                                    Sent to {entry.sent_to} · {formatDate(entry.sent_at)} · Approved by {entry.approved_by || "—"}
                                                 </p>
                                             </div>
-                                            <Badge
-                                                variant={entry.status === "delivered" ? "default" : "destructive"}
-                                                className="text-[10px]"
-                                            >
-                                                {entry.status}
-                                            </Badge>
+                                            <StatusBadge status={entry.status} domain="comm" size="sm" />
                                         </div>
                                     </CardContent>
                                 </Card>

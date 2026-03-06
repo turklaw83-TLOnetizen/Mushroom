@@ -1,10 +1,12 @@
 // ---- Research Tab (with sub-tabs for analysis results) -------------------
-// Sub-tabs: Notes | Legal Research | Cheat Sheet
+// Sub-tabs: Notes | Legal Research | Cheat Sheet | Civil Tools
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { usePrep } from "@/hooks/use-prep";
 import { usePrepState } from "@/hooks/use-prep-state";
@@ -13,6 +15,7 @@ import { MarkdownContent } from "@/components/analysis/markdown-content";
 import { DataPage } from "@/components/shared/data-page";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { GenerateButton } from "@/components/analysis/generate-button";
 import { ModuleNotes } from "@/components/shared/module-notes";
 
@@ -59,6 +62,9 @@ export default function ResearchPage() {
                 </TabsTrigger>
                 <TabsTrigger value="cheat-sheet">
                     Cheat Sheet {sections.cheatSheet && <span className="ml-1 text-emerald-400" aria-hidden="true">●</span>}
+                </TabsTrigger>
+                <TabsTrigger value="civil-tools">
+                    Civil Tools <span className="ml-1 text-xs text-muted-foreground">(Civil cases only)</span>
                 </TabsTrigger>
             </TabsList>
 
@@ -129,6 +135,146 @@ export default function ResearchPage() {
                 )}
                 <ModuleNotes caseId={caseId} prepId={activePrepId} moduleKey="cheat_sheet" />
             </TabsContent>
+
+            {/* ---- Civil Tools Tab ---- */}
+            <TabsContent value="civil-tools">
+                <CivilToolsPanel caseId={caseId} prepId={activePrepId} />
+            </TabsContent>
         </Tabs>
+    );
+}
+
+
+// ---- Civil Tools Panel ---------------------------------------------------
+// Generation buttons for civil-specific AI artifacts (medical chronology,
+// demand letter). Uses useMutation with inline result display.
+
+function CivilToolsPanel({ caseId, prepId }: { caseId: string; prepId: string | null }) {
+    const { getToken } = useAuth();
+    const queryClient = useQueryClient();
+
+    const [medChronoResult, setMedChronoResult] = useState<string | null>(null);
+    const [demandLetterResult, setDemandLetterResult] = useState<string | null>(null);
+
+    const medChronoMutation = useMutation({
+        mutationFn: () =>
+            api.post<{ status: string; result: Record<string, unknown> }>(
+                `/cases/${caseId}/preparations/${prepId}/generate/medical-chronology`,
+                {},
+                { getToken },
+            ),
+        onSuccess: (data) => {
+            const result = data.result;
+            const content = result.medical_chronology;
+            setMedChronoResult(typeof content === "string" ? content : JSON.stringify(content, null, 2));
+            queryClient.invalidateQueries({ queryKey: ["cases", caseId, "prep-state", prepId] });
+            toast.success("Medical chronology generated");
+        },
+        onError: (err: Error) => {
+            toast.error("Medical chronology failed", { description: err.message });
+        },
+    });
+
+    const demandLetterMutation = useMutation({
+        mutationFn: () =>
+            api.post<{ status: string; result: Record<string, unknown> }>(
+                `/cases/${caseId}/preparations/${prepId}/generate/demand-letter`,
+                {},
+                { getToken },
+            ),
+        onSuccess: (data) => {
+            const result = data.result;
+            const content = result.demand_letter;
+            setDemandLetterResult(typeof content === "string" ? content : JSON.stringify(content, null, 2));
+            queryClient.invalidateQueries({ queryKey: ["cases", caseId, "prep-state", prepId] });
+            toast.success("Demand letter generated");
+        },
+        onError: (err: Error) => {
+            toast.error("Demand letter failed", { description: err.message });
+        },
+    });
+
+    if (!prepId) {
+        return (
+            <Card className="border-dashed">
+                <CardContent className="py-12 text-center text-muted-foreground">
+                    Select a preparation to use civil tools.
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <div className="space-y-6">
+            {/* Medical Chronology */}
+            <div className="space-y-3">
+                <ResultSection
+                    title="Medical Chronology"
+                    icon="🏥"
+                    isEmpty={!medChronoResult}
+                    emptyMessage="Generate a structured medical chronology from case documents. Best suited for personal injury and medical malpractice cases."
+                >
+                    {medChronoResult && <MarkdownContent content={medChronoResult} />}
+                </ResultSection>
+                <div className="flex items-center gap-3">
+                    <Button
+                        size="sm"
+                        onClick={() => medChronoMutation.mutate()}
+                        disabled={medChronoMutation.isPending}
+                        variant={medChronoResult ? "outline" : "default"}
+                    >
+                        {medChronoMutation.isPending ? (
+                            <span className="flex items-center gap-2">
+                                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                Generating...
+                            </span>
+                        ) : medChronoResult ? (
+                            "Regenerate"
+                        ) : (
+                            "Generate Medical Chronology"
+                        )}
+                    </Button>
+                    {medChronoMutation.isError && (
+                        <p className="text-xs text-red-400">Generation failed. Please try again.</p>
+                    )}
+                </div>
+            </div>
+
+            {/* Demand Letter */}
+            <div className="space-y-3">
+                <ResultSection
+                    title="Demand Letter"
+                    icon="📄"
+                    isEmpty={!demandLetterResult}
+                    emptyMessage="Generate a demand letter for civil litigation. Includes damages summary, liability analysis, and settlement demand."
+                >
+                    {demandLetterResult && <MarkdownContent content={demandLetterResult} />}
+                </ResultSection>
+                <div className="flex items-center gap-3">
+                    <Button
+                        size="sm"
+                        onClick={() => demandLetterMutation.mutate()}
+                        disabled={demandLetterMutation.isPending}
+                        variant={demandLetterResult ? "outline" : "default"}
+                    >
+                        {demandLetterMutation.isPending ? (
+                            <span className="flex items-center gap-2">
+                                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                Generating...
+                            </span>
+                        ) : demandLetterResult ? (
+                            "Regenerate"
+                        ) : (
+                            "Generate Demand Letter"
+                        )}
+                    </Button>
+                    {demandLetterMutation.isError && (
+                        <p className="text-xs text-red-400">Generation failed. Please try again.</p>
+                    )}
+                </div>
+            </div>
+
+            <ModuleNotes caseId={caseId} prepId={prepId} moduleKey="civil_tools" />
+        </div>
     );
 }

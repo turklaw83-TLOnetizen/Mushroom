@@ -150,7 +150,7 @@ from api.routers.evidence import custody_router as evidence_custody_router
 from api.routers.strategy import router as strategy_router
 from api.routers.billing import router as billing_router
 from api.routers.calendar import router as calendar_router
-from api.routers.compliance import router as compliance_router
+## OLD compliance_router superseded by ethical_compliance_router
 from api.routers.documents import router as documents_router
 from api.routers.crm import router as crm_router
 from api.routers.search import router as search_router
@@ -160,14 +160,13 @@ from api.routers.exhibits import router as exhibits_router
 from api.routers.esign import router as esign_router
 from api.routers.email import router as email_router
 from api.routers.backup import router as backup_router
-from api.routers.tasks import router as tasks_router
+from api.routers.tasks import router as tasks_router, cross_case_tasks_router
 from api.routers.workflows import router as workflows_router
 from api.routers.transcription import router as transcription_router
 from api.routers.quality import router as quality_router
 from api.routers.gcal import router as gcal_router
 from api.routers.conflicts import router as conflicts_router
 from api.routers.sol import router as sol_router
-from api.routers.ai_features import router as ai_features_router
 from api.routers.webhooks import router as webhooks_router
 from api.routers.gdpr import router as gdpr_router
 from api.routers.batch import router as batch_router
@@ -188,6 +187,9 @@ from api.routers.portal import router as portal_router
 from api.routers.morning_brief import router as morning_brief_router
 from api.routers.discovery import router as discovery_router
 from api.routers.discovery import dashboard_router as discovery_dashboard_router
+from api.routers.argument_forge import router as argument_forge_router
+from api.routers.ethical_compliance import router as ethical_compliance_router
+from api.routers.war_game import router as war_game_router
 
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
@@ -200,7 +202,7 @@ app.include_router(evidence_custody_router, prefix="/api/v1")
 app.include_router(strategy_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
 app.include_router(calendar_router, prefix="/api/v1")
-app.include_router(compliance_router, prefix="/api/v1")
+## compliance_router replaced by ethical_compliance_router
 app.include_router(documents_router, prefix="/api/v1")
 app.include_router(crm_router, prefix="/api/v1")
 app.include_router(search_router, prefix="/api/v1")
@@ -211,13 +213,13 @@ app.include_router(esign_router, prefix="/api/v1")
 app.include_router(email_router, prefix="/api/v1")
 app.include_router(backup_router, prefix="/api/v1")
 app.include_router(tasks_router, prefix="/api/v1")
+app.include_router(cross_case_tasks_router, prefix="/api/v1")
 app.include_router(workflows_router, prefix="/api/v1")
 app.include_router(transcription_router, prefix="/api/v1")
 app.include_router(quality_router, prefix="/api/v1")
 app.include_router(gcal_router, prefix="/api/v1")
 app.include_router(conflicts_router, prefix="/api/v1")
 app.include_router(sol_router, prefix="/api/v1")
-app.include_router(ai_features_router, prefix="/api/v1")
 app.include_router(webhooks_router, prefix="/api/v1")
 app.include_router(gdpr_router, prefix="/api/v1")
 app.include_router(batch_router, prefix="/api/v1")
@@ -238,6 +240,9 @@ app.include_router(portal_router, prefix="/api/v1")
 app.include_router(morning_brief_router, prefix="/api/v1")
 app.include_router(discovery_router, prefix="/api/v1")
 app.include_router(discovery_dashboard_router, prefix="/api/v1")
+app.include_router(argument_forge_router, prefix="/api/v1")
+app.include_router(ethical_compliance_router, prefix="/api/v1")
+app.include_router(war_game_router, prefix="/api/v1")
 
 
 # ---- Health Check (Fix #12: actually pings DB) ---------------------------
