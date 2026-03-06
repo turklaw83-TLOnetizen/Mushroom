@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/shared/status-badge";
 import {
     Select,
     SelectContent,
@@ -42,13 +42,6 @@ const EVENT_TYPES = [
 ];
 
 const NONE_VALUE = "__none__";
-
-const statusColors: Record<string, string> = {
-    scheduled: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-    completed: "bg-green-500/15 text-green-400 border-green-500/30",
-    cancelled: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
-    rescheduled: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-};
 
 export default function MasterCalendarPage() {
     const today = new Date();
@@ -242,15 +235,7 @@ export default function MasterCalendarPage() {
                                                         </p>
                                                     )}
                                                 </div>
-                                                <Badge
-                                                    variant="outline"
-                                                    className={
-                                                        statusColors[evt.status] ||
-                                                        statusColors.scheduled
-                                                    }
-                                                >
-                                                    {evt.status || "scheduled"}
-                                                </Badge>
+                                                <StatusBadge status={evt.status || "scheduled"} domain="generic" />
                                             </div>
                                         ))}
                                     </div>

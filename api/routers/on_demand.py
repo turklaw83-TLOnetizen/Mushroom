@@ -314,3 +314,129 @@ Be specific to the facts of this case. Use markdown formatting."""),
     except Exception as e:
         logger.exception("Opponent playbook generation failed")
         raise HTTPException(status_code=500, detail="Generation failed")
+
+
+# ---- Deposition Analysis -------------------------------------------------
+
+class DepositionAnalysisRequest(BaseModel):
+    deposition_text: str = Field(..., min_length=10)
+
+
+@router.post("/deposition-analysis")
+async def gen_deposition_analysis(
+    case_id: str,
+    prep_id: str,
+    body: DepositionAnalysisRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Analyze a deposition transcript for key findings and inconsistencies."""
+    try:
+        state = _load_state_or_404(case_id, prep_id)
+
+        from core.nodes.examination import analyze_deposition
+        result = await asyncio.to_thread(analyze_deposition, state, body.deposition_text)
+
+        _save_result(case_id, prep_id, {"deposition_analysis": result.get("deposition_analysis", result)})
+
+        return {"status": "success", "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Deposition analysis generation failed")
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+
+# ---- Medical Chronology (Civil) -----------------------------------------
+
+@router.post("/medical-chronology")
+async def gen_medical_chronology(
+    case_id: str,
+    prep_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Generate a medical chronology for civil cases."""
+    try:
+        state = _load_state_or_404(case_id, prep_id)
+        from core.nodes.civil import generate_medical_chronology
+        result = await asyncio.to_thread(generate_medical_chronology, state)
+        content = result.get("medical_chronology", result)
+        _save_result(case_id, prep_id, {"medical_chronology": content})
+        return {"status": "success", "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Medical chronology generation failed")
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+
+# ---- Demand Letter (Civil) ----------------------------------------------
+
+@router.post("/demand-letter")
+async def gen_demand_letter(
+    case_id: str,
+    prep_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Generate a demand letter for civil litigation."""
+    try:
+        state = _load_state_or_404(case_id, prep_id)
+        from core.nodes.civil import generate_demand_letter
+        result = await asyncio.to_thread(generate_demand_letter, state)
+        content = result.get("demand_letter", result)
+        _save_result(case_id, prep_id, {"demand_letter": content})
+        return {"status": "success", "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Demand letter generation failed")
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+
+# ---- Voir Dire Generation ------------------------------------------------
+
+@router.post("/voir-dire")
+async def gen_voir_dire(
+    case_id: str,
+    prep_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Generate voir dire questions and jury selection strategy."""
+    try:
+        state = _load_state_or_404(case_id, prep_id)
+
+        from core.nodes.analysis import generate_voir_dire
+        result = await asyncio.to_thread(generate_voir_dire, state)
+
+        _save_result(case_id, prep_id, {"voir_dire": result.get("voir_dire", result)})
+
+        return {"status": "success", "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Voir dire generation failed")
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+
+# ---- Mock Jury Simulation ------------------------------------------------
+
+@router.post("/mock-jury")
+async def gen_mock_jury(
+    case_id: str,
+    prep_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Run a mock jury simulation based on current case analysis."""
+    try:
+        state = _load_state_or_404(case_id, prep_id)
+
+        from core.nodes.analysis import generate_mock_jury
+        result = await asyncio.to_thread(generate_mock_jury, state)
+
+        _save_result(case_id, prep_id, {"mock_jury_feedback": result.get("mock_jury_feedback", result)})
+
+        return {"status": "success", "result": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Mock jury simulation failed")
+        raise HTTPException(status_code=500, detail="Generation failed")

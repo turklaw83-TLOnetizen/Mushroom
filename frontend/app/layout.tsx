@@ -4,6 +4,7 @@ import { QueryProvider } from "@/lib/query-provider";
 import { ThemeAwareClerk } from "@/components/theme-aware-clerk";
 import { ThemeAwareToaster } from "@/components/theme-aware-toaster";
 import { AppShell } from "@/components/app-shell";
+import { ErrorBoundary } from "@/components/shared/error-boundary";
 import "./globals.css";
 
 const inter = Inter({
@@ -42,7 +43,9 @@ export default function RootLayout({
             <body className={`${inter.variable} font-sans antialiased`}>
                 <ThemeAwareClerk>
                     <QueryProvider>
-                        <AppShell>{children}</AppShell>
+                        <AppShell>
+                            <ErrorBoundary>{children}</ErrorBoundary>
+                        </AppShell>
                         <ThemeAwareToaster />
                     </QueryProvider>
                 </ThemeAwareClerk>

@@ -7,6 +7,9 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api-client";
+import { routes } from "@/lib/api-routes";
+import { queryKeys } from "@/lib/query-keys";
+import { formatDate } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,12 +54,6 @@ interface ClientItem {
     email: string;
 }
 
-function formatDate(iso: string): string {
-    try {
-        return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    } catch { return iso; }
-}
-
 export default function ClientPortalPage() {
     const { getToken } = useAuth();
     const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -64,14 +61,14 @@ export default function ClientPortalPage() {
 
     // List clients for selection
     const clientsQuery = useQuery({
-        queryKey: ["crm-clients-portal"],
-        queryFn: () => api.get<{ items: ClientItem[] }>("/crm/clients", { getToken }),
+        queryKey: queryKeys.crm.clients,
+        queryFn: () => api.get<{ items: ClientItem[] }>(routes.crm.clients, { getToken }),
     });
 
     // Fetch portal status for selected client
     const portalQuery = useQuery({
-        queryKey: ["portal-status", selectedClientId],
-        queryFn: () => api.get<PortalStatus>(`/portal/client/${selectedClientId}/status`, { getToken }),
+        queryKey: queryKeys.portal.status(selectedClientId!),
+        queryFn: () => api.get<PortalStatus>(routes.portal.clientStatus(selectedClientId!), { getToken }),
         enabled: !!selectedClientId,
     });
 

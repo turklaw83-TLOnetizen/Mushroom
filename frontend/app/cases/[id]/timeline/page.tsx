@@ -1,15 +1,30 @@
 // ---- Timeline & Deadlines Tab -------------------------------------------
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,6 +57,31 @@ interface CalendarEvent {
 interface SOLReference {
     periods: Record<string, number | string>;
 }
+
+interface SOLCalcResult {
+    case_type: string;
+    jurisdiction: string;
+    sol_years: number;
+    deadline: string;
+    days_remaining: number;
+    is_expired: boolean;
+    is_urgent: boolean;
+}
+
+const SOL_CASE_TYPES = [
+    "personal_injury",
+    "medical_malpractice",
+    "breach_of_contract",
+    "property_damage",
+    "employment",
+    "fraud",
+    "wrongful_death",
+    "product_liability",
+    "defamation",
+    "criminal",
+] as const;
+
+const SOL_JURISDICTIONS = ["default", "CA", "TX", "NY", "FL"] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -233,6 +273,9 @@ export default function TimelinePage() {
                 </Card>
             )}
 
+            {/* ---- SOL Calculator ------------------------------------------- */}
+            <SOLCalculator caseId={caseId} getToken={getToken} />
+
             {/* ---- Event Timeline ------------------------------------------- */}
             <Card>
                 <CardHeader>
@@ -393,6 +436,207 @@ export default function TimelinePage() {
                 </Card>
             ) : null}
         </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// SOL Card subcomponent
+// ---------------------------------------------------------------------------
+
+function SOLCalculator({
+    caseId,
+    getToken,
+}: {
+    caseId: string;
+    getToken: () => Promise<string | null>;
+}) {
+    const [open, setOpen] = useState(false);
+    const [incidentDate, setIncidentDate] = useState("");
+    const [caseType, setCaseType] = useState<string>("");
+    const [jurisdiction, setJurisdiction] = useState<string>("");
+
+    const calcMutation = useMutation({
+        mutationFn: () =>
+            api.post<SOLCalcResult>(
+                `/cases/${caseId}/sol/calculate`,
+                {
+                    incident_date: incidentDate,
+                    case_type: caseType,
+                    jurisdiction: jurisdiction,
+                },
+                { getToken },
+            ),
+        onError: (err: Error) => {
+            toast.error("SOL calculation failed", { description: err.message });
+        },
+    });
+
+    const result = calcMutation.data;
+    const canCalculate = incidentDate && caseType && jurisdiction;
+
+    return (
+        <Collapsible open={open} onOpenChange={setOpen}>
+            <Card>
+                <CollapsibleTrigger asChild>
+                    <CardHeader className="cursor-pointer hover:bg-accent/30 transition-colors">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="text-base">
+                                    SOL Calculator
+                                </CardTitle>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    What-if scenario calculator
+                                </p>
+                            </div>
+                            <Badge variant="outline" className="text-xs">
+                                {open ? "Collapse" : "Expand"}
+                            </Badge>
+                        </div>
+                    </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                    <CardContent className="space-y-4 pt-0">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {/* Incident Date */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">
+                                    Incident Date
+                                </label>
+                                <Input
+                                    type="date"
+                                    value={incidentDate}
+                                    onChange={(e) => setIncidentDate(e.target.value)}
+                                    className="h-9"
+                                />
+                            </div>
+
+                            {/* Case Type */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">
+                                    Case Type
+                                </label>
+                                <Select
+                                    value={caseType}
+                                    onValueChange={setCaseType}
+                                >
+                                    <SelectTrigger className="h-9">
+                                        <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {SOL_CASE_TYPES.map((t) => (
+                                            <SelectItem key={t} value={t}>
+                                                {t
+                                                    .split("_")
+                                                    .map(
+                                                        (w) =>
+                                                            w.charAt(0).toUpperCase() +
+                                                            w.slice(1),
+                                                    )
+                                                    .join(" ")}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Jurisdiction */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-medium text-muted-foreground">
+                                    Jurisdiction
+                                </label>
+                                <Select
+                                    value={jurisdiction}
+                                    onValueChange={setJurisdiction}
+                                >
+                                    <SelectTrigger className="h-9">
+                                        <SelectValue placeholder="Select jurisdiction" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {SOL_JURISDICTIONS.map((j) => (
+                                            <SelectItem key={j} value={j}>
+                                                {j === "default" ? "Default" : j}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <Button
+                            size="sm"
+                            onClick={() => calcMutation.mutate()}
+                            disabled={!canCalculate || calcMutation.isPending}
+                        >
+                            {calcMutation.isPending
+                                ? "Calculating..."
+                                : "Calculate"}
+                        </Button>
+
+                        {/* Results */}
+                        {result && (
+                            <div className="rounded-lg border p-4 space-y-3 mt-2">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <p className="text-xs font-medium text-muted-foreground uppercase">
+                                            Calculated Deadline
+                                        </p>
+                                        <p className="text-lg font-bold mt-1">
+                                            {formatDate(result.deadline)}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            {result.case_type
+                                                .split("_")
+                                                .map(
+                                                    (w) =>
+                                                        w.charAt(0).toUpperCase() +
+                                                        w.slice(1),
+                                                )
+                                                .join(" ")}{" "}
+                                            &middot; {result.jurisdiction}{" "}
+                                            &middot; {result.sol_years} year
+                                            {result.sol_years !== 1 ? "s" : ""}
+                                        </p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p
+                                            className={`text-2xl font-extrabold tabular-nums ${
+                                                urgencyColor(
+                                                    result.days_remaining,
+                                                    result.is_expired,
+                                                ).text
+                                            }`}
+                                        >
+                                            {result.is_expired
+                                                ? 0
+                                                : result.days_remaining}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            days remaining
+                                        </p>
+                                    </div>
+                                </div>
+                                {result.is_expired && (
+                                    <Badge
+                                        variant="outline"
+                                        className="bg-red-500/15 text-red-400 border-red-500/30"
+                                    >
+                                        EXPIRED
+                                    </Badge>
+                                )}
+                                {!result.is_expired && result.is_urgent && (
+                                    <Badge
+                                        variant="outline"
+                                        className="bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                    >
+                                        URGENT - Deadline approaching
+                                    </Badge>
+                                )}
+                            </div>
+                        )}
+                    </CardContent>
+                </CollapsibleContent>
+            </Card>
+        </Collapsible>
     );
 }
 

@@ -7,6 +7,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { routes } from "@/lib/api-routes";
+import { queryKeys } from "@/lib/query-keys";
+import { formatBytes } from "@/lib/constants";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +37,14 @@ import {
 interface BackupStatus {
     dropbox: { available: boolean };
     b2: { available: boolean };
+}
+
+interface BackupEntry {
+    timestamp: string;
+    target: string;
+    files: number;
+    size_bytes: number;
+    status: string;
 }
 
 function SettingRow({ label, description, children }: {
@@ -250,12 +262,18 @@ export default function SettingsPage() {
     const { getToken } = useAuth();
 
     const { data: backup, isLoading } = useQuery({
-        queryKey: ["backup-status"],
-        queryFn: () => api.get<BackupStatus>("/backup/status", { getToken }),
+        queryKey: queryKeys.backup.status,
+        queryFn: () => api.get<BackupStatus>(routes.backup.status, { getToken }),
+    });
+
+    const { data: backupList } = useQuery({
+        queryKey: queryKeys.backup.list,
+        queryFn: () =>
+            api.get<{ backups: BackupEntry[] }>(routes.backup.list, { getToken }),
     });
 
     const backupMutation = useMutationWithToast<string>({
-        mutationFn: (target) => api.post("/backup/run", { target }, { getToken }),
+        mutationFn: (target) => api.post(routes.backup.run, { target }, { getToken }),
         successMessage: "Backup complete",
     });
 
@@ -335,6 +353,57 @@ export default function SettingsPage() {
                             </SettingRow>
                         </>
                     )}
+
+                    {/* Backup History */}
+                    <div className="pt-4 mt-4 border-t">
+                        <p className="text-sm font-medium mb-2">Backup History</p>
+                        {!backupList?.backups || backupList.backups.length === 0 ? (
+                            <p className="text-xs text-muted-foreground py-3 text-center">
+                                No backups recorded yet.
+                            </p>
+                        ) : (
+                            <div className="rounded-md border">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b bg-muted/50">
+                                            <th className="text-left font-medium px-3 py-2 text-xs">Date</th>
+                                            <th className="text-left font-medium px-3 py-2 text-xs">Target</th>
+                                            <th className="text-right font-medium px-3 py-2 text-xs">Files</th>
+                                            <th className="text-right font-medium px-3 py-2 text-xs">Size</th>
+                                            <th className="text-right font-medium px-3 py-2 text-xs">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {backupList.backups.map((entry, i) => (
+                                            <tr key={i} className="border-b last:border-0">
+                                                <td className="px-3 py-2 text-xs">
+                                                    {new Date(entry.timestamp).toLocaleDateString("en-US", {
+                                                        month: "short",
+                                                        day: "numeric",
+                                                        year: "numeric",
+                                                        hour: "numeric",
+                                                        minute: "2-digit",
+                                                    })}
+                                                </td>
+                                                <td className="px-3 py-2 text-xs capitalize">
+                                                    {entry.target}
+                                                </td>
+                                                <td className="px-3 py-2 text-xs text-right tabular-nums">
+                                                    {entry.files}
+                                                </td>
+                                                <td className="px-3 py-2 text-xs text-right tabular-nums">
+                                                    {formatBytes(entry.size_bytes)}
+                                                </td>
+                                                <td className="px-3 py-2 text-right">
+                                                    <StatusBadge status={entry.status} domain="generic" size="sm" />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                 </CardContent>
             </Card>
 

@@ -9,14 +9,17 @@ import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api-client";
 import { usePrep } from "@/hooks/use-prep";
 import { usePrepState } from "@/hooks/use-prep-state";
+import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { ResultSection } from "@/components/analysis/result-section";
 import { MarkdownContent } from "@/components/analysis/markdown-content";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { GenerateButton, GenerateWithInput } from "@/components/analysis/generate-button";
 import { ModuleNotes } from "@/components/shared/module-notes";
+import { ArgumentForge } from "@/components/argument-forge";
 
 interface StrategyData {
     strategy_notes: string;
@@ -201,6 +204,35 @@ export default function StrategyPage() {
     // Full prep state for additional analysis results
     const { state: analysisState, sections, isLoading: stateLoading } = usePrepState(caseId, activePrepId);
 
+    // On-demand generation mutations for Voir Dire and Mock Jury
+    const generateVoirDire = useMutationWithToast<void>({
+        mutationFn: () =>
+            api.post(
+                `/cases/${caseId}/preparations/${activePrepId}/generate/voir-dire`,
+                {},
+                { getToken },
+            ),
+        successMessage: "Voir dire analysis generated",
+        invalidateKeys: [
+            ["cases", caseId, "prep-state", activePrepId],
+            ["strategy", caseId, activePrepId],
+        ],
+    });
+
+    const generateMockJury = useMutationWithToast<void>({
+        mutationFn: () =>
+            api.post(
+                `/cases/${caseId}/preparations/${activePrepId}/generate/mock-jury`,
+                {},
+                { getToken },
+            ),
+        successMessage: "Mock jury simulation generated",
+        invalidateKeys: [
+            ["cases", caseId, "prep-state", activePrepId],
+            ["strategy", caseId, activePrepId],
+        ],
+    });
+
     if (!activePrepId && !prepLoading) {
         return (
             <div className="text-center py-16">
@@ -259,6 +291,9 @@ export default function StrategyPage() {
                 <TabsTrigger value="client-report">
                     Client Report {clientReport && <span className="ml-1 text-emerald-400" aria-hidden="true">●</span>}
                 </TabsTrigger>
+                <TabsTrigger value="argument-forge">
+                    Argument Forge
+                </TabsTrigger>
                 <TabsTrigger value="statements">Statements</TabsTrigger>
             </TabsList>
 
@@ -307,10 +342,34 @@ export default function StrategyPage() {
                     icon="🗳️"
                     isEmpty={!hasVoirDire}
                     isLoading={stateLoading}
-                    emptyMessage="No voir dire data yet. Run analysis to generate jury selection strategy."
+                    emptyMessage="No voir dire data yet. Click Generate to create jury selection strategy."
                 >
                     {voirDire && renderVoirDireContent(voirDire as string | Record<string, unknown>)}
                 </ResultSection>
+
+                <div className="flex items-center gap-3 mt-4">
+                    <Button
+                        size="sm"
+                        onClick={() => generateVoirDire.mutate()}
+                        disabled={generateVoirDire.isPending || !activePrepId}
+                        variant={hasVoirDire ? "outline" : "default"}
+                    >
+                        {generateVoirDire.isPending ? (
+                            <span className="flex items-center gap-2">
+                                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                Generating...
+                            </span>
+                        ) : hasVoirDire ? (
+                            "Regenerate"
+                        ) : (
+                            "Generate Voir Dire"
+                        )}
+                    </Button>
+                    {generateVoirDire.isError && (
+                        <p className="text-xs text-red-400">Generation failed. Please try again.</p>
+                    )}
+                </div>
+                <ModuleNotes caseId={caseId} prepId={activePrepId} moduleKey="voir_dire" />
             </TabsContent>
 
             {/* ---- Mock Jury Tab ---- */}
@@ -320,10 +379,33 @@ export default function StrategyPage() {
                     icon="👥"
                     isEmpty={!hasMockJury}
                     isLoading={stateLoading}
-                    emptyMessage="No mock jury feedback yet. Run analysis to simulate jury deliberation."
+                    emptyMessage="No mock jury feedback yet. Click Run Mock Jury to simulate jury deliberation."
                 >
                     {mockJury && renderMockJuryContent(mockJury as string | Record<string, unknown> | Array<Record<string, unknown>>)}
                 </ResultSection>
+
+                <div className="flex items-center gap-3 mt-4">
+                    <Button
+                        size="sm"
+                        onClick={() => generateMockJury.mutate()}
+                        disabled={generateMockJury.isPending || !activePrepId}
+                        variant={hasMockJury ? "outline" : "default"}
+                    >
+                        {generateMockJury.isPending ? (
+                            <span className="flex items-center gap-2">
+                                <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                Running...
+                            </span>
+                        ) : hasMockJury ? (
+                            "Regenerate"
+                        ) : (
+                            "Run Mock Jury"
+                        )}
+                    </Button>
+                    {generateMockJury.isError && (
+                        <p className="text-xs text-red-400">Simulation failed. Please try again.</p>
+                    )}
+                </div>
                 <ModuleNotes caseId={caseId} prepId={activePrepId} moduleKey="mock_jury" />
             </TabsContent>
 
@@ -355,6 +437,11 @@ export default function StrategyPage() {
                     emptyMessage="Generate a plain-language case report suitable for sharing with your client."
                 />
                 <ModuleNotes caseId={caseId} prepId={activePrepId} moduleKey="client_report" />
+            </TabsContent>
+
+            {/* ---- Argument Forge Tab ---- */}
+            <TabsContent value="argument-forge">
+                <ArgumentForge caseId={caseId} prepId={activePrepId} />
             </TabsContent>
 
             {/* ---- Statements Tab ---- */}

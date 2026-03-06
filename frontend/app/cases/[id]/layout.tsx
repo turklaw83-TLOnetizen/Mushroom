@@ -23,6 +23,7 @@ const tabs = [
     { label: "Analysis", href: "/analysis" },
     { label: "Witnesses", href: "/witnesses" },
     { label: "Mock Exam", href: "/mock-exam" },
+    { label: "War Game", href: "/war-game" },
     { label: "Evidence", href: "/evidence" },
     { label: "Discovery", href: "/discovery" },
     { label: "Strategy", href: "/strategy" },

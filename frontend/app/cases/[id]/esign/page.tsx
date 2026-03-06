@@ -1,16 +1,20 @@
 // ---- E-Signature Tab ----------------------------------------------------
+// Refactored to use shared infra: routes, queryKeys, StatusBadge, formatDate.
 "use client";
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { routes } from "@/lib/api-routes";
+import { queryKeys } from "@/lib/query-keys";
+import { formatDate } from "@/lib/constants";
 import { useRole } from "@/hooks/use-role";
-import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useCrud } from "@/hooks/use-crud";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -51,38 +55,6 @@ interface SendPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Status colors
-// ---------------------------------------------------------------------------
-
-const statusColors: Record<string, string> = {
-    pending: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-    sent: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-    viewed: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
-    signed: "bg-green-500/15 text-green-400 border-green-500/30",
-    declined: "bg-red-500/15 text-red-400 border-red-500/30",
-    cancelled: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
-    expired: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
-    not_configured: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
-    error: "bg-red-500/15 text-red-400 border-red-500/30",
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatDate(iso: string): string {
-    try {
-        return new Date(iso).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-        });
-    } catch {
-        return iso;
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -95,6 +67,7 @@ export default function ESignPage() {
     const queryClient = useQueryClient();
     const [dialogOpen, setDialogOpen] = useState(false);
     const [remindingId, setRemindingId] = useState<string | null>(null);
+    const [checkingStatusId, setCheckingStatusId] = useState<string | null>(null);
 
     // Form fields
     const [fileKey, setFileKey] = useState("");
@@ -103,39 +76,27 @@ export default function ESignPage() {
     const [title, setTitle] = useState("");
     const [message, setMessage] = useState("");
 
-    // ---- Queries -----------------------------------------------------------
+    // ---- useCrud for list query ---------------------------------------------
 
-    const requestsQuery = useQuery({
-        queryKey: ["esign", "requests", caseId],
-        queryFn: () =>
-            api.get<{ items: SignatureRequest[] }>(
-                `/cases/${caseId}/esign/requests`,
-                { getToken },
-            ),
-    });
-
-    const requests = requestsQuery.data?.items ?? [];
-
-    // ---- Mutations ---------------------------------------------------------
-
-    const sendMutation = useMutationWithToast<SendPayload>({
-        mutationFn: (data) =>
-            api.post(`/cases/${caseId}/esign/send`, data, { getToken }),
-        successMessage: "Signature request sent",
-        errorMessage: "Failed to send signature request",
-        invalidateKeys: [["esign", "requests", caseId]],
-        onSuccess: () => {
+    const { items: requests, isLoading: requestsLoading, create: sendMutation } = useCrud<SignatureRequest, SendPayload>({
+        queryKey: queryKeys.esign.requests(caseId),
+        listPath: routes.esign.requests(caseId),
+        createPath: routes.esign.send(caseId),
+        entityName: "Signature request",
+        onCreateSuccess: () => {
             setDialogOpen(false);
             resetForm();
         },
     });
 
+    // ---- Additional Mutations (remind + status check) -----------------------
+
     const reminderMutation = useMutation({
         mutationFn: (requestId: string) =>
-            api.post(`/cases/${caseId}/esign/requests/${requestId}/remind`, {}, { getToken }),
-        onSuccess: (_result, requestId) => {
+            api.post(routes.esign.remind(caseId, requestId), {}, { getToken }),
+        onSuccess: () => {
             toast.success("Reminder sent");
-            queryClient.invalidateQueries({ queryKey: ["esign", "requests", caseId] });
+            queryClient.invalidateQueries({ queryKey: [...queryKeys.esign.requests(caseId)] });
             setRemindingId(null);
         },
         onError: (err) => {
@@ -149,6 +110,54 @@ export default function ESignPage() {
     function handleSendReminder(requestId: string) {
         setRemindingId(requestId);
         reminderMutation.mutate(requestId);
+    }
+
+    const statusCheckMutation = useMutation({
+        mutationFn: (requestId: string) =>
+            api.get<{ status: string }>(
+                routes.esign.status(caseId, requestId),
+                { getToken },
+            ),
+        onSuccess: () => {
+            toast.success("Status updated");
+            queryClient.invalidateQueries({ queryKey: [...queryKeys.esign.requests(caseId)] });
+            setCheckingStatusId(null);
+        },
+        onError: (err) => {
+            toast.error("Failed to check status", {
+                description: err instanceof Error ? err.message : "Unknown error",
+            });
+            setCheckingStatusId(null);
+        },
+    });
+
+    function handleCheckStatus(requestId: string) {
+        setCheckingStatusId(requestId);
+        statusCheckMutation.mutate(requestId);
+    }
+
+    async function handleDownload(requestId: string, docTitle: string) {
+        try {
+            const token = await getToken();
+            const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const res = await fetch(
+                `${baseUrl}/api/v1${routes.esign.download(caseId, requestId)}`,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                },
+            );
+            if (!res.ok) throw new Error("Download failed");
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${docTitle}-signed.pdf`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast.success("Downloaded signed document");
+        } catch {
+            toast.error("Failed to download document");
+        }
     }
 
     function resetForm() {
@@ -195,7 +204,7 @@ export default function ESignPage() {
             </div>
 
             {/* Request list */}
-            {requestsQuery.isLoading ? (
+            {requestsLoading ? (
                 <div className="space-y-3">
                     {Array.from({ length: 4 }).map((_, i) => (
                         <Skeleton key={i} className="h-16 w-full rounded-lg" />
@@ -228,6 +237,36 @@ export default function ESignPage() {
                                     <span className="text-xs text-muted-foreground whitespace-nowrap">
                                         {formatDate(req.created_at)}
                                     </span>
+                                    {req.status === "signed" && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-xs h-7"
+                                            onClick={() =>
+                                                handleDownload(
+                                                    req.local_id || req.signature_request_id,
+                                                    req.title,
+                                                )
+                                            }
+                                        >
+                                            Download
+                                        </Button>
+                                    )}
+                                    {["pending", "sent", "viewed"].includes(req.status) && canEdit && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-xs h-7"
+                                            disabled={checkingStatusId === (req.local_id || req.signature_request_id)}
+                                            onClick={() =>
+                                                handleCheckStatus(req.local_id || req.signature_request_id)
+                                            }
+                                        >
+                                            {checkingStatusId === (req.local_id || req.signature_request_id)
+                                                ? "Checking..."
+                                                : "Check Status"}
+                                        </Button>
+                                    )}
                                     {["pending", "sent", "viewed"].includes(req.status) && canEdit && (
                                         <Button
                                             variant="ghost"
@@ -241,15 +280,7 @@ export default function ESignPage() {
                                                 : "Send Reminder"}
                                         </Button>
                                     )}
-                                    <Badge
-                                        variant="outline"
-                                        className={
-                                            statusColors[req.status] ||
-                                            statusColors.pending
-                                        }
-                                    >
-                                        {req.status}
-                                    </Badge>
+                                    <StatusBadge status={req.status} domain="esign" />
                                 </div>
                             </CardContent>
                         </Card>

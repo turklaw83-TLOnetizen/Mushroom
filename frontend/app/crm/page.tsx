@@ -1,20 +1,19 @@
 // ---- CRM Page -----------------------------------------------------------
 // Client management: list clients, link to cases, intake forms.
+// Refactored to use shared infra: routes, queryKeys, useCrud.
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
-import { api } from "@/lib/api-client";
-import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
+import { useCrud } from "@/hooks/use-crud";
+import { routes } from "@/lib/api-routes";
+import { queryKeys } from "@/lib/query-keys";
 import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import type { Client } from "@/types/api";
 
 // ---- Form Schema --------------------------------------------------------
@@ -35,24 +34,19 @@ const clientFields: FieldConfig<ClientInput>[] = [
 ];
 
 export default function CRMPage() {
-    const { getToken } = useAuth();
     const router = useRouter();
     const [search, setSearch] = useState("");
     const [addOpen, setAddOpen] = useState(false);
 
-    const { data, isLoading, error } = useQuery({
-        queryKey: ["crm-clients"],
-        queryFn: () => api.get<{ items: Client[] }>("/crm/clients", { getToken }),
+    // useCrud: replaces manual useQuery + useMutationWithToast + useAuth
+    const { items: clients, isLoading, error, create } = useCrud<Client, ClientInput>({
+        queryKey: queryKeys.crm.clients,
+        listPath: routes.crm.clients,
+        createPath: routes.crm.clients,
+        entityName: "Client",
+        onCreateSuccess: () => setAddOpen(false),
     });
 
-    const addClient = useMutationWithToast<ClientInput>({
-        mutationFn: (input) => api.post("/crm/clients", input, { getToken }),
-        successMessage: "Client added",
-        invalidateKeys: [["crm-clients"]],
-        onSuccess: () => setAddOpen(false),
-    });
-
-    const clients = data?.items ?? [];
     const filtered = search
         ? clients.filter((c) =>
             c.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -85,12 +79,12 @@ export default function CRMPage() {
             {isLoading ? (
                 <div className="space-y-3">
                     {Array.from({ length: 5 }).map((_, i) => (
-                        <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                        <div key={i} className="h-20 w-full rounded-lg bg-muted animate-pulse" />
                     ))}
                 </div>
             ) : error ? (
                 <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-                    Failed to load clients: {error instanceof Error ? error.message : "Unknown error"}
+                    Failed to load clients: {error.message}
                 </div>
             ) : filtered.length === 0 ? (
                 <Card>
@@ -150,9 +144,9 @@ export default function CRMPage() {
                 schema={clientSchema}
                 defaultValues={{ name: "", email: "", phone: "", company: "" }}
                 fields={clientFields}
-                onSubmit={async (data) => { await addClient.mutateAsync(data); }}
+                onSubmit={async (data) => { await create.mutateAsync(data); }}
                 submitLabel="Add Client"
-                isLoading={addClient.isPending}
+                isLoading={create.isPending}
             />
         </div>
     );

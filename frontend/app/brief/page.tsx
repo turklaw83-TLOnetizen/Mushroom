@@ -1,7 +1,6 @@
 // ---- Morning Brief — Daily Case Autopilot --------------------------------
 // The attorney's command center. Opens every morning to surface everything
-// that needs attention: triage items, schedule, location suggestions, and
-// deadline chain calculations.
+// that needs attention: triage items, schedule, and location suggestions.
 "use client";
 
 import { useState, useMemo } from "react";
@@ -10,6 +9,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { routes } from "@/lib/api-routes";
+import { queryKeys } from "@/lib/query-keys";
+import { formatDate } from "@/lib/constants";
 import {
     Card,
     CardContent,
@@ -19,15 +21,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
     Dialog,
@@ -38,7 +31,6 @@ import {
     DialogFooter,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 
 // ---- TypeScript Interfaces ------------------------------------------------
 
@@ -108,43 +100,6 @@ interface MorningBrief {
     today_schedule: ScheduleEvent[];
 }
 
-interface ChainTemplate {
-    id: string;
-    name: string;
-    category: string;
-    jurisdiction: string;
-    description: string;
-    trigger_event: string;
-    steps: Array<{
-        label: string;
-        offset_days: number;
-        from_step: string | number;
-        category: string;
-        is_business_days: boolean;
-    }>;
-}
-
-interface ChainDeadline {
-    id: string;
-    step_index: number;
-    label: string;
-    date: string;
-    category: string;
-    days_from_trigger: number;
-    status: string;
-}
-
-interface ChainResult {
-    chain_id: string;
-    chain_name: string;
-    trigger_date: string;
-    trigger_event: string;
-    case_id: string;
-    case_name: string;
-    deadlines: ChainDeadline[];
-    generated_at: string;
-}
-
 // ---- Severity colors & source badges -------------------------------------
 
 const SEVERITY_BORDER: Record<string, string> = {
@@ -169,31 +124,7 @@ const SOURCE_BADGE: Record<string, string> = {
     Proactive: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
 };
 
-const CHAIN_CATEGORIES = ["Criminal", "Civil", "Discovery", "Trial Prep", "Appellate"];
-
-const DEADLINE_CATEGORY_BADGE: Record<string, string> = {
-    filing: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
-    hearing: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
-    discovery: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
-    motion: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
-    trial: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
-    administrative: "bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-400",
-};
-
 // ---- Helpers -------------------------------------------------------------
-
-function formatDate(dateStr: string): string {
-    try {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString("en-US", {
-            weekday: "short",
-            month: "short",
-            day: "numeric",
-        });
-    } catch {
-        return dateStr;
-    }
-}
 
 function formatTime(timeStr: string): string {
     try {
@@ -232,7 +163,6 @@ export default function MorningBriefPage() {
     const qc = useQueryClient();
     const router = useRouter();
 
-    const [chainDialogOpen, setChainDialogOpen] = useState(false);
     const [sendDigestOpen, setSendDigestOpen] = useState(false);
 
     // ---- Main Brief Query ----
@@ -242,8 +172,8 @@ export default function MorningBriefPage() {
         isError,
         refetch,
     } = useQuery({
-        queryKey: ["morning-brief"],
-        queryFn: () => api.get<MorningBrief>("/brief", { getToken }),
+        queryKey: queryKeys.morningBrief,
+        queryFn: () => api.get<MorningBrief>(routes.morningBrief.get, { getToken }),
         refetchInterval: 300_000, // 5 min auto-refresh
     });
 
@@ -251,13 +181,13 @@ export default function MorningBriefPage() {
     const dismissMut = useMutation({
         mutationFn: (itemId: string) =>
             api.post<{ success: boolean; item_id: string }>(
-                `/brief/items/${itemId}/dismiss`,
+                routes.morningBrief.dismissItem(itemId),
                 {},
                 { getToken },
             ),
         onSuccess: (_data, itemId) => {
             toast.success("Item dismissed");
-            qc.invalidateQueries({ queryKey: ["morning-brief"] });
+            qc.invalidateQueries({ queryKey: [...queryKeys.morningBrief] });
         },
         onError: () => toast.error("Failed to dismiss item"),
     });
@@ -265,13 +195,13 @@ export default function MorningBriefPage() {
     const snoozeMut = useMutation({
         mutationFn: (itemId: string) =>
             api.post<{ success: boolean; item_id: string; snoozed_until: string }>(
-                `/brief/items/${itemId}/snooze`,
+                routes.morningBrief.snoozeItem(itemId),
                 {},
                 { getToken },
             ),
         onSuccess: (data) => {
             toast.success(`Snoozed until ${formatDate(data.snoozed_until)}`);
-            qc.invalidateQueries({ queryKey: ["morning-brief"] });
+            qc.invalidateQueries({ queryKey: [...queryKeys.morningBrief] });
         },
         onError: () => toast.error("Failed to snooze item"),
     });
@@ -279,7 +209,7 @@ export default function MorningBriefPage() {
     const sendDigestMut = useMutation({
         mutationFn: () =>
             api.post<{ success: boolean; comm_id: string }>(
-                "/brief/send-digest",
+                routes.morningBrief.sendDigest,
                 {},
                 { getToken },
             ),
@@ -583,30 +513,6 @@ export default function MorningBriefPage() {
                 </div>
             )}
 
-            {/* ================================================================
-                SECTION 5: Deadline Chain Calculator
-               ================================================================ */}
-            <div>
-                <Separator className="mb-6" />
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-                            Deadline Chain Calculator
-                        </h2>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Generate cascading deadline chains from jurisdiction templates
-                        </p>
-                    </div>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setChainDialogOpen(true)}
-                    >
-                        Create Deadline Chain
-                    </Button>
-                </div>
-            </div>
-
             {/* ---- Dialogs ---- */}
             <SendDigestDialog
                 open={sendDigestOpen}
@@ -614,12 +520,6 @@ export default function MorningBriefPage() {
                 onConfirm={() => sendDigestMut.mutate()}
                 isPending={sendDigestMut.isPending}
                 summary={summary}
-            />
-
-            <DeadlineChainDialog
-                open={chainDialogOpen}
-                onOpenChange={setChainDialogOpen}
-                getToken={getToken}
             />
         </div>
     );
@@ -901,298 +801,3 @@ function SendDigestDialog({
     );
 }
 
-// ---- Deadline Chain Dialog -----------------------------------------------
-
-function DeadlineChainDialog({
-    open,
-    onOpenChange,
-    getToken,
-}: {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    getToken: () => Promise<string | null>;
-}) {
-    const qc = useQueryClient();
-    const [selectedCategory, setSelectedCategory] = useState("Criminal");
-    const [selectedTemplate, setSelectedTemplate] = useState<ChainTemplate | null>(null);
-    const [triggerDate, setTriggerDate] = useState(
-        new Date().toISOString().split("T")[0],
-    );
-    const [caseId, setCaseId] = useState("");
-    const [previewResult, setPreviewResult] = useState<ChainResult | null>(null);
-
-    // Fetch available chain templates
-    const chainsQuery = useQuery({
-        queryKey: ["deadline-chains"],
-        queryFn: () =>
-            api.get<{ chains: ChainTemplate[]; categories: string[] }>(
-                "/brief/deadline-chains",
-                { getToken },
-            ),
-        enabled: open,
-    });
-
-    const templates = chainsQuery.data?.chains ?? [];
-    const filteredTemplates = templates.filter(
-        (t) => t.category.toLowerCase() === selectedCategory.toLowerCase(),
-    );
-
-    // Preview mutation
-    const previewMut = useMutation({
-        mutationFn: () =>
-            api.post<ChainResult>(
-                "/brief/deadline-chains/preview",
-                {
-                    chain_id: selectedTemplate?.id,
-                    trigger_date: triggerDate,
-                    case_id: caseId || undefined,
-                },
-                { getToken },
-            ),
-        onSuccess: (data) => setPreviewResult(data),
-        onError: () => toast.error("Failed to generate preview"),
-    });
-
-    // Apply mutation
-    const applyMut = useMutation({
-        mutationFn: () =>
-            api.post<{ chain: ChainResult; applied: boolean }>(
-                "/brief/deadline-chains/apply",
-                {
-                    chain_id: selectedTemplate?.id,
-                    trigger_date: triggerDate,
-                    case_id: caseId || undefined,
-                },
-                { getToken },
-            ),
-        onSuccess: (data) => {
-            const count = data.chain.deadlines.length;
-            toast.success(`Deadline chain applied: ${count} deadlines created`);
-            qc.invalidateQueries({ queryKey: ["morning-brief"] });
-            handleReset();
-            onOpenChange(false);
-        },
-        onError: () => toast.error("Failed to apply deadline chain"),
-    });
-
-    const handleReset = () => {
-        setSelectedTemplate(null);
-        setPreviewResult(null);
-        setCaseId("");
-        setTriggerDate(new Date().toISOString().split("T")[0]);
-    };
-
-    return (
-        <Dialog
-            open={open}
-            onOpenChange={(v) => {
-                if (!v) handleReset();
-                onOpenChange(v);
-            }}
-        >
-            <DialogContent className="sm:max-w-2xl max-h-[85vh] flex flex-col">
-                <DialogHeader>
-                    <DialogTitle>Create Deadline Chain</DialogTitle>
-                    <DialogDescription>
-                        Select a jurisdiction template, set a trigger date, and generate
-                        cascading deadlines.
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div className="flex-1 overflow-y-auto space-y-4 py-2">
-                    {/* Category Tabs */}
-                    <Tabs
-                        value={selectedCategory}
-                        onValueChange={(v) => {
-                            setSelectedCategory(v);
-                            setSelectedTemplate(null);
-                            setPreviewResult(null);
-                        }}
-                    >
-                        <TabsList className="flex-wrap h-auto">
-                            {CHAIN_CATEGORIES.map((cat) => (
-                                <TabsTrigger key={cat} value={cat} className="text-xs">
-                                    {cat}
-                                </TabsTrigger>
-                            ))}
-                        </TabsList>
-                    </Tabs>
-
-                    {/* Template Grid */}
-                    {chainsQuery.isLoading ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {Array.from({ length: 4 }).map((_, i) => (
-                                <Skeleton key={i} className="h-24 rounded-lg" />
-                            ))}
-                        </div>
-                    ) : filteredTemplates.length === 0 ? (
-                        <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                            No templates available for {selectedCategory}.
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {filteredTemplates.map((tpl) => (
-                                <Card
-                                    key={tpl.id}
-                                    className={`cursor-pointer transition-all ${
-                                        selectedTemplate?.id === tpl.id
-                                            ? "ring-2 ring-indigo-500 border-indigo-500/40"
-                                            : "hover:border-indigo-500/30"
-                                    }`}
-                                    onClick={() => {
-                                        setSelectedTemplate(tpl);
-                                        setPreviewResult(null);
-                                    }}
-                                >
-                                    <CardContent className="pt-4 pb-3">
-                                        <p className="text-sm font-semibold">{tpl.name}</p>
-                                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                                            {tpl.description}
-                                        </p>
-                                        <div className="flex items-center gap-2 mt-2">
-                                            <Badge variant="outline" className="text-[10px]">
-                                                {tpl.jurisdiction}
-                                            </Badge>
-                                            <span className="text-[10px] text-muted-foreground">
-                                                {tpl.steps.length} steps
-                                            </span>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Configuration — shows when template selected */}
-                    {selectedTemplate && (
-                        <>
-                            <Separator />
-                            <div className="space-y-3">
-                                <p className="text-sm font-medium">
-                                    Configure:{" "}
-                                    <span className="text-indigo-600 dark:text-indigo-400">
-                                        {selectedTemplate.name}
-                                    </span>
-                                </p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">
-                                            Trigger Date ({selectedTemplate.trigger_event})
-                                        </label>
-                                        <Input
-                                            type="date"
-                                            value={triggerDate}
-                                            onChange={(e) => {
-                                                setTriggerDate(e.target.value);
-                                                setPreviewResult(null);
-                                            }}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">
-                                            Case ID (optional)
-                                        </label>
-                                        <Input
-                                            placeholder="e.g. case-abc-123"
-                                            value={caseId}
-                                            onChange={(e) => setCaseId(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => previewMut.mutate()}
-                                        disabled={!triggerDate || previewMut.isPending}
-                                    >
-                                        {previewMut.isPending ? "Generating..." : "Preview"}
-                                    </Button>
-                                    {previewResult && (
-                                        <Button
-                                            size="sm"
-                                            onClick={() => applyMut.mutate()}
-                                            disabled={applyMut.isPending}
-                                        >
-                                            {applyMut.isPending
-                                                ? "Applying..."
-                                                : `Apply Chain (${previewResult.deadlines.length} deadlines)`}
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        </>
-                    )}
-
-                    {/* Preview Timeline */}
-                    {previewResult && (
-                        <>
-                            <Separator />
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <p className="text-sm font-medium">
-                                        Preview: {previewResult.chain_name}
-                                    </p>
-                                    <span className="text-xs text-muted-foreground">
-                                        Trigger: {formatDate(previewResult.trigger_date)}
-                                    </span>
-                                </div>
-                                <div className="relative pl-6 space-y-0">
-                                    {previewResult.deadlines.map((dl, idx) => {
-                                        const isLast = idx === previewResult.deadlines.length - 1;
-                                        const catBadge =
-                                            DEADLINE_CATEGORY_BADGE[dl.category] ||
-                                            DEADLINE_CATEGORY_BADGE.administrative;
-                                        return (
-                                            <div key={dl.id} className="relative pb-4">
-                                                {/* Vertical line */}
-                                                {!isLast && (
-                                                    <div className="absolute left-[-16px] top-3 bottom-0 w-px bg-indigo-500/30" />
-                                                )}
-                                                {/* Dot */}
-                                                <div className="absolute left-[-20px] top-1.5 size-2.5 rounded-full bg-indigo-500 ring-2 ring-background" />
-                                                {/* Content */}
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div>
-                                                        <p className="text-sm font-medium">
-                                                            {dl.label}
-                                                        </p>
-                                                        <div className="flex items-center gap-2 mt-0.5">
-                                                            <span className="text-xs font-mono text-indigo-600 dark:text-indigo-400">
-                                                                {formatDate(dl.date)}
-                                                            </span>
-                                                            <span
-                                                                className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium capitalize ${catBadge}`}
-                                                            >
-                                                                {dl.category}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                    <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                                                        +{dl.days_from_trigger}d
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                <DialogFooter>
-                    <Button
-                        variant="outline"
-                        onClick={() => {
-                            handleReset();
-                            onOpenChange(false);
-                        }}
-                    >
-                        Close
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-}

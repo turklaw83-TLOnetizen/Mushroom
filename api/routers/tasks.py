@@ -12,6 +12,42 @@ from api.auth import get_current_user, require_role
 from api.deps import get_data_dir
 
 logger = logging.getLogger(__name__)
+
+# Cross-case task aggregation router
+cross_case_tasks_router = APIRouter(prefix="/tasks", tags=["Tasks"])
+
+@cross_case_tasks_router.get("")
+def list_all_tasks(
+    status: str = "",
+    assigned_to: str = "",
+    user: dict = Depends(get_current_user),
+):
+    """List tasks across all cases."""
+    try:
+        from core.tasks import load_tasks
+        from api.deps import get_case_manager, get_data_dir
+        cm = get_case_manager()
+        data_dir = get_data_dir()
+        all_cases = cm.list_cases()
+        all_tasks = []
+        for case_meta in all_cases:
+            case_id = case_meta.get("id", "")
+            if not case_id:
+                continue
+            try:
+                tasks = load_tasks(data_dir, case_id, status_filter=status or None, assigned_to=assigned_to or None)
+                for t in tasks:
+                    t["case_id"] = case_id
+                    t["case_name"] = case_meta.get("name", case_id)
+                all_tasks.extend(tasks)
+            except Exception:
+                continue
+        return {"items": all_tasks, "total": len(all_tasks)}
+    except Exception as e:
+        logger.exception("Failed to list all tasks")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 router = APIRouter(prefix="/cases/{case_id}/tasks", tags=["Tasks"])
 
 
