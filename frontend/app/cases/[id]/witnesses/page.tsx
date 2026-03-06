@@ -24,6 +24,80 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
+// ---- Witness Type Colors ------------------------------------------------
+
+const WITNESS_TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+    State: { bg: "bg-amber-500/20", border: "border-amber-500", text: "text-amber-300" },
+    Defense: { bg: "bg-blue-500/20", border: "border-blue-500", text: "text-blue-300" },
+    Expert: { bg: "bg-violet-500/20", border: "border-violet-500", text: "text-violet-300" },
+    Character: { bg: "bg-emerald-500/20", border: "border-emerald-500", text: "text-emerald-300" },
+};
+
+const WITNESS_TYPE_ORDER = ["State", "Expert", "Defense", "Character"];
+
+// ---- Witness Timeline Overlay -------------------------------------------
+
+function WitnessTimeline({ witnesses }: { witnesses: Witness[] }) {
+    // Sort witnesses by type order, then alphabetically within each type
+    const sorted = [...witnesses].sort((a, b) => {
+        const aOrder = WITNESS_TYPE_ORDER.indexOf(a.type);
+        const bOrder = WITNESS_TYPE_ORDER.indexOf(b.type);
+        const aIdx = aOrder === -1 ? WITNESS_TYPE_ORDER.length : aOrder;
+        const bIdx = bOrder === -1 ? WITNESS_TYPE_ORDER.length : bOrder;
+        if (aIdx !== bIdx) return aIdx - bIdx;
+        return a.name.localeCompare(b.name);
+    });
+
+    if (sorted.length === 0) {
+        return (
+            <Card className="mb-4">
+                <CardContent className="py-6 text-center">
+                    <p className="text-sm text-muted-foreground">No witnesses to display in timeline.</p>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <Card className="mb-4">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                    Witness Timeline
+                    <Badge variant="secondary" className="text-xs">{sorted.length} witnesses</Badge>
+                </CardTitle>
+                <div className="flex gap-2 mt-1">
+                    {WITNESS_TYPE_ORDER.map((type) => {
+                        const colors = WITNESS_TYPE_COLORS[type] ?? WITNESS_TYPE_COLORS.State;
+                        return (
+                            <Badge key={type} variant="outline" className={`text-[10px] ${colors.text} ${colors.border}`}>
+                                {type}
+                            </Badge>
+                        );
+                    })}
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="overflow-x-auto">
+                    <div className="flex gap-2 min-w-max pb-1">
+                        {sorted.map((w, i) => {
+                            const colors = WITNESS_TYPE_COLORS[w.type] ?? WITNESS_TYPE_COLORS.State;
+                            return (
+                                <div
+                                    key={`${w.name}-${i}`}
+                                    className={`flex-shrink-0 rounded-md border-l-4 ${colors.border} ${colors.bg} px-3 py-2 min-w-[140px] max-w-[200px]`}
+                                >
+                                    <p className="text-sm font-medium truncate">{w.name}</p>
+                                    <p className="text-xs text-muted-foreground truncate">{w.role || w.type}</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 interface Witness {
     name: string;
     type: string;
@@ -339,6 +413,7 @@ export default function WitnessesPage() {
     const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
     const [deleteWitness, setDeleteWitness] = useState<Witness | null>(null);
     const [detailWitness, setDetailWitness] = useState<{ witness: Witness; index: number } | null>(null);
+    const [showTimeline, setShowTimeline] = useState(false);
 
     // Analysis results for exam plans
     const { sections } = usePrepState(caseId, activePrepId);
@@ -429,6 +504,20 @@ export default function WitnessesPage() {
             searchPlaceholder="Search witnesses..."
             createLabel={canEdit ? "Add Witness" : null}
             onCreateClick={() => setDialogOpen(true)}
+            headerActions={
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowTimeline((v) => !v)}
+                >
+                    {showTimeline ? "List View" : "Timeline View"}
+                </Button>
+            }
+            beforeList={
+                showTimeline && query.data ? (
+                    <WitnessTimeline witnesses={query.data} />
+                ) : null
+            }
             renderItem={(witness, i) => {
                 const hasCross = !!getExamContent(witness.name, sections.crossExamPlan);
                 const hasDirect = !!getExamContent(witness.name, sections.directExamPlan);

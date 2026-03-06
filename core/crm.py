@@ -485,6 +485,33 @@ def get_rep_agreement_metadata(client_id: str) -> Optional[Dict]:
     return client.get("rep_agreement")
 
 
+def get_last_contact_dates() -> Dict[str, str]:
+    """Return a mapping of client_id -> last communication sent date.
+    Reads from the communication log.
+    """
+    import os, json
+    log_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        os.pardir, "data", "comms", "log.json",
+    )
+    if not os.path.exists(log_path):
+        return {}
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            log = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+    last_dates: Dict[str, str] = {}
+    for entry in log:
+        cid = entry.get("client_id", "")
+        sent_at = entry.get("sent_at", "")
+        if cid and sent_at:
+            if cid not in last_dates or sent_at > last_dates[cid]:
+                last_dates[cid] = sent_at
+    return last_dates
+
+
 # -- Stats --
 def get_crm_stats() -> Dict:
     """Aggregate CRM statistics for dashboard display."""

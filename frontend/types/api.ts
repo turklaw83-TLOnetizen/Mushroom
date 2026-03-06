@@ -140,6 +140,7 @@ export interface FileItem {
     tags: string[];
     uploaded_at?: string;
     ocr_status?: string;
+    pinned?: boolean;
 }
 
 // ---- Client (CRM) ----
@@ -204,6 +205,7 @@ export interface PaymentPlan {
     scheduled_payments: ScheduledPayment[];
     payments: PaymentRecord[];
     history: Array<{ timestamp: string; action: string; details: string; user: string }>;
+    health?: "on_track" | "behind" | "at_risk" | "ahead" | "completed" | "paused" | "cancelled";
 }
 
 export interface PaymentPlanStatus {
@@ -447,4 +449,108 @@ export interface StripeConfig {
     public_key: string;
     webhook_configured: boolean;
     base_url: string;
+}
+
+// ---- Discovery Command Center ----
+export interface DiscoveryItem {
+    number: number;
+    text: string;
+    response: string;
+    objection: string;
+    status: "pending" | "answered" | "objected" | "supplemented";
+}
+
+export interface DiscoveryRequest {
+    id: string;
+    direction: "outbound" | "inbound";
+    request_type: "interrogatories" | "rfp" | "rfa";
+    title: string;
+    served_on: string;
+    served_by: string;
+    date_served: string;
+    response_due: string;
+    status: "draft" | "served" | "response_pending" | "response_received" | "deficient" | "motion_to_compel" | "complete";
+    items: DiscoveryItem[];
+    notes: string;
+    created_at: string;
+    updated_at: string;
+    ai_drafted: boolean;
+    targeting: Record<string, unknown>;
+}
+
+export interface ProductionSet {
+    id: string;
+    title: string;
+    case_id: string;
+    bates_prefix: string;
+    documents: Array<{
+        filename: string;
+        bates_range: string;
+        description: string;
+        page_count: number;
+    }>;
+    produced_to: string;
+    date_produced: string;
+    status: "preparing" | "produced" | "supplemented";
+    created_at: string;
+    updated_at: string;
+}
+
+export interface PrivilegeEntry {
+    id: string;
+    document: string;
+    bates_number: string;
+    privilege_type: "attorney-client" | "work_product" | "joint_defense" | "other";
+    description: string;
+    date: string;
+    from_party: string;
+    to_party: string;
+    subject: string;
+    basis: string;
+    created_at: string;
+}
+
+export interface DiscoverySummary {
+    total_requests: number;
+    outbound: number;
+    inbound: number;
+    by_type: Record<string, number>;
+    by_status: Record<string, number>;
+    overdue: number;
+    total_items: number;
+    items_pending: number;
+    items_answered: number;
+    production_sets: number;
+    privilege_entries: number;
+}
+
+export interface DiscoveryData {
+    civil: boolean;
+    case_type: string;
+    requests: DiscoveryRequest[];
+    production_sets: ProductionSet[];
+    privilege_log: PrivilegeEntry[];
+    summary: DiscoverySummary;
+}
+
+export interface DraftResultItem {
+    number: number;
+    text: string;
+    targeting_rationale: string;
+}
+
+export interface CrossCaseDiscoveryItem {
+    case_id: string;
+    case_name: string;
+    case_type: string;
+    request_id: string;
+    direction: string;
+    request_type: string;
+    title: string;
+    status: string;
+    date_served: string;
+    response_due: string;
+    is_overdue: boolean;
+    days_until_due: number | null;
+    item_count: number;
 }

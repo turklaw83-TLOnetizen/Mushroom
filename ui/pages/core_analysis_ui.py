@@ -201,7 +201,7 @@ def render(case_id, case_mgr, results, tabs, selected_group, nav_groups, model_p
         render_module_export("Case Summary", results.get("case_summary"), "summary")
 
         # --- Readiness Score Gauge ---
-        score, grade, breakdown = compute_readiness_score(results)
+        score, grade, breakdown, _missing = compute_readiness_score(results)
         rs_col1, rs_col2, rs_col3 = st.columns([1, 2, 1])
         with rs_col1:
             grade_colors = {"A": "green", "B": "blue", "C": "orange", "D": "red", "F": "red"}
@@ -995,7 +995,7 @@ RULES:
         st.subheader("Trial Readiness Dashboard")
 
         if results:
-            score, grade, breakdown = compute_readiness_score(results)
+            score, grade, breakdown, _missing = compute_readiness_score(results)
 
             _sc1, _sc2, _sc3 = st.columns([1, 1, 2])
             with _sc1:

@@ -1,5 +1,6 @@
 // ---- Transcription Page (case subtab) -----------------------------------
 // Start and monitor transcription jobs for case files.
+// Includes timestamp bookmarks for transcript navigation.
 "use client";
 
 import { useState, useMemo } from "react";
@@ -8,11 +9,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { useRole } from "@/hooks/use-role";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import {
     Select,
     SelectContent,
@@ -38,6 +48,22 @@ interface JobsResponse {
 interface StartResponse {
     status: string;
     job_id: string;
+}
+
+interface Bookmark {
+    id: string;
+    file_key: string;
+    timestamp_seconds: number;
+    label: string;
+    note: string;
+    created_by: string;
+    created_at: string;
+}
+
+function formatSeconds(s: number): string {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
 const statusColor: Record<string, string> = {
@@ -74,9 +100,20 @@ export default function TranscriptionPage() {
     const { getToken } = useAuth();
     const queryClient = useQueryClient();
 
+    const { canEdit, canDelete } = useRole();
+
     const [showStartForm, setShowStartForm] = useState(false);
     const [fileKey, setFileKey] = useState("");
     const [language, setLanguage] = useState("en");
+
+    // Bookmark state
+    const [bookmarkDialogOpen, setBookmarkDialogOpen] = useState(false);
+    const [bmFileKey, setBmFileKey] = useState("");
+    const [bmMinutes, setBmMinutes] = useState("");
+    const [bmSeconds, setBmSeconds] = useState("");
+    const [bmLabel, setBmLabel] = useState("");
+    const [bmNote, setBmNote] = useState("");
+    const [bmSubmitting, setBmSubmitting] = useState(false);
 
     // Check if any jobs are currently running
     const { data, isLoading } = useQuery({
@@ -133,6 +170,75 @@ export default function TranscriptionPage() {
         }
         startTranscription.mutate({ file_key: fileKey.trim(), language });
     };
+
+    // ---- Bookmarks ----------------------------------------------------------
+
+    const bookmarksQueryKey = ["transcription-bookmarks", caseId];
+    const bookmarksQuery = useQuery({
+        queryKey: bookmarksQueryKey,
+        queryFn: () =>
+            api.get<{ items: Bookmark[] }>(
+                `/cases/${caseId}/transcription/bookmarks`,
+                { getToken },
+            ),
+    });
+    const bookmarks = bookmarksQuery.data?.items ?? [];
+
+    function resetBookmarkForm() {
+        setBmFileKey("");
+        setBmMinutes("");
+        setBmSeconds("");
+        setBmLabel("");
+        setBmNote("");
+    }
+
+    async function handleAddBookmark() {
+        if (!bmFileKey.trim()) {
+            toast.error("File key is required");
+            return;
+        }
+        const mins = parseInt(bmMinutes || "0", 10);
+        const secs = parseInt(bmSeconds || "0", 10);
+        if (isNaN(mins) || isNaN(secs) || mins < 0 || secs < 0 || secs >= 60) {
+            toast.error("Invalid timestamp");
+            return;
+        }
+        const totalSeconds = mins * 60 + secs;
+        setBmSubmitting(true);
+        try {
+            await api.post(
+                `/cases/${caseId}/transcription/bookmarks`,
+                {
+                    file_key: bmFileKey.trim(),
+                    timestamp_seconds: totalSeconds,
+                    label: bmLabel.trim(),
+                    note: bmNote.trim(),
+                },
+                { getToken },
+            );
+            toast.success("Bookmark added");
+            queryClient.invalidateQueries({ queryKey: bookmarksQueryKey });
+            setBookmarkDialogOpen(false);
+            resetBookmarkForm();
+        } catch {
+            toast.error("Failed to add bookmark");
+        } finally {
+            setBmSubmitting(false);
+        }
+    }
+
+    async function handleDeleteBookmark(bookmarkId: string) {
+        try {
+            await api.delete(
+                `/cases/${caseId}/transcription/bookmarks/${bookmarkId}`,
+                { getToken },
+            );
+            toast.success("Bookmark deleted");
+            queryClient.invalidateQueries({ queryKey: bookmarksQueryKey });
+        } catch {
+            toast.error("Failed to delete bookmark");
+        }
+    }
 
     return (
         <div className="space-y-5">
@@ -255,6 +361,161 @@ export default function TranscriptionPage() {
                     ))}
                 </div>
             )}
+
+            {/* ---- Bookmarks Section ---- */}
+            <div className="border-t pt-5 mt-5">
+                <div className="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 className="text-lg font-semibold">Bookmarks</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Mark important timestamps in transcripts for quick reference.
+                        </p>
+                    </div>
+                    {canEdit && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setBookmarkDialogOpen(true)}
+                        >
+                            + Add Bookmark
+                        </Button>
+                    )}
+                </div>
+
+                {bookmarksQuery.isLoading ? (
+                    <div className="flex gap-2 flex-wrap">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                            <Skeleton key={i} className="h-8 w-28 rounded-full" />
+                        ))}
+                    </div>
+                ) : bookmarks.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4">
+                        No bookmarks yet. Add one to mark important transcript moments.
+                    </p>
+                ) : (
+                    <div className="flex gap-2 flex-wrap">
+                        {bookmarks.map((bm) => (
+                            <div
+                                key={bm.id}
+                                className="group inline-flex items-center gap-1.5 rounded-full border bg-accent/30 hover:bg-accent/50 transition-colors px-3 py-1 cursor-default"
+                                title={bm.note || bm.label}
+                            >
+                                <span className="text-xs font-mono text-blue-400">
+                                    {formatSeconds(bm.timestamp_seconds)}
+                                </span>
+                                <span className="text-xs truncate max-w-[120px]">
+                                    {bm.label}
+                                </span>
+                                {bm.file_key && (
+                                    <span className="text-[10px] text-muted-foreground truncate max-w-[80px]">
+                                        ({bm.file_key.split("/").pop()})
+                                    </span>
+                                )}
+                                {canDelete && (
+                                    <button
+                                        className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity text-xs ml-0.5"
+                                        aria-label={`Delete bookmark ${bm.label}`}
+                                        onClick={() => handleDeleteBookmark(bm.id)}
+                                    >
+                                        x
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Add Bookmark Dialog */}
+            <Dialog
+                open={bookmarkDialogOpen}
+                onOpenChange={(open) => {
+                    setBookmarkDialogOpen(open);
+                    if (!open) resetBookmarkForm();
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Add Bookmark</DialogTitle>
+                        <DialogDescription>
+                            Bookmark a specific timestamp in a transcript.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-3 py-2">
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">
+                                File Key <span className="text-destructive">*</span>
+                            </label>
+                            <Input
+                                placeholder="e.g. interview.mp3:1234567"
+                                value={bmFileKey}
+                                onChange={(e) => setBmFileKey(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">
+                                Timestamp <span className="text-destructive">*</span>
+                            </label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    placeholder="Min"
+                                    className="w-24"
+                                    value={bmMinutes}
+                                    onChange={(e) => setBmMinutes(e.target.value)}
+                                />
+                                <span className="text-muted-foreground">:</span>
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    max={59}
+                                    placeholder="Sec"
+                                    className="w-24"
+                                    value={bmSeconds}
+                                    onChange={(e) => setBmSeconds(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Label</label>
+                            <Input
+                                placeholder="e.g. Key admission"
+                                value={bmLabel}
+                                onChange={(e) => setBmLabel(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Note</label>
+                            <textarea
+                                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:border-ring min-h-[60px] resize-y dark:bg-input/30"
+                                placeholder="Optional note about this moment..."
+                                value={bmNote}
+                                onChange={(e) => setBmNote(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setBookmarkDialogOpen(false);
+                                resetBookmarkForm();
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleAddBookmark}
+                            disabled={bmSubmitting}
+                        >
+                            {bmSubmitting ? "Adding..." : "Add Bookmark"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

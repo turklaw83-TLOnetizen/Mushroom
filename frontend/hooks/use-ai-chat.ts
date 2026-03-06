@@ -29,13 +29,13 @@ export function useAiChat(caseId: string, prepId: string | null, contextModule: 
     const [streamingContent, setStreamingContent] = useState("");
     const abortRef = useRef<AbortController | null>(null);
 
-    // Load chat history on mount
+    // Load chat history on mount (case-level endpoint, filtered by prep_id)
     const historyQuery = useQuery({
         queryKey: ["chat-history", caseId, prepId],
         queryFn: async () => {
             const data = await api.get<{ messages: ChatMessage[] }>(
-                `/cases/${caseId}/preparations/${prepId}/chat/history`,
-                { getToken },
+                `/cases/${caseId}/chat/history`,
+                { getToken, params: { prep_id: prepId || "", limit: 50 } },
             );
             return data.messages ?? [];
         },
@@ -178,11 +178,14 @@ export function useAiChat(caseId: string, prepId: string | null, contextModule: 
         abortRef.current?.abort();
     }, []);
 
-    // Clear history
+    // Clear history (case-level endpoint, scoped by prep_id)
     const clearHistory = useCallback(async () => {
         if (!prepId) return;
         try {
-            await api.delete(`/cases/${caseId}/preparations/${prepId}/chat/history`, { getToken });
+            await api.delete(`/cases/${caseId}/chat/history`, {
+                getToken,
+                params: { prep_id: prepId },
+            });
             setMessages([]);
             hasLoadedHistory.current = false;
             queryClient.invalidateQueries({ queryKey: ["chat-history", caseId, prepId] });

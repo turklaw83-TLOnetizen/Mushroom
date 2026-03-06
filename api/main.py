@@ -146,6 +146,7 @@ from api.routers.analysis import router as analysis_router
 from api.routers.export import router as export_router
 from api.routers.witnesses import router as witnesses_router
 from api.routers.evidence import router as evidence_router
+from api.routers.evidence import custody_router as evidence_custody_router
 from api.routers.strategy import router as strategy_router
 from api.routers.billing import router as billing_router
 from api.routers.calendar import router as calendar_router
@@ -175,12 +176,18 @@ from api.websockets.workers_ws import router as ws_router
 from api.routers.mock_exam import router as mock_exam_router
 from api.websockets.mock_exam_ws import router as mock_exam_ws_router
 from api.routers.ai_chat import router as ai_chat_router
+from api.routers.ai_chat import case_chat_router
 from api.routers.on_demand import router as on_demand_router
 from api.routers.module_notes import router as module_notes_router
 from api.routers.payment_plans import router as payment_plans_router
 from api.routers.comms import router as comms_router
 from api.routers.payment_feed import router as payment_feed_router
 from api.routers.stripe_pay import router as stripe_pay_router
+from api.routers.activity import router as activity_router
+from api.routers.portal import router as portal_router
+from api.routers.morning_brief import router as morning_brief_router
+from api.routers.discovery import router as discovery_router
+from api.routers.discovery import dashboard_router as discovery_dashboard_router
 
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
@@ -189,6 +196,7 @@ app.include_router(analysis_router, prefix="/api/v1")
 app.include_router(export_router, prefix="/api/v1")
 app.include_router(witnesses_router, prefix="/api/v1")
 app.include_router(evidence_router, prefix="/api/v1")
+app.include_router(evidence_custody_router, prefix="/api/v1")
 app.include_router(strategy_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
 app.include_router(calendar_router, prefix="/api/v1")
@@ -218,12 +226,18 @@ app.include_router(ws_router, prefix="/api/v1")
 app.include_router(mock_exam_router, prefix="/api/v1")
 app.include_router(mock_exam_ws_router, prefix="/api/v1")
 app.include_router(ai_chat_router, prefix="/api/v1")
+app.include_router(case_chat_router, prefix="/api/v1")
 app.include_router(on_demand_router, prefix="/api/v1")
 app.include_router(module_notes_router, prefix="/api/v1")
 app.include_router(payment_plans_router, prefix="/api/v1")
 app.include_router(comms_router, prefix="/api/v1")
 app.include_router(payment_feed_router, prefix="/api/v1")
 app.include_router(stripe_pay_router, prefix="/api/v1")
+app.include_router(activity_router, prefix="/api/v1")
+app.include_router(portal_router, prefix="/api/v1")
+app.include_router(morning_brief_router, prefix="/api/v1")
+app.include_router(discovery_router, prefix="/api/v1")
+app.include_router(discovery_dashboard_router, prefix="/api/v1")
 
 
 # ---- Health Check (Fix #12: actually pings DB) ---------------------------

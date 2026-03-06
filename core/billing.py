@@ -987,6 +987,41 @@ PAYMENT_FREQUENCIES = ["weekly", "biweekly", "monthly"]
 PLAN_STATUSES = ["active", "completed", "paused", "cancelled"]
 
 
+def compute_plan_health(plan: Dict) -> str:
+    """Compute plan health status based on payment schedule.
+    Returns: 'on_track', 'behind', 'at_risk', 'ahead', or 'completed'.
+    """
+    if plan.get("status") == "completed":
+        return "completed"
+    if plan.get("status") in ("paused", "cancelled"):
+        return plan["status"]
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    scheduled = plan.get("scheduled_payments", [])
+
+    overdue_count = 0
+    paid_ahead = 0
+
+    for sp in scheduled:
+        due_date = sp.get("due_date", "")
+        status = sp.get("status", "pending")
+
+        if status == "overdue":
+            overdue_count += 1
+        elif status == "pending" and due_date and due_date < today:
+            overdue_count += 1
+        elif status == "paid" and due_date and due_date > today:
+            paid_ahead += 1
+
+    if overdue_count >= 2:
+        return "at_risk"
+    elif overdue_count == 1:
+        return "behind"
+    elif paid_ahead > 0:
+        return "ahead"
+    return "on_track"
+
+
 def _payment_plans_path(client_id: str) -> str:
     return os.path.join(_DATA_DIR, "crm", "payment_plans", client_id, "plans.json")
 

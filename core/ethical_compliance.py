@@ -1650,6 +1650,18 @@ TN_SOL_TABLE = [
 
 SOL_CLAIM_TYPES = [entry["claim_type"] for entry in TN_SOL_TABLE]
 
+
+def compute_sol_urgency(days_remaining: int) -> str:
+    """Return urgency level for statute of limitations countdown."""
+    if days_remaining < 0:
+        return "expired"
+    if days_remaining <= 30:
+        return "critical"
+    if days_remaining <= 90:
+        return "warning"
+    return "ok"
+
+
 _SOL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "sol_tracking")
 
 

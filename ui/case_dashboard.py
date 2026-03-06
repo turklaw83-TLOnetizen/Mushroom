@@ -627,7 +627,7 @@ def render_dashboard():
                 try:
                     _fp_state = case_mgr.load_prep_state(_ac_id, _fp_id)
                     if _fp_state:
-                        _fp_score, _fp_grade, _fp_bd = compute_readiness_score(
+                        _fp_score, _fp_grade, _fp_bd, _ = compute_readiness_score(
                             _fp_state
                         )
                         _ac_readiness = f"{_fp_score} ({_fp_grade})"

@@ -134,3 +134,32 @@ async def export_trial_binder(
     except Exception as e:
         logger.exception("Trial binder export failed")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/quick-cards/{prep_id}")
+async def export_quick_cards(
+    case_id: str,
+    prep_id: str,
+    card_type: str = "witness",
+    user: dict = Depends(get_current_user),
+):
+    """Generate and download courtroom quick reference cards as PDF."""
+    cm = get_case_manager()
+    state = cm.load_prep_state(case_id, prep_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Preparation state not found")
+
+    case_name = cm.get_case_name(case_id)
+
+    try:
+        from core.export.quick_cards import generate_quick_cards_pdf
+        buf = await asyncio.to_thread(generate_quick_cards_pdf, state, card_type, case_name)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{case_name}_quick_cards_{card_type}.pdf"'},
+        )
+    except Exception as e:
+        logger.exception("Quick cards export failed")
+        raise HTTPException(status_code=500, detail="Internal server error")

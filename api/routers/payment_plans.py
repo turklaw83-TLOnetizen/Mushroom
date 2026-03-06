@@ -62,9 +62,11 @@ def list_plans(
 ):
     """Get all payment plans for a client."""
     try:
-        from core.billing import load_payment_plans, mark_overdue_payments
+        from core.billing import load_payment_plans, mark_overdue_payments, compute_plan_health
         mark_overdue_payments(client_id)
         plans = load_payment_plans(client_id)
+        for plan in plans:
+            plan["health"] = compute_plan_health(plan)
         return {"plans": plans}
     except Exception:
         logger.exception("Failed to load payment plans")

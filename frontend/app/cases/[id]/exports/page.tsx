@@ -61,6 +61,15 @@ const EXPORT_FORMATS: ExportFormat[] = [
         mime: "application/pdf",
         extension: "pdf",
     },
+    {
+        id: "quick-cards",
+        label: "Quick Cards",
+        description: "Courtroom reference cards for witnesses, evidence, and objections",
+        icon: "\uD83C\uDCCF",
+        endpoint: "quick-cards",
+        mime: "application/pdf",
+        extension: "pdf",
+    },
 ];
 
 export default function ExportsPage() {

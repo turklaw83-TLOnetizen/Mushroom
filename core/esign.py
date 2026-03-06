@@ -309,6 +309,29 @@ class ESignManager:
         """Count of non-terminal requests."""
         return sum(1 for r in self._requests if r.get("status") in ("sent", "viewed", "pending"))
 
+    # -- Remind --
+    def send_reminder(self, request_id: str) -> Dict:
+        """Send reminders to all pending signers for a signature request."""
+        req = None
+        for r in self._requests:
+            if r.get("local_id") == request_id or r.get("remote_id") == request_id:
+                req = r
+                break
+
+        if not req:
+            return {"status": "error", "message": "Request not found"}
+
+        # Record the reminder
+        req["last_reminder_at"] = datetime.now().isoformat()
+        req["reminder_count"] = req.get("reminder_count", 0) + 1
+        self._save()
+
+        return {
+            "status": "reminded",
+            "request_id": request_id,
+            "reminder_count": req["reminder_count"],
+        }
+
     # -- Helpers --
     def _find(self, local_id: str) -> Optional[Dict]:
         for r in self._requests:

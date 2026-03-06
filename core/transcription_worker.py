@@ -12,8 +12,10 @@ import logging
 import os
 import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, List
 
 from core.ingest import DocumentIngester
 
@@ -277,3 +279,73 @@ def _cleanup_transcription_threads():
 
 
 atexit.register(_cleanup_transcription_threads)
+
+
+# ===================================================================
+#  TRANSCRIPT BOOKMARKS
+# ===================================================================
+
+def _bookmarks_path(case_id: str) -> str:
+    d = os.path.join(DATA_DIR, case_id)
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, "transcript_bookmarks.json")
+
+
+def _load_bookmarks(case_id: str) -> List[Dict]:
+    path = _bookmarks_path(case_id)
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return []
+
+
+def _save_bookmarks(case_id: str, bookmarks: List[Dict]):
+    path = _bookmarks_path(case_id)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(bookmarks, f, indent=2, ensure_ascii=False)
+
+
+def add_bookmark(
+    case_id: str,
+    file_key: str,
+    timestamp_seconds: int,
+    label: str = "",
+    note: str = "",
+    created_by: str = "",
+) -> str:
+    """Add a bookmark to a transcript at a specific timestamp."""
+    bookmarks = _load_bookmarks(case_id)
+    bm_id = f"bm_{uuid.uuid4().hex[:8]}"
+    bookmarks.append({
+        "id": bm_id,
+        "file_key": file_key,
+        "timestamp_seconds": timestamp_seconds,
+        "label": label or f"{timestamp_seconds // 60}:{timestamp_seconds % 60:02d}",
+        "note": note,
+        "created_by": created_by,
+        "created_at": datetime.now().isoformat(),
+    })
+    _save_bookmarks(case_id, bookmarks)
+    return bm_id
+
+
+def get_bookmarks(case_id: str, file_key: str = "") -> List[Dict]:
+    """Get bookmarks, optionally filtered by file."""
+    bookmarks = _load_bookmarks(case_id)
+    if file_key:
+        bookmarks = [b for b in bookmarks if b.get("file_key") == file_key]
+    bookmarks.sort(key=lambda b: b.get("timestamp_seconds", 0))
+    return bookmarks
+
+
+def delete_bookmark(case_id: str, bookmark_id: str) -> bool:
+    bookmarks = _load_bookmarks(case_id)
+    before = len(bookmarks)
+    bookmarks = [b for b in bookmarks if b.get("id") != bookmark_id]
+    if len(bookmarks) < before:
+        _save_bookmarks(case_id, bookmarks)
+        return True
+    return False

@@ -75,6 +75,12 @@ export default function MockExamPage() {
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [showSetup, setShowSetup] = useState(false);
     const [viewingScorecard, setViewingScorecard] = useState<SessionDetail | null>(null);
+    const [showCompare, setShowCompare] = useState(false);
+    const [compareA, setCompareA] = useState<string>("");
+    const [compareB, setCompareB] = useState<string>("");
+    const [detailA, setDetailA] = useState<SessionDetail | null>(null);
+    const [detailB, setDetailB] = useState<SessionDetail | null>(null);
+    const [compareLoading, setCompareLoading] = useState(false);
 
     const basePath = activePrepId
         ? `/cases/${caseId}/preparations/${activePrepId}/mock-exam`
@@ -186,9 +192,16 @@ export default function MockExamPage() {
                         Practice direct and cross examination with AI witnesses
                     </p>
                 </div>
-                <Button onClick={() => setShowSetup(true)} disabled={witnesses.length === 0}>
-                    + New Session
-                </Button>
+                <div className="flex items-center gap-2">
+                    {sessions.filter(s => s.status === "completed").length >= 2 && (
+                        <Button variant="outline" size="sm" onClick={() => setShowCompare(true)}>
+                            Compare Sessions
+                        </Button>
+                    )}
+                    <Button onClick={() => setShowSetup(true)} disabled={witnesses.length === 0}>
+                        + New Session
+                    </Button>
+                </div>
             </div>
 
             {/* No witnesses warning */}
@@ -286,6 +299,39 @@ export default function MockExamPage() {
                     setActiveSessionId(id);
                     setShowSetup(false);
                     sessionsQuery.refetch();
+                }}
+            />
+
+            {/* Compare Sessions dialog */}
+            <SessionCompareDialog
+                open={showCompare}
+                onOpenChange={(open) => {
+                    setShowCompare(open);
+                    if (!open) { setDetailA(null); setDetailB(null); setCompareA(""); setCompareB(""); }
+                }}
+                sessions={sessions.filter(s => s.status === "completed")}
+                compareA={compareA}
+                compareB={compareB}
+                onCompareAChange={setCompareA}
+                onCompareBChange={setCompareB}
+                detailA={detailA}
+                detailB={detailB}
+                loading={compareLoading}
+                onCompare={async () => {
+                    if (!compareA || !compareB || !basePath) return;
+                    setCompareLoading(true);
+                    try {
+                        const [a, b] = await Promise.all([
+                            api.get<SessionDetail>(`${basePath}/sessions/${compareA}`, { getToken }),
+                            api.get<SessionDetail>(`${basePath}/sessions/${compareB}`, { getToken }),
+                        ]);
+                        setDetailA(a);
+                        setDetailB(b);
+                    } catch {
+                        toast.error("Failed to load session details");
+                    } finally {
+                        setCompareLoading(false);
+                    }
                 }}
             />
         </div>
@@ -418,6 +464,139 @@ function SessionSetupDialog({
                         {createMutation.isPending ? "Starting..." : "Start Examination"}
                     </Button>
                 </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+// ---- Session Compare Dialog -----------------------------------------------
+
+function SessionCompareDialog({
+    open,
+    onOpenChange,
+    sessions,
+    compareA,
+    compareB,
+    onCompareAChange,
+    onCompareBChange,
+    detailA,
+    detailB,
+    loading,
+    onCompare,
+}: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    sessions: SessionSummary[];
+    compareA: string;
+    compareB: string;
+    onCompareAChange: (id: string) => void;
+    onCompareBChange: (id: string) => void;
+    detailA: SessionDetail | null;
+    detailB: SessionDetail | null;
+    loading: boolean;
+    onCompare: () => void;
+}) {
+    const fmtSession = (s: SessionSummary) =>
+        `${s.witness_name} (${s.exam_type === "cross" ? "Cross" : "Direct"}) - ${new Date(s.created_at).toLocaleDateString()}`;
+
+    const scorecardA = detailA?.scorecard;
+    const scorecardB = detailB?.scorecard;
+    const allCategories = scorecardA && scorecardB
+        ? [...new Set([...Object.keys(scorecardA.categories), ...Object.keys(scorecardB.categories)])]
+        : [];
+
+    const delta = (a: number, b: number) => {
+        if (b > a) return <span className="text-emerald-400 ml-1">+{b - a}</span>;
+        if (b < a) return <span className="text-red-400 ml-1">{b - a}</span>;
+        return <span className="text-muted-foreground ml-1">=</span>;
+    };
+
+    const LABELS: Record<string, string> = {
+        question_technique: "Question Technique",
+        impeachment_effectiveness: "Impeachment",
+        evidence_usage: "Evidence Usage",
+        objection_avoidance: "Objection Avoidance",
+        narrative_control: "Narrative Control",
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Compare Sessions</DialogTitle>
+                    <DialogDescription>
+                        Select two completed sessions to compare scores side by side.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid grid-cols-2 gap-4 py-2">
+                    <div>
+                        <label className="text-sm font-medium mb-1.5 block">Session A</label>
+                        <Select value={compareA} onValueChange={onCompareAChange}>
+                            <SelectTrigger><SelectValue placeholder="Pick session" /></SelectTrigger>
+                            <SelectContent>
+                                {sessions.map(s => (
+                                    <SelectItem key={s.id} value={s.id}>{fmtSession(s)}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <label className="text-sm font-medium mb-1.5 block">Session B</label>
+                        <Select value={compareB} onValueChange={onCompareBChange}>
+                            <SelectTrigger><SelectValue placeholder="Pick session" /></SelectTrigger>
+                            <SelectContent>
+                                {sessions.map(s => (
+                                    <SelectItem key={s.id} value={s.id}>{fmtSession(s)}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <Button
+                    className="w-full"
+                    disabled={!compareA || !compareB || compareA === compareB || loading}
+                    onClick={onCompare}
+                >
+                    {loading ? "Loading..." : "Compare"}
+                </Button>
+
+                {scorecardA && scorecardB && (
+                    <div className="space-y-3 pt-2">
+                        {/* Overall */}
+                        <Card>
+                            <CardContent className="py-3">
+                                <div className="grid grid-cols-3 text-center">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Session A</p>
+                                        <p className="text-2xl font-bold">{scorecardA.overall_score}</p>
+                                    </div>
+                                    <div className="flex flex-col items-center justify-center">
+                                        <p className="text-xs text-muted-foreground">Overall</p>
+                                        {delta(scorecardA.overall_score, scorecardB.overall_score)}
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-muted-foreground">Session B</p>
+                                        <p className="text-2xl font-bold">{scorecardB.overall_score}</p>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                        {/* Categories */}
+                        {allCategories.map(cat => {
+                            const aScore = scorecardA.categories[cat]?.score ?? 0;
+                            const bScore = scorecardB.categories[cat]?.score ?? 0;
+                            return (
+                                <div key={cat} className="grid grid-cols-3 items-center text-sm px-2">
+                                    <span className="text-right font-medium tabular-nums">{aScore}</span>
+                                    <span className="text-center text-xs text-muted-foreground">
+                                        {LABELS[cat] || cat}{delta(aScore, bScore)}
+                                    </span>
+                                    <span className="font-medium tabular-nums">{bScore}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </DialogContent>
         </Dialog>
     );

@@ -1,12 +1,13 @@
 // ---- Evidence Tab (CRUD + Analysis Results) ------------------------------
-// Sub-tabs: Items | Consistency Check | Legal Elements | Entities
+// Sub-tabs: Items | Consistency Check | Legal Elements | Entities | Custody
 "use client";
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { usePrep } from "@/hooks/use-prep";
 import { useRole } from "@/hooks/use-role";
@@ -20,9 +21,77 @@ import { DetailPanel, type DetailField } from "@/components/shared/detail-panel"
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { ModuleNotes } from "@/components/shared/module-notes";
 import type { EvidenceItem } from "@/types/api";
+
+// ---- Chain of Custody types & helpers ------------------------------------
+
+interface CustodyEntry {
+    id: string;
+    evidence_id: string;
+    action: string;
+    from_party: string;
+    to_party: string;
+    date: string;
+    location: string;
+    notes: string;
+    recorded_by: string;
+    recorded_at: string;
+}
+
+const CUSTODY_ACTIONS = [
+    "received",
+    "transferred",
+    "stored",
+    "presented",
+    "returned",
+    "photographed",
+    "analyzed",
+];
+
+function custodyActionIcon(action: string): string {
+    switch (action) {
+        case "received": return "IN";
+        case "transferred": return "TX";
+        case "stored": return "ST";
+        case "presented": return "PR";
+        case "returned": return "RT";
+        case "photographed": return "PH";
+        case "analyzed": return "AN";
+        default: return "??";
+    }
+}
+
+function custodyActionColor(action: string): string {
+    switch (action) {
+        case "received": return "bg-green-500/15 text-green-400 border-green-500/30";
+        case "transferred": return "bg-blue-500/15 text-blue-400 border-blue-500/30";
+        case "stored": return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
+        case "presented": return "bg-violet-500/15 text-violet-400 border-violet-500/30";
+        case "returned": return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+        case "photographed": return "bg-cyan-500/15 text-cyan-400 border-cyan-500/30";
+        case "analyzed": return "bg-indigo-500/15 text-indigo-400 border-indigo-500/30";
+        default: return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
+    }
+}
 
 // ---- Evidence CRUD schema -----------------------------------------------
 
@@ -91,9 +160,21 @@ export default function EvidencePage() {
     const { getToken } = useAuth();
     const { activePrepId, isLoading: prepLoading } = usePrep();
     const { canEdit, canDelete } = useRole();
+    const queryClient = useQueryClient();
     const [dialogOpen, setDialogOpen] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<EvidenceItem | null>(null);
     const [detailItem, setDetailItem] = useState<EvidenceItem | null>(null);
+
+    // Chain of Custody state
+    const [custodyDialogOpen, setCustodyDialogOpen] = useState(false);
+    const [custodyEvidenceId, setCustodyEvidenceId] = useState("");
+    const [custodyAction, setCustodyAction] = useState("received");
+    const [custodyFromParty, setCustodyFromParty] = useState("");
+    const [custodyToParty, setCustodyToParty] = useState("");
+    const [custodyDate, setCustodyDate] = useState("");
+    const [custodyLocation, setCustodyLocation] = useState("");
+    const [custodyNotes, setCustodyNotes] = useState("");
+    const [custodySubmitting, setCustodySubmitting] = useState(false);
 
     // Analysis results
     const { sections, isLoading: stateLoading } = usePrepState(caseId, activePrepId);
@@ -128,6 +209,71 @@ export default function EvidencePage() {
         onSuccess: () => setDetailItem(null),
     });
 
+    // ---- Chain of Custody queries ----------------------------------------
+
+    const custodyQueryKey = ["evidence-custody", caseId];
+    const custodyQuery = useQuery({
+        queryKey: custodyQueryKey,
+        queryFn: () =>
+            api.get<{ items: CustodyEntry[] }>(
+                `/cases/${caseId}/evidence/custody`,
+                { getToken },
+            ),
+    });
+
+    const custodyEntries = custodyQuery.data?.items ?? [];
+
+    function resetCustodyForm() {
+        setCustodyEvidenceId("");
+        setCustodyAction("received");
+        setCustodyFromParty("");
+        setCustodyToParty("");
+        setCustodyDate("");
+        setCustodyLocation("");
+        setCustodyNotes("");
+    }
+
+    async function handleAddCustody() {
+        if (!custodyEvidenceId.trim() || !custodyAction) {
+            toast.error("Evidence ID and action are required");
+            return;
+        }
+        setCustodySubmitting(true);
+        try {
+            await api.post(
+                `/cases/${caseId}/evidence/custody`,
+                {
+                    evidence_id: custodyEvidenceId.trim(),
+                    action: custodyAction,
+                    from_party: custodyFromParty.trim(),
+                    to_party: custodyToParty.trim(),
+                    date: custodyDate,
+                    location: custodyLocation.trim(),
+                    notes: custodyNotes.trim(),
+                },
+                { getToken },
+            );
+            toast.success("Custody entry added");
+            queryClient.invalidateQueries({ queryKey: custodyQueryKey });
+            setCustodyDialogOpen(false);
+            resetCustodyForm();
+        } catch {
+            toast.error("Failed to add custody entry");
+        } finally {
+            setCustodySubmitting(false);
+        }
+    }
+
+    async function handleDeleteCustody(entryId: string) {
+        try {
+            await api.delete(`/cases/${caseId}/evidence/custody/${entryId}`, { getToken });
+            toast.success("Custody entry deleted");
+            queryClient.invalidateQueries({ queryKey: custodyQueryKey });
+        } catch {
+            toast.error("Failed to delete custody entry");
+        }
+    }
+
     if (!activePrepId && !prepLoading) {
         return (
             <div className="text-center py-16">
@@ -150,6 +296,9 @@ export default function EvidencePage() {
                 </TabsTrigger>
                 <TabsTrigger value="entities">
                     Entities {sections.entities.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] py-0 px-1">{sections.entities.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="custody">
+                    Custody {custodyEntries.length > 0 && <Badge variant="secondary" className="ml-1 text-[10px] py-0 px-1">{custodyEntries.length}</Badge>}
                 </TabsTrigger>
             </TabsList>
 
@@ -394,6 +543,223 @@ export default function EvidencePage() {
                     </div>
                 </ResultSection>
                 <ModuleNotes caseId={caseId} prepId={activePrepId} moduleKey="entities" />
+            </TabsContent>
+
+            {/* ---- Chain of Custody Tab ---- */}
+            <TabsContent value="custody" className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="text-lg font-semibold">Chain of Custody</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Track who handled evidence, when, and how.
+                        </p>
+                    </div>
+                    {canEdit && (
+                        <Button size="sm" onClick={() => setCustodyDialogOpen(true)}>
+                            + Add Entry
+                        </Button>
+                    )}
+                </div>
+
+                {custodyQuery.isLoading ? (
+                    <div className="space-y-3">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                            <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                        ))}
+                    </div>
+                ) : custodyEntries.length === 0 ? (
+                    <Card className="border-dashed">
+                        <CardContent className="py-12 text-center text-muted-foreground">
+                            No custody entries recorded yet.
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <div className="relative">
+                        {/* Timeline line */}
+                        <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
+
+                        <div className="space-y-3">
+                            {custodyEntries.map((entry) => (
+                                <div key={entry.id} className="relative pl-10 group">
+                                    {/* Timeline dot */}
+                                    <div className="absolute left-2.5 top-3 w-3 h-3 rounded-full bg-muted-foreground/40 border-2 border-background" />
+
+                                    <Card className="bg-accent/20 hover:bg-accent/30 transition-colors">
+                                        <CardContent className="py-3">
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={`text-[10px] font-mono ${custodyActionColor(entry.action)}`}
+                                                    >
+                                                        {custodyActionIcon(entry.action)} {entry.action}
+                                                    </Badge>
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {entry.date}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    {entry.recorded_by && (
+                                                        <span className="text-[10px] text-muted-foreground">
+                                                            by {entry.recorded_by}
+                                                        </span>
+                                                    )}
+                                                    {canDelete && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive"
+                                                            aria-label="Delete custody entry"
+                                                            onClick={() => handleDeleteCustody(entry.id)}
+                                                        >
+                                                            <span aria-hidden="true">x</span>
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {(entry.from_party || entry.to_party) && (
+                                                <p className="text-sm mt-1">
+                                                    {entry.from_party && (
+                                                        <span className="text-muted-foreground">{entry.from_party}</span>
+                                                    )}
+                                                    {entry.from_party && entry.to_party && (
+                                                        <span className="mx-1.5 text-muted-foreground/50">{"->"}</span>
+                                                    )}
+                                                    {entry.to_party && (
+                                                        <span className="text-muted-foreground">{entry.to_party}</span>
+                                                    )}
+                                                </p>
+                                            )}
+
+                                            {entry.location && (
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    Location: {entry.location}
+                                                </p>
+                                            )}
+                                            {entry.notes && (
+                                                <p className="text-xs text-muted-foreground mt-1">
+                                                    {entry.notes}
+                                                </p>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Add Custody Entry Dialog */}
+                <Dialog
+                    open={custodyDialogOpen}
+                    onOpenChange={(open) => {
+                        setCustodyDialogOpen(open);
+                        if (!open) resetCustodyForm();
+                    }}
+                >
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Add Custody Entry</DialogTitle>
+                            <DialogDescription>
+                                Record a chain-of-custody event for an evidence item.
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-3 py-2">
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium">
+                                    Evidence ID <span className="text-destructive">*</span>
+                                </label>
+                                <Input
+                                    placeholder="e.g. knife-001, photo-set-A"
+                                    value={custodyEvidenceId}
+                                    onChange={(e) => setCustodyEvidenceId(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium">
+                                    Action <span className="text-destructive">*</span>
+                                </label>
+                                <Select value={custodyAction} onValueChange={setCustodyAction}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {CUSTODY_ACTIONS.map((a) => (
+                                            <SelectItem key={a} value={a}>
+                                                {a.charAt(0).toUpperCase() + a.slice(1)}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium">From</label>
+                                    <Input
+                                        placeholder="Person or entity"
+                                        value={custodyFromParty}
+                                        onChange={(e) => setCustodyFromParty(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium">To</label>
+                                    <Input
+                                        placeholder="Person or entity"
+                                        value={custodyToParty}
+                                        onChange={(e) => setCustodyToParty(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium">Date</label>
+                                    <Input
+                                        type="date"
+                                        value={custodyDate}
+                                        onChange={(e) => setCustodyDate(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-sm font-medium">Location</label>
+                                    <Input
+                                        placeholder="e.g. Evidence room"
+                                        value={custodyLocation}
+                                        onChange={(e) => setCustodyLocation(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-sm font-medium">Notes</label>
+                                <textarea
+                                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:border-ring min-h-[60px] resize-y dark:bg-input/30"
+                                    placeholder="Additional notes..."
+                                    value={custodyNotes}
+                                    onChange={(e) => setCustodyNotes(e.target.value)}
+                                />
+                            </div>
+                        </div>
+
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setCustodyDialogOpen(false);
+                                    resetCustodyForm();
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleAddCustody}
+                                disabled={custodySubmitting}
+                            >
+                                {custodySubmitting ? "Adding..." : "Add Entry"}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </TabsContent>
         </Tabs>
     );

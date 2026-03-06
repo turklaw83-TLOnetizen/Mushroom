@@ -128,6 +128,44 @@ def update_annotation(
     return False
 
 
+def search_annotations(
+    data_dir: str,
+    case_id: str,
+    query: str,
+) -> List[Dict]:
+    """Search all annotations across all documents in a case.
+    Searches both 'note' and 'text' fields for the query string.
+    Returns matches with the filename and annotation details.
+    """
+    if not query or len(query.strip()) < 2:
+        return []
+
+    query_lower = query.lower().strip()
+    ann_dir = os.path.join(data_dir, "cases", case_id, "annotations")
+    if not os.path.isdir(ann_dir):
+        return []
+
+    results = []
+    for ann_file in os.listdir(ann_dir):
+        if not ann_file.endswith(".json"):
+            continue
+        filepath = os.path.join(ann_dir, ann_file)
+        annotations = _load_raw(filepath)
+        for ann in annotations:
+            note = ann.get("note", "") or ""
+            text = ann.get("text", "") or ""
+            if query_lower in note.lower() or query_lower in text.lower():
+                results.append({
+                    **ann,
+                    "source_file": ann_file.replace(".json", ""),
+                    "filename": ann.get("filename", ann_file.replace(".json", "")),
+                })
+
+    # Sort by created_at descending
+    results.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return results[:100]  # Cap at 100 results
+
+
 def _load_raw(path: str) -> List[Dict]:
     """Load annotation list from JSON file."""
     if not os.path.exists(path):

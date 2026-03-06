@@ -69,10 +69,18 @@ def list_clients(
 ):
     """List all clients, optionally filtered by search query."""
     try:
-        from core.crm import load_clients, search_clients
-        if q:
-            return {"items": search_clients(q)}
-        return {"items": load_clients()}
+        from core.crm import load_clients, search_clients, get_last_contact_dates
+        clients = search_clients(q) if q else load_clients()
+
+        # Merge last contact dates into client records
+        try:
+            last_contacts = get_last_contact_dates()
+            for c in clients:
+                c["last_contact"] = last_contacts.get(c.get("id", ""))
+        except Exception:
+            pass  # Non-critical -- don't fail the whole listing
+
+        return {"items": clients}
     except Exception as e:
         logger.exception("Failed to list clients")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -117,7 +125,26 @@ def create_client(
             referral_source=body.referral_source,
             tags=body.tags,
         )
-        return {"id": client_id, "status": "created"}
+
+        # Auto-scan for conflicts with the new client's name
+        conflict_warning = None
+        try:
+            from core.ethical_compliance import smart_conflict_check
+            client_name = body.name or f"{body.first_name} {body.last_name}".strip()
+            if client_name:
+                result = smart_conflict_check(client_name)
+                if result and result.get("has_conflict"):
+                    conflict_warning = {
+                        "message": f"Potential conflict detected for '{client_name}'",
+                        "matches": result.get("matches", [])[:5],
+                    }
+        except Exception:
+            logger.warning("Conflict auto-scan failed for new client %s", client_id)
+
+        response = {"id": client_id, "status": "created"}
+        if conflict_warning:
+            response["conflict_warning"] = conflict_warning
+        return response
     except Exception as e:
         logger.exception("Failed to create client")
         raise HTTPException(status_code=500, detail="Internal server error")

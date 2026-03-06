@@ -25,6 +25,44 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { InvestigationItem } from "@/hooks/use-prep-state";
 
+// ---- Per-Node Cost Estimates --------------------------------------------
+// Maps module keys to backend node names and typical output ratios for cost display.
+// These are static estimates; actual costs depend on document size and model.
+
+const NODE_COST_MAP: Record<string, { node: string; outputRatio: number }> = {
+    case_summary: { node: "analyzer", outputRatio: 1.5 },
+    charges: { node: "elements_mapper", outputRatio: 1.0 },
+    timeline: { node: "timeline_generator", outputRatio: 0.8 },
+    witnesses: { node: "entity_extractor", outputRatio: 0.6 },
+    evidence_foundations: { node: "foundations_agent", outputRatio: 0.8 },
+    legal_elements: { node: "elements_mapper", outputRatio: 1.0 },
+    consistency_check: { node: "consistency_checker", outputRatio: 0.8 },
+    investigation_plan: { node: "investigation_planner", outputRatio: 0.8 },
+    cross_examination_plan: { node: "cross_examiner", outputRatio: 1.5 },
+    direct_examination_plan: { node: "direct_examiner", outputRatio: 1.5 },
+    strategy_notes: { node: "strategist", outputRatio: 1.2 },
+    devils_advocate_notes: { node: "devils_advocate", outputRatio: 1.0 },
+    entities: { node: "entity_extractor", outputRatio: 0.6 },
+    voir_dire: { node: "voir_dire_agent", outputRatio: 0.8 },
+};
+
+function estimateModuleCost(moduleKey: string, docTokens: number, model: string = "xai"): number | null {
+    const entry = NODE_COST_MAP[moduleKey];
+    if (!entry || docTokens <= 0) return null;
+
+    // Pricing per 1M tokens (mirrors core/cost_tracker.py)
+    const INPUT_RATES: Record<string, number> = { xai: 5.0, gemini: 1.25, anthropic: 3.0 };
+    const OUTPUT_RATES: Record<string, number> = { xai: 15.0, gemini: 5.0, anthropic: 15.0 };
+
+    const inRate = INPUT_RATES[model] ?? 5.0;
+    const outRate = OUTPUT_RATES[model] ?? 15.0;
+
+    const inputTokens = docTokens;
+    const outputTokens = 2000 * entry.outputRatio;
+
+    return (inputTokens / 1_000_000 * inRate) + (outputTokens / 1_000_000 * outRate);
+}
+
 // ---- Module Definitions -------------------------------------------------
 
 const analysisModules = [
@@ -421,6 +459,19 @@ export default function AnalysisPage() {
                                                             : "Data available"
                                                     : mod.description}
                                         </p>
+                                        {hasData && (() => {
+                                            // Rough token estimate: char count / 4 from all populated string modules
+                                            const docTokensEst = progress.tokens_used
+                                                ? Math.round(progress.tokens_used / (analysisModules.length || 14))
+                                                : 10000; // fallback ~10k tokens per node
+                                            const cost = estimateModuleCost(mod.key, docTokensEst);
+                                            if (cost === null || cost < 0.001) return null;
+                                            return (
+                                                <span className="text-[10px] text-muted-foreground/60 mt-0.5 block">
+                                                    ~${cost < 0.01 ? "<0.01" : cost.toFixed(2)}
+                                                </span>
+                                            );
+                                        })()}
                                     </CardContent>
                                 </Card>
                             );

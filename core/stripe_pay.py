@@ -376,6 +376,27 @@ def _record_stripe_payment(
                 "Auto-recorded Stripe payment: $%.2f for client %s (plan %s)",
                 amount, client_id, plan_id,
             )
+            # Auto-queue a payment receipt communication
+            try:
+                from core.comms import add_to_queue
+                add_to_queue(
+                    client_id=client_id,
+                    trigger_type="payment_received",
+                    subject=f"Payment Received — ${amount:.2f}",
+                    body_html=f"<p>Thank you for your payment of <strong>${amount:.2f}</strong>.</p><p>This payment has been recorded to your account.</p>",
+                    body_sms=f"Payment of ${amount:.2f} received. Thank you!",
+                    trigger_id=payment_intent_id or payment_id,
+                    channel="email",
+                    priority="low",
+                    metadata={
+                        "client_name": client_name,
+                        "amount": amount,
+                        "payment_id": payment_id,
+                        "payment_intent_id": payment_intent_id,
+                    },
+                )
+            except Exception:
+                logger.warning("Failed to queue payment receipt comm")
         return payment_id
     except Exception:
         logger.exception("Failed to auto-record Stripe payment")
