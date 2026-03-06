@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
@@ -29,13 +29,16 @@ import {
 
 interface SignatureRequest {
     signature_request_id: string;
+    local_id: string;
     title: string;
     signer_name: string;
     signer_email: string;
-    status: "pending" | "signed" | "declined" | "expired";
+    status: "pending" | "sent" | "viewed" | "signed" | "declined" | "expired" | "cancelled" | "not_configured" | "error";
     created_at: string;
     file_key: string;
     message?: string;
+    reminder_count?: number;
+    last_reminder_at?: string;
 }
 
 interface SendPayload {
@@ -53,9 +56,14 @@ interface SendPayload {
 
 const statusColors: Record<string, string> = {
     pending: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    sent: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    viewed: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
     signed: "bg-green-500/15 text-green-400 border-green-500/30",
     declined: "bg-red-500/15 text-red-400 border-red-500/30",
+    cancelled: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
     expired: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+    not_configured: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+    error: "bg-red-500/15 text-red-400 border-red-500/30",
 };
 
 // ---------------------------------------------------------------------------
@@ -84,7 +92,9 @@ export default function ESignPage() {
     const { getToken } = useAuth();
     const { canEdit } = useRole();
 
+    const queryClient = useQueryClient();
     const [dialogOpen, setDialogOpen] = useState(false);
+    const [remindingId, setRemindingId] = useState<string | null>(null);
 
     // Form fields
     const [fileKey, setFileKey] = useState("");
@@ -119,6 +129,27 @@ export default function ESignPage() {
             resetForm();
         },
     });
+
+    const reminderMutation = useMutation({
+        mutationFn: (requestId: string) =>
+            api.post(`/cases/${caseId}/esign/requests/${requestId}/remind`, {}, { getToken }),
+        onSuccess: (_result, requestId) => {
+            toast.success("Reminder sent");
+            queryClient.invalidateQueries({ queryKey: ["esign", "requests", caseId] });
+            setRemindingId(null);
+        },
+        onError: (err) => {
+            toast.error("Failed to send reminder", {
+                description: err instanceof Error ? err.message : "Unknown error",
+            });
+            setRemindingId(null);
+        },
+    });
+
+    function handleSendReminder(requestId: string) {
+        setRemindingId(requestId);
+        reminderMutation.mutate(requestId);
+    }
 
     function resetForm() {
         setFileKey("");
@@ -197,6 +228,19 @@ export default function ESignPage() {
                                     <span className="text-xs text-muted-foreground whitespace-nowrap">
                                         {formatDate(req.created_at)}
                                     </span>
+                                    {["pending", "sent", "viewed"].includes(req.status) && canEdit && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="text-xs h-7"
+                                            disabled={remindingId === (req.local_id || req.signature_request_id)}
+                                            onClick={() => handleSendReminder(req.local_id || req.signature_request_id)}
+                                        >
+                                            {remindingId === (req.local_id || req.signature_request_id)
+                                                ? "Sending..."
+                                                : "Send Reminder"}
+                                        </Button>
+                                    )}
                                     <Badge
                                         variant="outline"
                                         className={

@@ -17,6 +17,61 @@ interface TrustEntry {
     description: string;
 }
 
+interface SOLClaim {
+    id: string;
+    claim_type: string;
+    incident_date: string;
+    discovery_date?: string;
+    deadline: string;
+    days_remaining: number | null;
+    urgency: string;
+    urgency_level: string;
+    description?: string;
+    tolling_notes?: string;
+}
+
+interface SOLData {
+    claims: SOLClaim[];
+    notes?: string;
+}
+
+function SOLBadge({ claim }: { claim: SOLClaim }) {
+    const days = claim.days_remaining;
+    if (days === null || days === undefined) {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                N/A
+            </span>
+        );
+    }
+    if (days < 0) {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+                EXPIRED
+            </span>
+        );
+    }
+    if (days <= 30) {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 animate-pulse dark:bg-red-900/40 dark:text-red-300">
+                {days} days
+            </span>
+        );
+    }
+    if (days <= 90) {
+        return (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                {days} days
+            </span>
+        );
+    }
+    return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+            {days} days
+        </span>
+    );
+}
+
 export default function CompliancePage() {
     const params = useParams();
     const caseId = params.id as string;
@@ -34,7 +89,7 @@ export default function CompliancePage() {
 
     const solQuery = useQuery({
         queryKey: ["compliance", "sol", caseId],
-        queryFn: () => api.get<unknown[]>(`/compliance/sol/${caseId}`, { getToken }),
+        queryFn: () => api.get<SOLData>(`/compliance/sol/${caseId}`, { getToken }),
     });
 
     const trust = trustQuery.data ?? [];
@@ -75,7 +130,7 @@ export default function CompliancePage() {
                             {solQuery.isLoading ? (
                                 <Skeleton className="h-8 w-8 inline-block" />
                             ) : (
-                                (solQuery.data as unknown[])?.length || 0
+                                solQuery.data?.claims?.length || 0
                             )}
                         </p>
                     </CardContent>
@@ -112,6 +167,65 @@ export default function CompliancePage() {
                                     >
                                         {entry.type === "deposit" ? "+" : "−"}${Math.abs(entry.amount).toFixed(2)}
                                     </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* SOL Claims */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base flex items-center justify-between">
+                        Statute of Limitations Tracking
+                        <Badge variant="secondary">
+                            {solQuery.data?.claims?.length || 0} claims
+                        </Badge>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {solQuery.isLoading ? (
+                        <div className="space-y-3">
+                            {Array.from({ length: 2 }).map((_, i) => (
+                                <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                            ))}
+                        </div>
+                    ) : !solQuery.data?.claims?.length ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">
+                            No SOL claims tracked for this case.
+                        </p>
+                    ) : (
+                        <div className="space-y-2">
+                            {solQuery.data.claims.map((claim) => (
+                                <div
+                                    key={claim.id}
+                                    className="flex items-center justify-between py-3 border-b border-border last:border-0"
+                                >
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <span className="text-sm font-medium">
+                                                {claim.claim_type}
+                                            </span>
+                                            <SOLBadge claim={claim} />
+                                        </div>
+                                        {claim.description && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {claim.description}
+                                            </p>
+                                        )}
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            Incident: {claim.incident_date}
+                                            {claim.deadline && claim.deadline !== "See administrative filing deadlines"
+                                                ? ` \u00b7 Deadline: ${claim.deadline}`
+                                                : ""}
+                                        </p>
+                                        {claim.tolling_notes && (
+                                            <p className="text-[10px] text-muted-foreground italic mt-0.5">
+                                                Tolling: {claim.tolling_notes}
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                         </div>

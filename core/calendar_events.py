@@ -80,8 +80,14 @@ def add_event(
     reminder_days: List[int] = None,
     recurring: bool = False,
     assigned_to: List[str] = None,
+    recurrence: Optional[Dict] = None,
 ) -> str:
-    """Add a new event. Returns event ID."""
+    """Add a new event. Returns event ID.
+
+    If ``recurrence`` is provided (dict with ``frequency`` and ``end_date``),
+    individual instances are generated up to that end date.  Supported
+    frequencies: daily, weekly, biweekly, monthly.
+    """
     events = _load_all()
     eid = uuid.uuid4().hex[:8]
     event = {
@@ -97,14 +103,101 @@ def add_event(
         "description": description,
         "reminder_days": reminder_days if reminder_days else [7, 1, 0],
         "status": "scheduled",
-        "recurring": recurring,
+        "recurring": recurring or bool(recurrence),
+        "parent_id": None,
+        "recurrence": recurrence,
         "google_event_id": "",
         "assigned_to": assigned_to if assigned_to else [],
         "created_at": datetime.now().isoformat(),
     }
     events.append(event)
     _save_all(events)
+
+    if recurrence and isinstance(recurrence, dict):
+        freq = recurrence.get("frequency", "")
+        end_date_str = recurrence.get("end_date", "")
+        if freq and end_date_str and event_date:
+            parent_id = eid
+            _generate_recurring_instances(
+                events, parent_id, title, event_type, event_date, time, end_time,
+                location, case_id, client_id, description, reminder_days,
+                assigned_to, freq, end_date_str,
+            )
+            _save_all(events)
+
     return eid
+
+
+def _generate_recurring_instances(
+    events, parent_id, title, event_type, start_date_str, time, end_time,
+    location, case_id, client_id, description, reminder_days,
+    assigned_to, frequency, end_date_str, max_instances=52,
+):
+    """Generate recurring event instances."""
+    import calendar as _calendar_mod
+
+    try:
+        start = date.fromisoformat(start_date_str)
+        end = date.fromisoformat(end_date_str)
+    except (ValueError, TypeError):
+        return
+
+    delta_map = {
+        "daily": timedelta(days=1),
+        "weekly": timedelta(weeks=1),
+        "biweekly": timedelta(weeks=2),
+        "monthly": None,  # handled separately
+    }
+
+    delta = delta_map.get(frequency)
+    if delta is None and frequency != "monthly":
+        return  # unsupported frequency
+
+    current = start
+    count = 0
+
+    while count < max_instances:
+        # Advance to next occurrence
+        if frequency == "monthly":
+            month = current.month + 1
+            year = current.year
+            if month > 12:
+                month = 1
+                year += 1
+            try:
+                current = current.replace(year=year, month=month)
+            except ValueError:
+                # Handle months with fewer days (e.g., Jan 31 -> Feb 28)
+                last_day = _calendar_mod.monthrange(year, month)[1]
+                current = current.replace(year=year, month=month, day=min(current.day, last_day))
+        else:
+            current = current + delta
+
+        if current > end:
+            break
+
+        instance_id = uuid.uuid4().hex[:8]
+        instance = {
+            "id": instance_id,
+            "title": title,
+            "event_type": event_type,
+            "date": current.isoformat(),
+            "time": time or "",
+            "end_time": end_time or "",
+            "location": location or "",
+            "case_id": case_id or "",
+            "client_id": client_id or "",
+            "description": description or "",
+            "reminder_days": reminder_days or [7, 1, 0],
+            "status": "scheduled",
+            "recurring": True,
+            "parent_id": parent_id,
+            "google_event_id": "",
+            "assigned_to": assigned_to or [],
+            "created_at": datetime.now().isoformat(),
+        }
+        events.append(instance)
+        count += 1
 
 
 def load_events() -> List[Dict]:

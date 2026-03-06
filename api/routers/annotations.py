@@ -34,6 +34,24 @@ class AnnotationUpdate(BaseModel):
 
 # ---- Endpoints -----------------------------------------------------------
 
+@router.get("/search")
+def search_annotations(
+    case_id: str,
+    q: str = "",
+    user: dict = Depends(get_current_user),
+):
+    """Search annotations across all documents in a case."""
+    if not q or len(q.strip()) < 2:
+        return {"items": [], "total": 0}
+    try:
+        from core.annotations import search_annotations as _search, _DATA_DIR
+        items = _search(_DATA_DIR, case_id, q)
+        return {"items": items, "total": len(items)}
+    except Exception as e:
+        logger.exception("Failed to search annotations")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.get("")
 def list_annotations(
     case_id: str,

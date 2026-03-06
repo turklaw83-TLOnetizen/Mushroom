@@ -5,7 +5,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api.auth import get_current_user, require_role
 
@@ -66,3 +66,55 @@ def get_job_status(
     except Exception as e:
         logger.exception("Failed to get transcription job status")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---- Bookmark Schemas & Endpoints ----------------------------------------
+
+class BookmarkRequest(BaseModel):
+    file_key: str = Field(..., max_length=500)
+    timestamp_seconds: int = Field(..., ge=0)
+    label: str = Field(default="", max_length=200)
+    note: str = Field(default="", max_length=5000)
+
+
+@router.get("/bookmarks")
+def list_bookmarks(
+    case_id: str,
+    file_key: str = "",
+    user: dict = Depends(get_current_user),
+):
+    """List transcript bookmarks, optionally filtered by file."""
+    from core.transcription_worker import get_bookmarks
+    return {"items": get_bookmarks(case_id, file_key)}
+
+
+@router.post("/bookmarks")
+def create_bookmark(
+    case_id: str,
+    body: BookmarkRequest,
+    user: dict = Depends(require_role("admin", "attorney", "paralegal")),
+):
+    """Create a bookmark on a transcript timestamp."""
+    from core.transcription_worker import add_bookmark
+    bm_id = add_bookmark(
+        case_id=case_id,
+        file_key=body.file_key,
+        timestamp_seconds=body.timestamp_seconds,
+        label=body.label,
+        note=body.note,
+        created_by=user.get("name", user.get("user_id", "")),
+    )
+    return {"id": bm_id, "status": "created"}
+
+
+@router.delete("/bookmarks/{bookmark_id}")
+def remove_bookmark(
+    case_id: str,
+    bookmark_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Delete a transcript bookmark."""
+    from core.transcription_worker import delete_bookmark
+    if not delete_bookmark(case_id, bookmark_id):
+        raise HTTPException(status_code=404, detail="Bookmark not found")
+    return {"status": "deleted"}

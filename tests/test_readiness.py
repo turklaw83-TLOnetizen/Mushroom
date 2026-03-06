@@ -10,13 +10,14 @@ from core.readiness import (
 
 class TestComputeReadinessScore:
     def test_empty_state(self):
-        score, grade, breakdown = compute_readiness_score({})
+        score, grade, breakdown, missing = compute_readiness_score({})
         assert score == 0
         assert grade == "F"
         assert all(not v for v in breakdown.values())
+        assert len(missing) == 15
 
     def test_full_state(self, sample_state):
-        score, grade, breakdown = compute_readiness_score(sample_state)
+        score, grade, breakdown, missing = compute_readiness_score(sample_state)
         assert score > 0
         # case_summary, charges, timeline, witnesses, investigation_plan, strategy_notes, entities
         # should all be complete
@@ -28,26 +29,38 @@ class TestComputeReadinessScore:
             "case_summary": "Some summary",
             "charges": [{"name": "Theft"}],
         }
-        score, grade, breakdown = compute_readiness_score(state)
+        score, grade, breakdown, missing = compute_readiness_score(state)
         assert 0 < score < 100
+        # 2 modules complete, 13 missing
+        assert len(missing) == 13
 
     def test_score_never_exceeds_100(self, sample_state):
-        score, grade, breakdown = compute_readiness_score(sample_state)
+        score, grade, breakdown, missing = compute_readiness_score(sample_state)
         assert score <= 100
 
     def test_breakdown_correct_length(self):
-        score, grade, breakdown = compute_readiness_score({})
+        score, grade, breakdown, missing = compute_readiness_score({})
         assert len(breakdown) == 15
 
     def test_grade_letters(self):
         # Empty = F
-        score, grade, _ = compute_readiness_score({})
+        score, grade, _, _missing = compute_readiness_score({})
         assert grade == "F"
 
     def test_returns_tuple(self):
         result = compute_readiness_score({})
         assert isinstance(result, tuple)
-        assert len(result) == 3
+        assert len(result) == 4
+
+    def test_missing_has_action_suggestions(self):
+        score, grade, breakdown, missing = compute_readiness_score({})
+        for item in missing:
+            assert "module" in item
+            assert "label" in item
+            assert "action" in item
+            assert "weight" in item
+            assert isinstance(item["action"], str)
+            assert len(item["action"]) > 0
 
 
 class TestReadinessColor:

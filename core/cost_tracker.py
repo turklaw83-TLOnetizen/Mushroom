@@ -3,7 +3,7 @@
 # counting and per-model pricing tables.
 
 import logging
-from typing import Optional
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +113,41 @@ def estimate_analysis_cost(doc_text: str, model: str, node_count: int = 14) -> d
         "node_count": node_count,
         "model": model,
     }
+
+
+def estimate_per_node_costs(doc_tokens: int, model: str = "", node_count: int = 14) -> Dict[str, float]:
+    """Estimate cost per analysis node.
+    Returns {node_name: estimated_cost_dollars}.
+    """
+    if not model:
+        model = "xai"
+
+    # Typical output ratios per node (some nodes produce more output)
+    NODE_OUTPUT_RATIOS = {
+        "analyzer": 1.5,
+        "strategist": 1.2,
+        "elements_mapper": 1.0,
+        "investigation_planner": 0.8,
+        "consistency_checker": 0.8,
+        "legal_researcher": 1.0,
+        "devils_advocate": 1.0,
+        "entity_extractor": 0.6,
+        "cross_examiner": 1.5,
+        "direct_examiner": 1.5,
+        "timeline_generator": 0.8,
+        "foundations_agent": 0.8,
+        "voir_dire_agent": 0.8,
+        "mock_jury": 1.0,
+    }
+
+    costs = {}
+    for node, ratio in NODE_OUTPUT_RATIOS.items():
+        input_tokens = doc_tokens  # Each node gets full docs
+        output_tokens = int(2000 * ratio)  # Base output ~2000 tokens
+        cost = estimate_cost(input_tokens, output_tokens, model)
+        costs[node] = round(cost, 4)
+
+    return costs
 
 
 def format_cost_badge(text: str, model: str) -> str:

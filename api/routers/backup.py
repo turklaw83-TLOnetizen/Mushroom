@@ -31,9 +31,12 @@ def backup_status(
         from core.cloud_backup import DropboxSyncBackup, B2Backup
         dropbox = DropboxSyncBackup()
         b2 = B2Backup()
+        from core.cloud_backup import get_backup_status
+        last = get_backup_status()
         return {
             "dropbox": {"available": dropbox.is_available},
             "b2": {"available": b2.is_available},
+            "last_backup": last,
         }
     except Exception as e:
         logger.exception("Failed to check backup status")

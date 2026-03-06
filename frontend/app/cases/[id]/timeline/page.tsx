@@ -155,6 +155,38 @@ export default function TimelinePage() {
 
     const today = todayStr();
 
+    // ---- Swim Lane Categorization ------------------------------------------
+
+    type LaneType = "prosecution" | "defense" | "court" | "other";
+
+    const LANE_KEYWORDS: Record<LaneType, string[]> = {
+        prosecution: ["arrest", "charge", "police", "prosecution", "indictment", "warrant"],
+        defense: ["defense", "attorney", "counsel", "motion", "filing"],
+        court: ["hearing", "trial", "court", "arraignment", "sentencing", "conference"],
+        other: [],
+    };
+
+    const LANE_COLORS: Record<LaneType, string> = {
+        prosecution: "border-l-red-500",
+        defense: "border-l-blue-500",
+        court: "border-l-gray-500",
+        other: "border-l-violet-500",
+    };
+
+    const classifyEvent = (event: CalendarEvent): LaneType => {
+        const text = `${event.title} ${event.type} ${event.event_type ?? ""} ${event.description ?? ""}`.toLowerCase();
+        for (const lane of ["prosecution", "defense", "court"] as LaneType[]) {
+            if (LANE_KEYWORDS[lane].some((kw) => text.includes(kw))) return lane;
+        }
+        return "other";
+    };
+
+    const eventLanes = useMemo(
+        () => new Map(sortedEvents.map((e) => [e.id ?? e.title, classifyEvent(e)])),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [sortedEvents],
+    );
+
     // SOL progress: percentage of time elapsed from incident to deadline
     const solProgress = useMemo(() => {
         if (!sol || sol.status !== "calculated") return 0;
@@ -210,6 +242,12 @@ export default function TimelinePage() {
                             {sortedEvents.length} events
                         </Badge>
                     </CardTitle>
+                    <div className="flex gap-2 mt-2">
+                        <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Prosecution</Badge>
+                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">Defense</Badge>
+                        <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">Court</Badge>
+                        <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30">Other</Badge>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {eventsQuery.isLoading ? (
@@ -269,7 +307,7 @@ export default function TimelinePage() {
                                                     />
                                                 </div>
 
-                                                <Card className="flex-1 hover:bg-accent/20 transition-colors">
+                                                <Card className={`flex-1 hover:bg-accent/20 transition-colors border-l-4 ${LANE_COLORS[eventLanes.get(event.id ?? event.title) ?? "other"]}`}>
                                                     <CardContent className="py-2.5 flex items-center justify-between">
                                                         <div className="min-w-0">
                                                             <div className="flex items-center gap-2">

@@ -99,10 +99,34 @@ def get_sol_tracking(
     case_id: str,
     user: dict = Depends(get_current_user),
 ):
-    """Get statute of limitations tracking for a case."""
+    """Get statute of limitations tracking for a case.
+
+    Recalculates days_remaining and urgency_level dynamically so values
+    are always fresh rather than stale from creation time.
+    """
     try:
-        from core.ethical_compliance import load_sol_tracking
-        return load_sol_tracking(case_id)
+        from core.ethical_compliance import (
+            load_sol_tracking,
+            calculate_sol_deadline,
+            compute_sol_urgency,
+        )
+        data = load_sol_tracking(case_id)
+        # Recalculate days_remaining for each claim so it's always current
+        for claim in data.get("claims", []):
+            calc = calculate_sol_deadline(
+                claim.get("claim_type", ""),
+                claim.get("incident_date", ""),
+                claim.get("discovery_date", ""),
+            )
+            if "error" not in calc:
+                claim["days_remaining"] = calc.get("days_remaining")
+                claim["deadline"] = calc.get("deadline", claim.get("deadline", ""))
+                claim["urgency"] = calc.get("urgency", claim.get("urgency", ""))
+                dr = calc.get("days_remaining")
+                claim["urgency_level"] = compute_sol_urgency(dr) if dr is not None else "ok"
+            else:
+                claim["urgency_level"] = "ok"
+        return data
     except ImportError:
         return []
 

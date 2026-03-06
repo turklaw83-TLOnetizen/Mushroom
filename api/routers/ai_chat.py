@@ -98,8 +98,8 @@ Be direct and concise. Use markdown formatting for clarity."""
                         yield f"data: {json.dumps({'type': 'done', 'content': full_text})}\n\n"
 
                 # Save to chat history
-                _save_chat_message(cm, case_id, prep_id, "user", body.message)
-                _save_chat_message(cm, case_id, prep_id, "assistant", full_text)
+                _save_chat_message(cm, case_id, prep_id, "user", body.message, body.context_module)
+                _save_chat_message(cm, case_id, prep_id, "assistant", full_text, body.context_module)
 
             except Exception as e:
                 logger.exception("Chat streaming failed")
@@ -162,8 +162,8 @@ def clear_chat_history(
 
 # ---- Helpers -------------------------------------------------------------
 
-def _save_chat_message(cm, case_id: str, prep_id: str, role: str, content: str):
-    """Append a message to the chat history file."""
+def _save_chat_message(cm, case_id: str, prep_id: str, role: str, content: str, context_module: str = ""):
+    """Append a message to the chat history file (prep-level + case-level)."""
     try:
         history = cm.storage.load_prep_json(case_id, prep_id, "chat_history.json", [])
         history.append({
@@ -178,6 +178,44 @@ def _save_chat_message(cm, case_id: str, prep_id: str, role: str, content: str):
     except Exception:
         logger.warning("Failed to save chat message", exc_info=True)
 
+    # Also persist to case-level chat history
+    try:
+        from core.chat_history import save_message
+        save_message(case_id, role, content, prep_id=prep_id, context_module=context_module)
+    except Exception:
+        logger.warning("Failed to save case-level chat message", exc_info=True)
+
+
+# ---- Case-Level Chat History Endpoints -----------------------------------
+
+case_chat_router = APIRouter(tags=["AI Chat"])
+
+
+@case_chat_router.get("/cases/{case_id}/chat/history")
+def get_case_chat_history(
+    case_id: str,
+    prep_id: str = "",
+    limit: int = 50,
+    user: dict = Depends(get_current_user),
+):
+    """Get case-level chat history, optionally filtered by prep_id."""
+    from core.chat_history import load_history
+    return {"messages": load_history(case_id, prep_id, min(limit, 200))}
+
+
+@case_chat_router.delete("/cases/{case_id}/chat/history")
+def clear_case_chat_history(
+    case_id: str,
+    prep_id: str = "",
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Clear case-level chat history."""
+    from core.chat_history import clear_history
+    count = clear_history(case_id, prep_id)
+    return {"status": "cleared", "messages_removed": count}
+
+
+# ---- Helpers -------------------------------------------------------------
 
 def _build_module_context(state: dict, module: str, case_id: str, cm) -> str:
     """Build contextual information based on which module the user is on."""

@@ -584,8 +584,9 @@ def ingest_email(
     except Exception:
         logger.exception("Classification failed for email ingest")
 
-    # Save to feed
+    # Check for duplicates before saving
     feed = _load_feed()
+    _check_duplicate(txn, feed)
     feed.append(txn)
     _save_feed(feed)
 
@@ -875,6 +876,44 @@ def classify_with_ai(
     return transactions
 
 
+def _check_duplicate(txn: Dict, existing_feed: List[Dict]) -> Dict:
+    """Check if a transaction might be a duplicate of an existing one.
+    Flags but does NOT auto-dismiss — human decides.
+    Same amount + similar sender within 48 hours = possible duplicate.
+    """
+    from datetime import timedelta
+    txn_amount = txn.get("amount", 0)
+    txn_sender = txn.get("sender", "").lower().strip()
+    txn_date_str = txn.get("date", "")
+
+    try:
+        txn_date = datetime.strptime(txn_date_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        txn_date = datetime.now()
+
+    for existing in existing_feed:
+        if existing.get("id") == txn.get("id"):
+            continue
+        ex_amount = existing.get("amount", 0)
+        ex_sender = existing.get("sender", "").lower().strip()
+        ex_date_str = existing.get("date", "")
+        try:
+            ex_date = datetime.strptime(ex_date_str, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+
+        # Same amount AND similar sender within 48 hours
+        if (abs(ex_amount - txn_amount) < 0.01
+                and ex_sender and txn_sender
+                and (ex_sender in txn_sender or txn_sender in ex_sender)
+                and abs((txn_date - ex_date).days) <= 2):
+            txn["possible_duplicate"] = True
+            txn["duplicate_of"] = existing.get("id", "")
+            return txn
+
+    return txn
+
+
 # ===================================================================
 #  5.  FEED CRUD  — manage imported transactions
 # ===================================================================
@@ -919,8 +958,10 @@ def import_transactions(file_data: str, platform: str) -> List[Dict]:
     except Exception:
         logger.exception("Classification failed during import")
 
-    # Save to feed
+    # Check for duplicates before saving
     feed = _load_feed()
+    for txn in new_txns:
+        _check_duplicate(txn, feed)
     feed.extend(new_txns)
     _save_feed(feed)
 

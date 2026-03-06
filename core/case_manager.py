@@ -560,6 +560,34 @@ class CaseManager:
     # Alias used by UI
     set_file_order = save_file_order
 
+    # ==== File Pinning ====================================================
+
+    def pin_file(self, case_id: str, filename: str) -> bool:
+        """Pin a file to the top of the file list."""
+        meta = self.storage.get_case_metadata(case_id)
+        pinned = meta.get("pinned_files", [])
+        if filename not in pinned:
+            pinned.append(filename)
+            meta["pinned_files"] = pinned
+            meta["last_updated"] = _now_iso()
+            self.storage.update_case_metadata(case_id, meta)
+        return True
+
+    def unpin_file(self, case_id: str, filename: str) -> bool:
+        """Unpin a file."""
+        meta = self.storage.get_case_metadata(case_id)
+        pinned = meta.get("pinned_files", [])
+        if filename in pinned:
+            pinned.remove(filename)
+            meta["pinned_files"] = pinned
+            meta["last_updated"] = _now_iso()
+            self.storage.update_case_metadata(case_id, meta)
+        return True
+
+    def get_pinned_files(self, case_id: str) -> List[str]:
+        """Return list of pinned file basenames."""
+        return self.storage.get_case_metadata(case_id).get("pinned_files", [])
+
     # ==== State (Legacy root-level) =======================================
 
     def save_state(self, case_id: str, state: Dict) -> None:

@@ -118,6 +118,39 @@ def get_notifications(
     except Exception as exc:
         logger.debug("Retainer notification error: %s", exc)
 
+    # ---- Recent Conflict Warnings ----
+    try:
+        from core.crm import load_clients
+        from core.ethical_compliance import smart_conflict_check
+        clients = load_clients()
+        cutoff = (datetime.now() - __import__("datetime").timedelta(days=7)).isoformat()
+        recent_clients = [
+            c for c in clients
+            if c.get("created_at", "") >= cutoff
+        ]
+        for client in recent_clients[:20]:
+            client_name = client.get("name", "") or \
+                f"{client.get('first_name', '')} {client.get('last_name', '')}".strip()
+            if not client_name:
+                continue
+            try:
+                result = smart_conflict_check(client_name)
+                if result and result.get("has_conflict"):
+                    match_count = len(result.get("matches", []))
+                    notifications.append({
+                        "type": "conflict_warning",
+                        "title": f"Potential conflict: {client_name}",
+                        "detail": f"{match_count} match{'es' if match_count != 1 else ''} found — review recommended",
+                        "case_id": "",
+                        "case_name": "",
+                        "severity": "high",
+                        "timestamp": client.get("created_at", ""),
+                    })
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.debug("Conflict notification error: %s", exc)
+
     # Fill in case names
     for n in notifications:
         if n.get("case_id") and not n.get("case_name"):

@@ -120,3 +120,23 @@ def download_signed(
     except Exception as e:
         logger.exception("Failed to download signed document")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/requests/{request_id}/remind")
+def send_reminder(
+    case_id: str,
+    request_id: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Send a reminder to pending signers."""
+    try:
+        mgr = _get_esign_manager(case_id)
+        result = mgr.send_reminder(request_id)
+        if result.get("status") == "error":
+            raise HTTPException(status_code=404, detail=result.get("message", "Error"))
+        return result
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Failed to send reminder")
+        raise HTTPException(status_code=500, detail="Internal server error")

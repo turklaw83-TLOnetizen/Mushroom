@@ -21,6 +21,9 @@ export function Sidebar() {
     const sidebarOpen = useUIStore((s) => s.sidebarOpen);
     const toggleSidebar = useUIStore((s) => s.toggleSidebar);
     const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
+    const pinnedCaseIds = useUIStore((s) => s.pinnedCaseIds);
+    const pinCase = useUIStore((s) => s.pinCase);
+    const unpinCase = useUIStore((s) => s.unpinCase);
     const { data: casesData, isLoading } = useCases();
 
     // Auto-collapse on mobile
@@ -139,11 +142,13 @@ export function Sidebar() {
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
                     <div className="space-y-1">
                         <NavItem href="/" label="Dashboard" icon="⚡" active={pathname === "/"} collapsed={!sidebarOpen} />
+                        <NavItem href="/brief" label="Morning Brief" icon="☀️" active={pathname === "/brief"} collapsed={!sidebarOpen} />
                         <NavItem href="/tasks" label="Tasks" icon="📋" active={pathname === "/tasks"} collapsed={!sidebarOpen} />
                         <NavItem href="/calendar" label="Calendar" icon="📅" active={pathname === "/calendar"} collapsed={!sidebarOpen} />
                         <NavItem href="/crm" label="Clients" icon="👥" active={pathname === "/crm"} collapsed={!sidebarOpen} />
                         <NavItem href="/email" label="Email" icon="📧" active={pathname === "/email"} collapsed={!sidebarOpen} />
                         <NavItem href="/comms" label="Comms" icon="💬" active={pathname === "/comms"} collapsed={!sidebarOpen} />
+                        <NavItem href="/discovery" label="Discovery" icon="📑" active={pathname === "/discovery"} collapsed={!sidebarOpen} />
                         <NavItem href="/conflicts" label="Conflicts" icon="⚖️" active={pathname === "/conflicts"} collapsed={!sidebarOpen} />
                         <NavItem href="/analytics" label="Analytics" icon="📊" active={pathname === "/analytics"} collapsed={!sidebarOpen} />
                         <NavItem href="/workflows" label="Workflows" icon="🔄" active={pathname === "/workflows"} collapsed={!sidebarOpen} />
@@ -169,16 +174,36 @@ export function Sidebar() {
                                         <Skeleton key={i} className="h-8 w-full rounded-md" />
                                     ))
                                 ) : casesData?.items?.length ? (
-                                    casesData.items.slice(0, 15).map((c: CaseItem) => (
-                                        <NavItem
-                                            key={c.id}
-                                            href={`/cases/${c.id}`}
-                                            label={c.name}
-                                            active={pathname.startsWith(`/cases/${c.id}`)}
-                                            collapsed={false}
-                                            badge={c.phase}
-                                        />
-                                    ))
+                                    (() => {
+                                        const allCases = casesData.items.slice(0, 15);
+                                        const pinned = allCases.filter((c: CaseItem) => pinnedCaseIds.includes(c.id));
+                                        const unpinned = allCases.filter((c: CaseItem) => !pinnedCaseIds.includes(c.id));
+                                        return (
+                                            <>
+                                                {pinned.map((c: CaseItem) => (
+                                                    <CaseNavItem
+                                                        key={c.id}
+                                                        caseItem={c}
+                                                        active={pathname.startsWith(`/cases/${c.id}`)}
+                                                        isPinned={true}
+                                                        onTogglePin={() => unpinCase(c.id)}
+                                                    />
+                                                ))}
+                                                {pinned.length > 0 && unpinned.length > 0 && (
+                                                    <Separator className="my-1" />
+                                                )}
+                                                {unpinned.map((c: CaseItem) => (
+                                                    <CaseNavItem
+                                                        key={c.id}
+                                                        caseItem={c}
+                                                        active={pathname.startsWith(`/cases/${c.id}`)}
+                                                        isPinned={false}
+                                                        onTogglePin={() => pinCase(c.id)}
+                                                    />
+                                                ))}
+                                            </>
+                                        );
+                                    })()
                                 ) : (
                                     <p className="px-2 text-xs text-muted-foreground">
                                         No cases yet
@@ -209,6 +234,51 @@ export function Sidebar() {
                 </div>
             </aside>
         </>
+    );
+}
+
+// ---- Case Nav Item with pin/unpin on hover ------------------------------
+
+function CaseNavItem({
+    caseItem,
+    active,
+    isPinned,
+    onTogglePin,
+}: {
+    caseItem: CaseItem;
+    active: boolean;
+    isPinned: boolean;
+    onTogglePin: () => void;
+}) {
+    return (
+        <Link
+            href={`/cases/${caseItem.id}`}
+            className={cn(
+                "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                active
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+            )}
+        >
+            {isPinned && <span className="text-xs shrink-0">📌</span>}
+            <span className="truncate flex-1">{caseItem.name}</span>
+            {caseItem.phase && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
+                    {caseItem.phase}
+                </Badge>
+            )}
+            <button
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onTogglePin();
+                }}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-xs shrink-0"
+                title={isPinned ? "Unpin" : "Pin"}
+            >
+                {isPinned ? "📌" : "📍"}
+            </button>
+        </Link>
     );
 }
 

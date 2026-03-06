@@ -24,6 +24,7 @@ const tabs = [
     { label: "Witnesses", href: "/witnesses" },
     { label: "Mock Exam", href: "/mock-exam" },
     { label: "Evidence", href: "/evidence" },
+    { label: "Discovery", href: "/discovery" },
     { label: "Strategy", href: "/strategy" },
     { label: "Documents", href: "/documents" },
     { label: "Research", href: "/research" },

@@ -22,6 +22,14 @@ import {
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { EditCommDialog } from "@/components/comms/edit-comm-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+} from "@/components/ui/dialog";
 import type {
     CommQueueItem,
     CommTemplate,
@@ -62,6 +70,7 @@ export default function CommsPage() {
     const [emailSubject, setEmailSubject] = useState("");
     const [emailBody, setEmailBody] = useState("");
     const [showCSVFallback, setShowCSVFallback] = useState(false);
+    const [showSendPreview, setShowSendPreview] = useState(false);
 
     // ---- Queries ----
     const { data: statsData } = useQuery({
@@ -72,6 +81,11 @@ export default function CommsPage() {
     const { data: queueData, isLoading: queueLoading } = useQuery({
         queryKey: ["comms-queue"],
         queryFn: () => api.get<{ items: CommQueueItem[] }>("/comms/queue?status=pending", { getToken }),
+    });
+
+    const { data: approvedData } = useQuery({
+        queryKey: ["comms-queue-approved"],
+        queryFn: () => api.get<{ items: CommQueueItem[] }>("/comms/queue?status=approved", { getToken }),
     });
 
     const { data: logData, isLoading: logLoading } = useQuery({
@@ -97,6 +111,7 @@ export default function CommsPage() {
     // ---- Mutations ----
     const invalidateAll = () => {
         qc.invalidateQueries({ queryKey: ["comms-queue"] });
+        qc.invalidateQueries({ queryKey: ["comms-queue-approved"] });
         qc.invalidateQueries({ queryKey: ["comms-stats"] });
         qc.invalidateQueries({ queryKey: ["comms-log"] });
         qc.invalidateQueries({ queryKey: ["payment-feed"] });
@@ -217,6 +232,7 @@ export default function CommsPage() {
 
     // ---- Derived data ----
     const queue = queueData?.items ?? [];
+    const approvedQueue = approvedData?.items ?? [];
     const log = logData?.items ?? [];
     const templates = templatesData?.items ?? [];
     const feed = feedData?.items ?? [];
@@ -294,7 +310,7 @@ export default function CommsPage() {
                         {stats.approved > 0 && (
                             <Button
                                 size="sm"
-                                onClick={() => sendMut.mutate()}
+                                onClick={() => setShowSendPreview(true)}
                                 disabled={sendMut.isPending}
                             >
                                 {sendMut.isPending ? "Sending..." : `Send ${stats.approved} Approved`}
@@ -733,6 +749,66 @@ export default function CommsPage() {
                 }}
                 isLoading={dismissMut.isPending}
             />
+
+            {/* Send Preview Dialog */}
+            <Dialog open={showSendPreview} onOpenChange={setShowSendPreview}>
+                <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Send</DialogTitle>
+                        <DialogDescription>
+                            Review the {approvedQueue.length} approved communication{approvedQueue.length !== 1 ? "s" : ""} below before sending.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-y-auto space-y-3 py-2">
+                        {approvedQueue.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                                No approved communications to send.
+                            </p>
+                        ) : (
+                            approvedQueue.map((item) => (
+                                <Card key={item.id} className="border">
+                                    <CardContent className="py-3">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-sm font-medium truncate">
+                                                {item.subject}
+                                            </span>
+                                            <Badge variant="outline" className="text-[10px] shrink-0">
+                                                {item.channel}
+                                            </Badge>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mb-1">
+                                            To: {item.metadata?.client_email || item.metadata?.client_phone || item.metadata?.client_name || "Unknown recipient"}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground line-clamp-2">
+                                            {item.body_html?.replace(/<[^>]*>/g, "").slice(0, 100)}
+                                            {(item.body_html?.replace(/<[^>]*>/g, "").length ?? 0) > 100 ? "..." : ""}
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            ))
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setShowSendPreview(false)}
+                            disabled={sendMut.isPending}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                sendMut.mutate(undefined, {
+                                    onSettled: () => setShowSendPreview(false),
+                                });
+                            }}
+                            disabled={sendMut.isPending || approvedQueue.length === 0}
+                        >
+                            {sendMut.isPending ? "Sending..." : `Confirm Send (${approvedQueue.length})`}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

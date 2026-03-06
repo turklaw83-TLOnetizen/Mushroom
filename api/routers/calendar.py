@@ -31,6 +31,11 @@ class EventResponse(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class RecurrenceSpec(BaseModel):
+    frequency: str = Field(..., pattern="^(daily|weekly|biweekly|monthly)$")
+    end_date: str = Field(..., max_length=20, description="End date in YYYY-MM-DD format")
+
+
 class CreateEventRequest(BaseModel):
     case_id: str = Field(default="", max_length=200)
     client_id: str = Field(default="", max_length=200)
@@ -40,6 +45,7 @@ class CreateEventRequest(BaseModel):
     type: str = Field(default="event", max_length=50)
     description: str = Field(default="", max_length=2000)
     location: str = Field(default="", max_length=500)
+    recurrence: RecurrenceSpec | None = Field(default=None, description="Optional recurrence rule")
 
 
 class StatusChangeRequest(BaseModel):
@@ -76,6 +82,7 @@ def create_event(
     """Create a calendar event."""
     try:
         from core.calendar_events import add_event
+        recurrence_dict = body.recurrence.model_dump() if body.recurrence else None
         event_id = add_event(
             title=body.title,
             event_type=body.type,
@@ -85,6 +92,7 @@ def create_event(
             location=body.location,
             case_id=body.case_id,
             client_id=body.client_id,
+            recurrence=recurrence_dict,
         )
         return {"status": "created", "id": event_id}
     except ImportError:

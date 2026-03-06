@@ -73,7 +73,7 @@ def add_email_to_queue(
         return ""  # Already in queue
 
     entry_id = uuid.uuid4().hex[:8]
-    queue.append({
+    record = {
         "id": entry_id,
         "gmail_id": gmail_id,
         "from": from_addr,
@@ -89,7 +89,15 @@ def add_email_to_queue(
         "tags": [],
         "added_at": datetime.now().isoformat(),
         "processed_at": "",
-    })
+    }
+
+    # Auto-suggest case if not already suggested
+    if not record.get("suggested_case_id"):
+        suggested = suggest_case_for_email(record)
+        if suggested:
+            record["suggested_case_id"] = suggested
+
+    queue.append(record)
     _save_queue(queue)
     return entry_id
 
@@ -166,7 +174,7 @@ def get_email_queue_stats() -> Dict:
     }
 
 
-def suggest_case_for_email(from_addr: str, crm_clients: List[Dict]) -> str:
+def suggest_case_for_email_legacy(from_addr: str, crm_clients: List[Dict]) -> str:
     """
     Try to match sender email to a CRM client, return their linked case_id.
     Returns empty string if no match.
@@ -179,6 +187,38 @@ def suggest_case_for_email(from_addr: str, crm_clients: List[Dict]) -> str:
             if linked:
                 return linked[0]  # Return first linked case
     return ""
+
+
+def suggest_case_for_email(email_record: Dict) -> Optional[str]:
+    """
+    Try to auto-suggest a case for an email by matching sender against CRM clients.
+    Returns suggested case_id or None. This is a SUGGESTION only -- human must confirm.
+    """
+    try:
+        from core.crm import search_clients
+
+        sender = email_record.get("from", "")
+        sender_name = email_record.get("sender_name", "")
+
+        # Try matching by email address first
+        if sender:
+            matches = search_clients(sender)
+            if len(matches) == 1:
+                case_ids = matches[0].get("linked_case_ids", [])
+                if len(case_ids) == 1:
+                    return case_ids[0]
+
+        # Try matching by sender name
+        if sender_name and len(sender_name) > 2:
+            matches = search_clients(sender_name)
+            if len(matches) == 1:
+                case_ids = matches[0].get("linked_case_ids", [])
+                if len(case_ids) == 1:
+                    return case_ids[0]
+
+    except Exception:
+        pass
+    return None
 
 
 # ---- Gmail API Client -------------------------------------------------------

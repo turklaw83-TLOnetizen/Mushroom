@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 
@@ -16,6 +16,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -68,6 +69,16 @@ export default function DashboardPage() {
     }
   };
 
+  // Recent Activity feed
+  const { data: activityData, isLoading: activityLoading } = useQuery({
+    queryKey: ["recent-activity"],
+    queryFn: () =>
+      api.get<{ items: Array<{ type: string; title: string; detail: string; case_id: string; client_id?: string; timestamp: string }> }>(
+        "/activity/recent",
+        { getToken, params: { limit: 10 } },
+      ),
+  });
+
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -113,6 +124,9 @@ export default function DashboardPage() {
         />
       )}
 
+      {/* Recent Activity */}
+      <RecentActivityCard items={activityData?.items ?? []} isLoading={activityLoading} />
+
       {/* New Case Dialog */}
       <NewCaseDialog
         open={dialogOpen}
@@ -132,5 +146,84 @@ export default function DashboardPage() {
         isLoading={isDeleting}
       />
     </div>
+  );
+}
+
+
+// ---- Recent Activity Card -----------------------------------------------
+
+interface ActivityItemShape {
+  type: string;
+  title: string;
+  detail: string;
+  case_id: string;
+  client_id?: string;
+  timestamp: string;
+}
+
+function activityTypeIcon(type: string): string {
+  switch (type) {
+    case "comm": return "\uD83D\uDCAC";       // speech bubble
+    case "payment": return "\uD83D\uDCB0";    // money bag
+    case "analysis": return "\uD83D\uDD0D";   // magnifying glass
+    default: return "\uD83D\uDCDD";           // memo
+  }
+}
+
+function timeAgo(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+function RecentActivityCard({ items, isLoading }: { items: ActivityItemShape[]; isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full" />
+          ))}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-0">
+        {items.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No recent activity
+          </p>
+        )}
+        {items.slice(0, 10).map((item, i) => (
+          <div
+            key={`${item.type}-${item.timestamp}-${i}`}
+            className="flex items-start gap-3 py-2.5 border-b last:border-0"
+          >
+            <span className="text-base mt-0.5">{activityTypeIcon(item.type)}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{item.title}</p>
+              <p className="text-xs text-muted-foreground truncate">{item.detail}</p>
+            </div>
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5">
+              {timeAgo(item.timestamp)}
+            </span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

@@ -26,7 +26,8 @@ _SETTINGS_FILE = os.path.join(_COMMS_DIR, "settings.json")
 
 TRIGGER_TYPES = [
     "payment_reminder", "payment_overdue", "court_prep",
-    "status_update", "intake_followup", "phase_change", "custom",
+    "status_update", "intake_followup", "phase_change",
+    "payment_received", "morning_brief", "custom",
 ]
 COMM_STATUSES = ["pending", "approved", "sent", "failed", "dismissed"]
 PRIORITIES = ["low", "medium", "high", "critical"]
@@ -255,6 +256,28 @@ _DEFAULT_TEMPLATES: List[Dict] = [
         "sms_template": (
             "Hi {{client_name}}, following up on your inquiry with {{firm_name}}. "
             "Still need help? Call or reply to schedule a consultation."
+        ),
+        "ai_enhance": False,
+        "active": True,
+        "created_at": "2026-03-05T00:00:00",
+    },
+    {
+        "id": "tpl_pay_received",
+        "name": "Payment Received — Thank You",
+        "trigger_type": "payment_received",
+        "channel": "email",
+        "subject_template": "Payment Received — Thank You, {{client_name}}",
+        "body_template": (
+            "Dear {{client_name}},\n\n"
+            "We have received your payment of ${{amount}}. "
+            "Thank you for your prompt attention to this matter.\n\n"
+            "If you have any questions about your account or upcoming "
+            "payments, please do not hesitate to contact our office.\n\n"
+            "Sincerely,\n{{firm_name}}"
+        ),
+        "sms_template": (
+            "Hi {{client_name}}, we received your payment of ${{amount}}. "
+            "Thank you! Questions? Call our office."
         ),
         "ai_enhance": False,
         "active": True,

@@ -2,6 +2,7 @@
 // Sub-tabs: Strategy | Devil's Advocate | Voir Dire | Mock Jury
 "use client";
 
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
@@ -97,6 +98,87 @@ function renderMockJuryContent(data: string | Record<string, unknown> | Array<Re
     );
 }
 
+// ---- Strength / Weakness Matrix -----------------------------------------
+
+/**
+ * Extract the first ~200 chars of relevant content from analysis text.
+ * Searches for keyword matches and returns surrounding paragraph context.
+ */
+function extractSnippet(text: string | undefined | null, keywords: string[]): string {
+    if (!text || typeof text !== "string") return "";
+    const lower = text.toLowerCase();
+    for (const kw of keywords) {
+        const idx = lower.indexOf(kw.toLowerCase());
+        if (idx !== -1) {
+            // Find the start of the paragraph (previous double newline or start)
+            const paraStart = Math.max(0, text.lastIndexOf("\n", Math.max(0, idx - 1)));
+            return text.slice(paraStart, paraStart + 200).trim();
+        }
+    }
+    return "";
+}
+
+function StrengthWeaknessMatrix({
+    strategyNotes,
+    devilsAdvocate,
+}: {
+    strategyNotes: string | undefined | null;
+    devilsAdvocate: string | undefined | null;
+}) {
+    const stratText = typeof strategyNotes === "string" ? strategyNotes : "";
+    const daText = typeof devilsAdvocate === "string" ? devilsAdvocate : "";
+
+    // Auto-populate defaults from analysis text
+    const defaultStrengths = extractSnippet(stratText, ["strength", "strong", "advantage", "favorable", "compelling"]);
+    const defaultWeaknesses = extractSnippet(daText, ["vulnerab", "weakness", "weak point", "risk", "concern", "flaw"]);
+    const defaultTheirStrengths = extractSnippet(daText, ["prosecution", "opponent", "their strength", "opposing", "government"]);
+    const defaultTheirWeaknesses = extractSnippet(stratText, ["opponent weakness", "their weakness", "exploit", "undermine"]);
+
+    const [ourStrengths, setOurStrengths] = useState(defaultStrengths);
+    const [ourWeaknesses, setOurWeaknesses] = useState(defaultWeaknesses);
+    const [theirStrengths, setTheirStrengths] = useState(defaultTheirStrengths);
+    const [theirWeaknesses, setTheirWeaknesses] = useState(defaultTheirWeaknesses);
+
+    // Re-initialize when analysis data changes (e.g., after first load)
+    useEffect(() => {
+        setOurStrengths(defaultStrengths);
+        setOurWeaknesses(defaultWeaknesses);
+        setTheirStrengths(defaultTheirStrengths);
+        setTheirWeaknesses(defaultTheirWeaknesses);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [stratText, daText]);
+
+    const quadrants = [
+        { label: "Our Strengths", color: "border-emerald-500", value: ourStrengths, onChange: setOurStrengths },
+        { label: "Our Weaknesses", color: "border-red-500", value: ourWeaknesses, onChange: setOurWeaknesses },
+        { label: "Their Strengths", color: "border-amber-500", value: theirStrengths, onChange: setTheirStrengths },
+        { label: "Their Weaknesses", color: "border-blue-500", value: theirWeaknesses, onChange: setTheirWeaknesses },
+    ] as const;
+
+    return (
+        <Card className="mb-6">
+            <CardHeader>
+                <CardTitle className="text-base">Strength / Weakness Matrix</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                    {quadrants.map((q) => (
+                        <div key={q.label} className={`border-l-4 ${q.color} pl-3`}>
+                            <h4 className="text-sm font-semibold mb-1.5">{q.label}</h4>
+                            <textarea
+                                className="w-full min-h-[100px] px-3 py-2 rounded-md border bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                                value={q.value}
+                                onChange={(e) => q.onChange(e.target.value)}
+                                placeholder={`Enter ${q.label.toLowerCase()}...`}
+                            />
+                        </div>
+                    ))}
+                </div>
+            </CardContent>
+        </Card>
+    );
+}
+
 // ---- Main Page ----------------------------------------------------------
 
 export default function StrategyPage() {
@@ -182,6 +264,12 @@ export default function StrategyPage() {
 
             {/* ---- Strategy Notes Tab ---- */}
             <TabsContent value="strategy">
+                {(strategyNotes || devilsAdvocate) && (
+                    <StrengthWeaknessMatrix
+                        strategyNotes={typeof strategyNotes === "string" ? strategyNotes : null}
+                        devilsAdvocate={typeof devilsAdvocate === "string" ? devilsAdvocate : null}
+                    />
+                )}
                 <ResultSection
                     title="Strategy Notes"
                     icon="🎯"

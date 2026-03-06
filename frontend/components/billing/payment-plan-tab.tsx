@@ -451,6 +451,20 @@ function PlanCard({
                         <Badge variant={statusVariant} className="text-[10px]">
                             {statusLabel}
                         </Badge>
+                        {/* Plan Health Badge */}
+                        {(() => {
+                            const health = plan.health;
+                            if (!health) return null;
+                            const healthConfig: Record<string, { label: string; color: string }> = {
+                                on_track: { label: "On Track", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" },
+                                behind: { label: "Behind", color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" },
+                                at_risk: { label: "At Risk", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
+                                ahead: { label: "Ahead", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" },
+                                completed: { label: "Completed", color: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400" },
+                            };
+                            const cfg = healthConfig[health] || healthConfig.on_track;
+                            return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>;
+                        })()}
                     </div>
                 </div>
                 {/* Mini progress bar */}

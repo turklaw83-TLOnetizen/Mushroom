@@ -26,6 +26,7 @@ class FileInfo(BaseModel):
     filename: str
     size: int = 0
     tags: List[str] = []
+    pinned: bool = False
 
 
 class UploadResult(BaseModel):
@@ -45,6 +46,7 @@ def list_files(case_id: str, user: dict = Depends(get_current_user)):
 
     file_paths = cm.get_case_files(case_id)
     tags = cm.storage.get_file_tags(case_id)
+    pinned_files = cm.get_pinned_files(case_id)
 
     files = []
     for fp in file_paths:
@@ -57,7 +59,10 @@ def list_files(case_id: str, user: dict = Depends(get_current_user)):
             filename=basename,
             size=size,
             tags=tags.get(basename, []),
+            pinned=basename in pinned_files,
         ))
+    # Sort pinned files to the top
+    files.sort(key=lambda f: (not f.pinned, f.filename))
     return files
 
 
@@ -141,3 +146,33 @@ def update_file_tags(
     all_tags[filename] = tags
     cm.storage.save_file_tags(case_id, all_tags)
     return {"status": "updated", "filename": filename, "tags": tags}
+
+
+@router.post("/{filename}/pin")
+def pin_file(
+    case_id: str,
+    filename: str,
+    user: dict = Depends(require_role("admin", "attorney", "paralegal")),
+):
+    """Pin a file to the top of the file list."""
+    cm = get_case_manager()
+    meta = cm.get_case_metadata(case_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Case not found")
+    cm.pin_file(case_id, filename)
+    return {"status": "pinned", "filename": filename}
+
+
+@router.delete("/{filename}/pin")
+def unpin_file(
+    case_id: str,
+    filename: str,
+    user: dict = Depends(require_role("admin", "attorney", "paralegal")),
+):
+    """Unpin a file."""
+    cm = get_case_manager()
+    meta = cm.get_case_metadata(case_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Case not found")
+    cm.unpin_file(case_id, filename)
+    return {"status": "unpinned", "filename": filename}

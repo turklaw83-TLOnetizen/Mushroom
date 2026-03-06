@@ -33,6 +33,8 @@ interface DataPageProps<T> {
     onCreateClick?: () => void;
     /** Extra actions in the header */
     headerActions?: ReactNode;
+    /** Content rendered before the item list (e.g., overlay views) */
+    beforeList?: ReactNode;
     /** Content rendered after the list (dialogs, etc.) */
     children?: ReactNode;
     /** Items per page (0 = no pagination) */
@@ -50,6 +52,7 @@ export function DataPage<T>({
     createLabel = "New",
     onCreateClick,
     headerActions,
+    beforeList,
     children,
     pageSize = DEFAULT_PAGE_SIZE,
 }: DataPageProps<T>) {
@@ -113,6 +116,9 @@ export function DataPage<T>({
                     )}
                 </div>
             )}
+
+            {/* Before-list content (overlays, etc.) */}
+            {beforeList}
 
             {/* Content */}
             {isLoading ? (

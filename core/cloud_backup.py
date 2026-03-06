@@ -22,6 +22,38 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+_BACKUP_STATUS_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    os.pardir, "data", "backup_status.json",
+)
+
+
+def _record_backup_status(target: str, backup_type: str, case_id: str = ""):
+    """Record the last successful backup timestamp."""
+    try:
+        os.makedirs(os.path.dirname(_BACKUP_STATUS_FILE), exist_ok=True)
+        status = {
+            "last_backup_at": datetime.now().isoformat(),
+            "target": target,
+            "type": backup_type,
+            "case_id": case_id,
+        }
+        with open(_BACKUP_STATUS_FILE, "w", encoding="utf-8") as f:
+            json.dump(status, f, indent=2)
+    except Exception:
+        logger.warning("Failed to record backup status")
+
+
+def get_backup_status() -> Dict:
+    """Return the last backup status."""
+    if os.path.exists(_BACKUP_STATUS_FILE):
+        try:
+            with open(_BACKUP_STATUS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return {"last_backup_at": None, "target": None, "type": None}
+
 
 # ── Dropbox Sync Backup ──────────────────────────────────────────────
 # Uses local Dropbox folder. Dropbox desktop app handles cloud upload.
@@ -100,6 +132,7 @@ class DropboxSyncBackup:
             # Sync case directory
             _sync_directory(case_dir, dest)
             logger.info("Backed up case %s to Dropbox: %s", case_id, dest)
+            _record_backup_status("dropbox", "case", case_id)
             return str(dest)
         except Exception as e:
             logger.error("Failed to backup case %s to Dropbox: %s", case_id, e)
@@ -159,6 +192,7 @@ class DropboxSyncBackup:
             _sync_directory(data_path, latest_dir,
                            exclude={".pyc", "__pycache__", ".DS_Store"})
 
+            _record_backup_status("dropbox", "full")
             return str(archive_path)
         except Exception as e:
             logger.error("Full backup failed: %s", e)
@@ -322,7 +356,10 @@ class B2Backup:
             B2 file ID, or None on failure.
         """
         name = Path(archive_path).name
-        return self.upload_file(archive_path, f"archives/{name}")
+        result = self.upload_file(archive_path, f"archives/{name}")
+        if result:
+            _record_backup_status("b2", "case")
+        return result
 
     def backup_full(self, data_dir: str) -> Optional[str]:
         """Create and upload a full data backup to B2.
@@ -342,7 +379,10 @@ class B2Backup:
         try:
             with tarfile.open(tmp_path, "w:gz") as tar:
                 tar.add(data_dir, arcname="data")
-            return self.upload_file(tmp_path, remote_name)
+            result = self.upload_file(tmp_path, remote_name)
+            if result:
+                _record_backup_status("b2", "full")
+            return result
         finally:
             try:
                 os.unlink(tmp_path)

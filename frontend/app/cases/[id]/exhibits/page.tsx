@@ -41,6 +41,31 @@ interface BatesResponse {
     items: BatesItem[];
 }
 
+/** Return a file-type icon based on file extension. */
+function getFileIcon(fileKey: string): string {
+    const ext = fileKey.split(".").pop()?.toLowerCase() ?? "";
+    switch (ext) {
+        case "pdf":
+            return "\uD83D\uDCD5"; // red book
+        case "doc":
+        case "docx":
+            return "\uD83D\uDCD8"; // blue book
+        case "jpg":
+        case "jpeg":
+        case "png":
+        case "gif":
+        case "webp":
+            return "\uD83D\uDDBC\uFE0F"; // framed picture
+        case "mp4":
+        case "mov":
+        case "avi":
+        case "mkv":
+            return "\uD83C\uDFAC"; // clapper board
+        default:
+            return "\uD83D\uDCC4"; // page facing up
+    }
+}
+
 export default function ExhibitsPage() {
     const params = useParams();
     const caseId = params.id as string;
@@ -216,6 +241,7 @@ export default function ExhibitsPage() {
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <div className="flex items-center gap-2">
+                                                    <span className="text-2xl mr-2" aria-hidden="true">{getFileIcon(exhibit.file_key)}</span>
                                                     <Badge variant="outline" className="text-xs font-mono">
                                                         {exhibit.label}
                                                     </Badge>
@@ -308,6 +334,7 @@ export default function ExhibitsPage() {
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <div className="flex items-center gap-2">
+                                                    <span className="text-2xl mr-2" aria-hidden="true">{getFileIcon(bates.file_key)}</span>
                                                     <Badge variant="outline" className="text-xs font-mono">
                                                         {bates.range || `${bates.prefix}${bates.start_number}-${bates.end_number}`}
                                                     </Badge>
