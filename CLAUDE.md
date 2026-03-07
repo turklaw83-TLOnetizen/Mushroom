@@ -32,6 +32,21 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 - Node counts by prep type: trial=14, prelim=12, motion=7
 - **Per-witness LLM calls**: Cross-exam (State+Swing witnesses) and direct-exam (Defense+Swing) use one call per witness with max_output_tokens=16384
 
+## AI War Game (core/war_game.py)
+- **5-round adversarial case simulation**: theory attack → evidence challenge → witness assault → element gaps → jury verdict
+- **Cumulative effects**: Each round's outcomes carry forward (excluded evidence affects witness round, etc.)
+- **3 difficulty levels**: standard, aggressive, ruthless — each with distinct LLM persona
+- **Jury simulation**: 5 jurors with distinct personas deliberate using ALL round results
+- **Battle report**: Overall score, ranked vulnerabilities (critical→low) with exploit scenarios + mitigations, contingency playbook ("If they argue X → respond with Y"), juror breakdown
+- **Session persistence**: `data/cases/{case_id}/war_game_sessions/{prep_id}/{session_id}.json` (per-file, not array)
+- **REST endpoints** (`api/routers/war_game.py`): 7 routes — session CRUD + round attack/respond + finalize
+- **Frontend**: `frontend/app/cases/[id]/war-game/page.tsx` — 3 views (dashboard, active session, battle report)
+
+## Argument Forge (core/argument_forge.py)
+- **Interactive argument builder**: Multi-step LLM-powered argument development with session persistence
+- **REST endpoints** (`api/routers/argument_forge.py`): Session CRUD + argument generation
+- **Frontend**: `frontend/components/argument-forge.tsx` — embedded component for case pages
+
 ## Background Workers (Daemon Threads)
 - **`core/bg_analysis.py`** — Background analysis runner. Streams tokens to `progress.json`. Supports `active_modules` parameter for selective re-analysis. AI stream of consciousness displayed in UI. Saves `_last_per_node_times` for ETA estimates. Witness fingerprint caching for exam nodes.
 - **`core/ingestion_worker.py`** — Background document ingestion. Uses `process_file_with_cache()` for OCR-cache-aware processing. 30-min per-file timeout. Heartbeat thread every 15s. Stale detection (auto-resets after 5 min with no heartbeat).
@@ -144,6 +159,14 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 - **delete_major_draft**: Fixed — uses storage API instead of raw `os.remove()`
 - **encrypted_backend.py**: Magic bytes `b"TLO_ALLRISE_ENCRYPTION_VERIFIED"` retained for backward compat — changing would break existing encrypted data
 
+## Deleted Files (Dead Code Removed)
+- `api/env.py` — unused Settings validator (0 imports)
+- `api/pagination.py` — unused pagination helper (0 imports)
+- `api/response.py` — unused envelope() function (0 imports)
+- `api/routers/ai_features.py` — ghost feature router (endpoints never connected to real backend)
+- `core/deadline_chains.py` — orphaned LangChain deadline system (1,031 lines, 0 imports)
+- `core/morning_brief.py` — orphaned morning brief generator (replaced by api/routers/morning_brief.py rewrite)
+
 ## Branding Note
 Source files still reference "AllRise Beta" in many places. These should be updated to "Project Mushroom Cloud" / "mushroom-cloud" as the project evolves. The `core/storage/encrypted_backend.py` magic bytes must NOT be changed (would break encryption verification).
 
@@ -166,6 +189,19 @@ Source files still reference "AllRise Beta" in many places. These should be upda
 - `components/theme-aware-clerk.tsx` — Reads theme from Zustand, passes to ClerkProvider. Uses stub key `pk_test_YnVpbGQuY2xlcmsuYWNjb3VudHMuZGV2JA` for build-time prerendering when no real key available.
 - `lib/api-client.ts` — Typed fetch wrapper with Clerk auth, retry, offline detection. On 401, redirects to `/sign-in` unless already on an auth page.
 - `next.config.ts` — CSP headers, `output: "standalone"`, `reactStrictMode: false`.
+
+### Typed CRUD Infrastructure
+- **`lib/api-routes.ts`** (~490 lines) — Centralized typed endpoint map. All API paths in one place, no magic strings. Sections: cases, witnesses, evidence, billing, calendar, crm, esign, discovery, comms, compliance, tasks, search, backup, portal, morningBrief, quality, warGame, mockExam, argumentForge.
+- **`lib/query-keys.ts`** (~260 lines) — Query key factory using `as const` readonly tuples. Consistent React Query cache keys across all pages. **Note**: Use spread `[...queryKeys.x.y()]` when passing to `invalidateQueries` (readonly→mutable).
+- **`lib/constants.ts`** (~270 lines) — 15 status-color maps (ESIGN, DISCOVERY, COMM, INVOICE, PLAN_HEALTH, PRIORITY, TASK, SEVERITY, WITNESS_TYPE, FEED_TX, PAYMENT, STRIPE, GENERIC, WAR_GAME_DIFFICULTY, VERDICT) + `getStatusColor(status, domain)` cascading helper + 5 formatters (`formatDate`, `formatRelativeTime`, `formatBytes`, `formatCurrency`, `formatLabel`).
+- **`hooks/use-crud.ts`** (~190 lines) — Composable CRUD hook wrapping `useQuery` + `useMutationWithToast` + `useAuth`. Returns `{ items, isLoading, error, create, update, remove }`.
+- **`components/shared/status-badge.tsx`** — Universal `<StatusBadge status="pending" domain="esign" />` with domain-aware color mapping.
+- **`components/shared/data-table.tsx`** (~340 lines) — Sortable, filterable, paginated table with column definitions.
+- **`components/shared/error-boundary.tsx`** — React class error boundary with retry/reload, wired into `app/layout.tsx`.
+
+### Frontend Pages (47 routes)
+- 26 orphaned API endpoint frontends built: billing CRUD, compliance workflows, document versioning/compare, timeline visualization, transcription, research, strategy, conflicts, search, tasks, payments, admin analytics/batch/gdpr, quality dashboard, analysis diff, argument forge
+- 11 pages migrated from inline code to shared infrastructure (StatusBadge, constants, api-routes, query-keys)
 
 ### CSS/Theming
 - `globals.css` — Brand colors use indigo oklch(0.55 0.23 264). Custom variables: `--brand-indigo`, `--brand-violet`, `--brand-lavender`.
@@ -201,19 +237,16 @@ cd /root/project-mushroom-cloud && git pull && docker compose -f docker-compose.
 ### Critical: CSP Must Include Production Clerk Domain
 The CSP in `frontend/next.config.ts` MUST include `*.turkclaw.net` in `script-src`, `connect-src`, and `frame-src`. Without this, Clerk's JS (loaded from `clerk.turkclaw.net`) is blocked by the browser and the sign-in page renders as an empty div.
 
-### Current VPS State (as of 2026-03-03)
-- VPS is running OLD code — CSP does NOT yet include `*.turkclaw.net`
-- The latest commit `0afa02c` on GitHub master has the fix but needs to be deployed
-- The VPS `.env` should have: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...`, `CLERK_SECRET_KEY=sk_live_...`, `DB_PASSWORD=<set>`
-- DB_PASSWORD was previously unset (warning in docker logs) — may need to add `DB_PASSWORD=mcloud-db-2026-Kx9m` to `/root/project-mushroom-cloud/.env`
+### Current VPS State (as of 2026-03-06)
+- VPS deployed with commit `40f3029` — includes War Game, typed CRUD infrastructure, 26 new frontends
+- All 4 containers running: db (healthy), api, frontend, nginx
+- CSP fix deployed — `*.turkclaw.net` in script-src/connect-src/frame-src
+- Sign-in redirect loop fixes deployed (CSP, API client 401 guard, fallbackRedirectUrl)
+- VPS `.env` should have: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...`, `CLERK_SECRET_KEY=sk_live_...`, `DB_PASSWORD=mcloud-db-2026-Kx9m`
 
-### Sign-In Redirect Loop — Root Cause & Fix History
-The sign-in page was caught in an infinite redirect loop on production. Multiple contributing factors:
+### Sign-In Redirect Loop — Root Cause & Fix History (Resolved)
+The sign-in page was caught in an infinite redirect loop on production. All fixes deployed as of 2026-03-06:
 
-1. **CSP blocking Clerk JS (THE MAIN CAUSE)**: Production Clerk loads from `clerk.turkclaw.net` but CSP only allowed `*.clerk.accounts.dev`. Browser blocked the script → SignIn component rendered empty → auth never completed. **Fix**: Added `*.turkclaw.net` to CSP script-src/connect-src/frame-src.
-
-2. **API client 401 loop**: `lib/api-client.ts` did `window.location.href = "/sign-in"` on any 401, even when already on `/sign-in`. **Fix**: Added check to skip redirect if `window.location.pathname` starts with `/sign-in` or `/sign-up`.
-
-3. **Missing fallbackRedirectUrl**: Clerk's `<SignIn>` component had no explicit redirect target after sign-in. **Fix**: Added `fallbackRedirectUrl="/"`.
-
-All fixes are committed and pushed to GitHub master. **They just need to be deployed to the VPS.**
+1. **CSP blocking Clerk JS (THE MAIN CAUSE)**: Production Clerk loads from `clerk.turkclaw.net` but CSP only allowed `*.clerk.accounts.dev`. **Fix**: Added `*.turkclaw.net` to CSP.
+2. **API client 401 loop**: `lib/api-client.ts` redirected to `/sign-in` even when already there. **Fix**: Skip redirect if already on auth page.
+3. **Missing fallbackRedirectUrl**: Clerk `<SignIn>` had no redirect target. **Fix**: Added `fallbackRedirectUrl="/"`.
