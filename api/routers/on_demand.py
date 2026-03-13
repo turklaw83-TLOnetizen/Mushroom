@@ -55,6 +55,15 @@ class OpponentPlaybookRequest(BaseModel):
     pass  # No params needed — uses full state
 
 
+class LexisQueryRequest(BaseModel):
+    research_focus: str = ""
+
+
+class LexisAnalysisRequest(BaseModel):
+    pasted_text: str = Field(..., min_length=10, max_length=100000)
+    query_context: str = ""
+
+
 # ---- Helper: load state or 404 ------------------------------------------
 
 def _load_state_or_404(case_id: str, prep_id: str) -> dict:
@@ -224,6 +233,64 @@ async def gen_cheat_sheet(
         raise
     except Exception as e:
         logger.exception("Cheat sheet generation failed")
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+
+# ---- Lexis+ Query Generation ---------------------------------------------
+
+@router.post("/lexis-queries")
+async def gen_lexis_queries(
+    case_id: str,
+    prep_id: str,
+    body: LexisQueryRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Generate optimized Lexis+/Westlaw Boolean search queries."""
+    try:
+        state = _load_state_or_404(case_id, prep_id)
+
+        from core.nodes.research import generate_lexis_queries
+        result = await asyncio.to_thread(
+            generate_lexis_queries, state, body.research_focus,
+        )
+
+        queries = result.get("lexis_queries", [])
+        _save_result(case_id, prep_id, {"lexis_queries": queries})
+
+        return {"status": "success", "result": {"lexis_queries": queries}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Lexis query generation failed")
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+
+# ---- Lexis+ Results Analysis ---------------------------------------------
+
+@router.post("/lexis-analysis")
+async def gen_lexis_analysis(
+    case_id: str,
+    prep_id: str,
+    body: LexisAnalysisRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Analyze pasted legal research results from Lexis+/Westlaw."""
+    try:
+        state = _load_state_or_404(case_id, prep_id)
+
+        from core.nodes.research import analyze_lexis_results
+        result = await asyncio.to_thread(
+            analyze_lexis_results, state, body.pasted_text, body.query_context,
+        )
+
+        analysis = result.get("lexis_analysis", {})
+        _save_result(case_id, prep_id, {"lexis_analysis": analysis})
+
+        return {"status": "success", "result": {"lexis_analysis": analysis}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Lexis analysis failed")
         raise HTTPException(status_code=500, detail="Generation failed")
 
 

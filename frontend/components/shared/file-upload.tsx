@@ -196,7 +196,7 @@ export function FileUpload({
 
         try {
             const response = await fetch(
-                `${API_BASE}/api/cases/${caseId}/files/upload`,
+                `${API_BASE}/api/v1/cases/${caseId}/files`,
                 {
                     method: "POST",
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -287,9 +287,9 @@ export function FileUpload({
                     }}
                     className="hidden"
                 />
-                <div className="text-3xl mb-2">📁</div>
+                <div className="text-3xl mb-2">📄</div>
                 <p className="text-sm font-medium">
-                    {dragOver ? "Drop files or folders here" : "Drag & drop files or folders, or click to browse"}
+                    {dragOver ? "Drop files here" : "Click to select files, or drag & drop"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                     {formatSizeLimit(maxSizeMB)} max per file &middot; No file count limit

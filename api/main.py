@@ -96,7 +96,7 @@ def root():
         "status": "running",
         "docs": "/docs",
         "health": "/api/v1/health",
-        "routers": 32,
+        "routers": 34,
     }
 # ---- Middleware (order matters: last added = outermost) -------------------
 
@@ -190,6 +190,9 @@ from api.routers.discovery import dashboard_router as discovery_dashboard_router
 from api.routers.argument_forge import router as argument_forge_router
 from api.routers.ethical_compliance import router as ethical_compliance_router
 from api.routers.war_game import router as war_game_router
+from api.routers.redaction import router as redaction_router
+from api.routers.contradiction_matrix import router as contradiction_matrix_router
+from api.routers.predictive_score import router as predictive_score_router
 
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(cases_router, prefix="/api/v1")
@@ -243,6 +246,9 @@ app.include_router(discovery_dashboard_router, prefix="/api/v1")
 app.include_router(argument_forge_router, prefix="/api/v1")
 app.include_router(ethical_compliance_router, prefix="/api/v1")
 app.include_router(war_game_router, prefix="/api/v1")
+app.include_router(redaction_router, prefix="/api/v1")
+app.include_router(contradiction_matrix_router, prefix="/api/v1")
+app.include_router(predictive_score_router, prefix="/api/v1")
 
 
 # ---- Health Check (Fix #12: actually pings DB) ---------------------------

@@ -146,6 +146,56 @@ export const SEVERITY_BADGE_COLORS: Record<string, string> = {
     low: "bg-blue-500/15 text-blue-400 border-blue-500/30",
 };
 
+/** Predictive case score ranges */
+export const SCORE_RANGE_COLORS: Record<string, string> = {
+    excellent: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+    good: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    fair: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    poor: "bg-red-500/15 text-red-400 border-red-500/30",
+};
+
+/** Portal invoice statuses */
+export const PORTAL_INVOICE_COLORS: Record<string, string> = {
+    paid: "bg-green-500/15 text-green-400 border-green-500/30",
+    unpaid: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    sent: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    overdue: "bg-red-500/15 text-red-400 border-red-500/30",
+    partial: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    draft: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+};
+
+/** Contradiction severity */
+export const CONTRADICTION_SEVERITY_COLORS: Record<string, string> = {
+    critical: "bg-red-500/15 text-red-400 border-red-500/30",
+    significant: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+    minor: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+};
+
+/** Contradiction categories */
+export const CONTRADICTION_CATEGORY_COLORS: Record<string, string> = {
+    factual: "bg-red-500/15 text-red-400 border-red-500/30",
+    temporal: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    identity: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+    quantity: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    sequence: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
+    omission: "bg-gray-500/15 text-gray-400 border-gray-500/30",
+};
+
+/** Detection confidence levels */
+export const CONFIDENCE_COLORS: Record<string, string> = {
+    high: "bg-green-500/15 text-green-400 border-green-500/30",
+    medium: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    low: "bg-red-500/15 text-red-400 border-red-500/30",
+};
+
+/** Document relationship types */
+export const RELATIONSHIP_COLORS: Record<string, string> = {
+    contradicts: "bg-red-500/15 text-red-400 border-red-500/30",
+    supports: "bg-green-500/15 text-green-400 border-green-500/30",
+    supplements: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    mixed: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+};
+
 /** Generic fallback — maps common status words to badge classes */
 export const GENERIC_STATUS_COLORS: Record<string, string> = {
     // Positive

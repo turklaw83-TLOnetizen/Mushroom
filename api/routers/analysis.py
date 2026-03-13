@@ -3,19 +3,27 @@
 #
 # Analysis/ingestion start endpoints use async because they call
 # asyncio.to_thread for long-running operations. Status endpoints use sync.
+#
+# WORKER_MODE env var controls how background work is dispatched:
+#   "thread" (default) — daemon threads (local dev / single-process API)
+#   "queue"            — file-based queue for the worker container (Docker prod)
 
 import asyncio
 import logging
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.auth import get_current_user, require_role
-from api.deps import get_case_manager, get_config
+from api.deps import get_case_manager, get_config, get_data_dir
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/analysis", tags=["Analysis"])
+
+# Worker dispatch mode
+WORKER_MODE = os.environ.get("WORKER_MODE", "thread")
 
 
 # ---- Schemas -------------------------------------------------------------
@@ -53,7 +61,7 @@ async def start_analysis(
     provider = config.get("llm", {}).get("default_provider", "anthropic")
 
     try:
-        from core.bg_analysis import start_background_analysis, is_analysis_running
+        from core.bg_analysis import is_analysis_running
 
         if is_analysis_running(case_id, body.prep_id):
             raise HTTPException(
@@ -61,22 +69,44 @@ async def start_analysis(
                 detail="Analysis is already running for this preparation",
             )
 
-        # Load prep state and metadata for the core function
-        state = cm.load_prep_state(case_id, body.prep_id) or {}
         prep = cm.get_preparation(case_id, body.prep_id) or {}
         prep_type = prep.get("type", "trial")
 
-        await asyncio.to_thread(
-            start_background_analysis,
-            case_id,
-            body.prep_id,
-            state,
-            set(body.active_modules) if body.active_modules else None,
-            prep_type,
-            provider,
-        )
+        if WORKER_MODE == "queue":
+            # Production: write a request file for the worker container
+            from core.worker_queue import queue_worker_request
+            request_id = queue_worker_request(
+                get_data_dir(),
+                "analysis",
+                case_id=case_id,
+                prep_id=body.prep_id,
+                active_modules=list(body.active_modules) if body.active_modules else None,
+                prep_type=prep_type,
+                model_provider=provider,
+            )
+            return {
+                "status": "queued",
+                "request_id": request_id,
+                "case_id": case_id,
+                "prep_id": body.prep_id,
+            }
+        else:
+            # Development: daemon thread (existing behavior)
+            from core.bg_analysis import start_background_analysis
 
-        return {"status": "started", "case_id": case_id, "prep_id": body.prep_id}
+            state = cm.load_prep_state(case_id, body.prep_id) or {}
+
+            await asyncio.to_thread(
+                start_background_analysis,
+                case_id,
+                body.prep_id,
+                state,
+                set(body.active_modules) if body.active_modules else None,
+                prep_type,
+                provider,
+            )
+
+            return {"status": "started", "case_id": case_id, "prep_id": body.prep_id}
     except ImportError as e:
         raise HTTPException(status_code=500, detail=f"Analysis module not available: {e}")
     except HTTPException:
@@ -127,22 +157,39 @@ async def start_ingestion(
     user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Start background document ingestion."""
-    cm = get_case_manager()
     config = get_config()
     provider = config.get("llm", {}).get("default_provider", "anthropic")
 
     try:
-        from core.ingestion_worker import start_background_ingestion
+        if WORKER_MODE == "queue":
+            # Production: write a request file for the worker container
+            from core.worker_queue import queue_worker_request
+            request_id = queue_worker_request(
+                get_data_dir(),
+                "ingestion",
+                case_id=case_id,
+                force_ocr=body.force_ocr,
+                model_provider=provider,
+            )
+            return {
+                "status": "queued",
+                "request_id": request_id,
+                "case_id": case_id,
+            }
+        else:
+            # Development: daemon thread (existing behavior)
+            cm = get_case_manager()
+            from core.ingestion_worker import start_background_ingestion
 
-        await asyncio.to_thread(
-            start_background_ingestion,
-            case_id,
-            cm,
-            provider,
-            force_ocr=body.force_ocr,
-        )
+            await asyncio.to_thread(
+                start_background_ingestion,
+                case_id,
+                cm,
+                provider,
+                force_ocr=body.force_ocr,
+            )
 
-        return {"status": "started", "case_id": case_id}
+            return {"status": "started", "case_id": case_id}
     except Exception as e:
         logger.exception("Failed to start ingestion")
         raise HTTPException(status_code=500, detail="Internal server error")

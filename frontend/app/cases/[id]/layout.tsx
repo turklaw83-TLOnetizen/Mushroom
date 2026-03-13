@@ -24,6 +24,8 @@ const tabs = [
     { label: "Witnesses", href: "/witnesses" },
     { label: "Mock Exam", href: "/mock-exam" },
     { label: "War Game", href: "/war-game" },
+    { label: "Contradictions", href: "/contradictions" },
+    { label: "Redaction", href: "/redaction" },
     { label: "Evidence", href: "/evidence" },
     { label: "Discovery", href: "/discovery" },
     { label: "Strategy", href: "/strategy" },
@@ -38,6 +40,7 @@ const tabs = [
     { label: "Transcription", href: "/transcription" },
     { label: "Exports", href: "/exports" },
     { label: "Activity", href: "/activity" },
+    { label: "Case Score", href: "/predictive-score" },
 ];
 
 // Prep creation schema
