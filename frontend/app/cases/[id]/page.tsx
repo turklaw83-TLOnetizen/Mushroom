@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@clerk/nextjs";
 import { useCase } from "@/hooks/use-cases";
 import { usePrep } from "@/hooks/use-prep";
 import { api } from "@/lib/api-client";
@@ -20,47 +21,49 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+type TokenFn = () => Promise<string | null>;
+
 // ---- Data Hooks ---------------------------------------------------------
 
-function useCaseScore(caseId: string, prepId: string | undefined) {
+function useCaseScore(caseId: string, prepId: string | undefined, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.predictiveScore.score(caseId, prepId || "")],
-        queryFn: () => api.get(routes.predictiveScore.score(caseId, prepId!)),
+        queryFn: () => api.get(routes.predictiveScore.score(caseId, prepId!), { getToken }),
         enabled: !!prepId,
         retry: false,
     });
 }
 
-function useCaseDeadlines(caseId: string) {
+function useCaseDeadlines(caseId: string, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.calendar.deadlines(caseId)],
-        queryFn: () => api.get(routes.calendar.deadlines(caseId)),
+        queryFn: () => api.get(routes.calendar.deadlines(caseId), { getToken }),
         retry: false,
     });
 }
 
-function useCaseWitnesses(caseId: string, prepId: string | undefined) {
+function useCaseWitnesses(caseId: string, prepId: string | undefined, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.witnesses.list(caseId, prepId || "")],
-        queryFn: () => api.get(routes.witnesses.list(caseId, prepId!)),
+        queryFn: () => api.get(routes.witnesses.list(caseId, prepId!), { getToken }),
         enabled: !!prepId,
         retry: false,
     });
 }
 
-function useCaseEvidence(caseId: string, prepId: string | undefined) {
+function useCaseEvidence(caseId: string, prepId: string | undefined, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.evidence.list(caseId, prepId || "")],
-        queryFn: () => api.get(routes.evidence.list(caseId, prepId!)),
+        queryFn: () => api.get(routes.evidence.list(caseId, prepId!), { getToken }),
         enabled: !!prepId,
         retry: false,
     });
 }
 
-function useCaseActivity(caseId: string) {
+function useCaseActivity(caseId: string, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.activity.feed(caseId)],
-        queryFn: () => api.get(`${routes.activity.feed(caseId)}?limit=5`),
+        queryFn: () => api.get(`${routes.activity.feed(caseId)}?limit=5`, { getToken }),
         retry: false,
     });
 }
@@ -161,15 +164,16 @@ function QuickAction({
 export default function CaseOverviewPage() {
     const params = useParams();
     const caseId = params.id as string;
+    const { getToken } = useAuth();
     const { data: caseData, isLoading } = useCase(caseId);
     const { activePrep: prep } = usePrep();
     const prepId = prep?.id;
 
-    const { data: scoreData, isLoading: scoreLoading } = useCaseScore(caseId, prepId);
-    const { data: deadlines, isLoading: deadlinesLoading } = useCaseDeadlines(caseId);
-    const { data: witnesses, isLoading: witnessesLoading } = useCaseWitnesses(caseId, prepId);
-    const { data: evidence, isLoading: evidenceLoading } = useCaseEvidence(caseId, prepId);
-    const { data: activity, isLoading: activityLoading } = useCaseActivity(caseId);
+    const { data: scoreData, isLoading: scoreLoading } = useCaseScore(caseId, prepId, getToken);
+    const { data: deadlines, isLoading: deadlinesLoading } = useCaseDeadlines(caseId, getToken);
+    const { data: witnesses, isLoading: witnessesLoading } = useCaseWitnesses(caseId, prepId, getToken);
+    const { data: evidence, isLoading: evidenceLoading } = useCaseEvidence(caseId, prepId, getToken);
+    const { data: activity, isLoading: activityLoading } = useCaseActivity(caseId, getToken);
 
     const score = scoreData?.score;
 

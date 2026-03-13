@@ -5,6 +5,7 @@
 
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@clerk/nextjs";
 import { useCase } from "@/hooks/use-cases";
 import { usePrep } from "@/hooks/use-prep";
 import { api } from "@/lib/api-client";
@@ -20,48 +21,50 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-function usePredictiveScore(caseId: string, prepId: string | undefined) {
+type TokenFn = () => Promise<string | null>;
+
+function usePredictiveScore(caseId: string, prepId: string | undefined, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.predictiveScore.score(caseId, prepId || "")],
-        queryFn: () => api.get(routes.predictiveScore.score(caseId, prepId!)),
+        queryFn: () => api.get(routes.predictiveScore.score(caseId, prepId!), { getToken }),
         enabled: !!prepId,
     });
 }
 
-function useDeadlines(caseId: string) {
+function useDeadlines(caseId: string, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.calendar.deadlines(caseId)],
-        queryFn: () => api.get(routes.calendar.deadlines(caseId)),
+        queryFn: () => api.get(routes.calendar.deadlines(caseId), { getToken }),
     });
 }
 
-function useActivity(caseId: string) {
+function useActivity(caseId: string, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.activity.feed(caseId)],
-        queryFn: () => api.get(`${routes.activity.feed(caseId)}?limit=10`),
+        queryFn: () => api.get(`${routes.activity.feed(caseId)}?limit=10`, { getToken }),
     });
 }
 
-function useWitnesses(caseId: string, prepId: string | undefined) {
+function useWitnesses(caseId: string, prepId: string | undefined, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.witnesses.list(caseId, prepId || "")],
-        queryFn: () => api.get(routes.witnesses.list(caseId, prepId!)),
+        queryFn: () => api.get(routes.witnesses.list(caseId, prepId!), { getToken }),
         enabled: !!prepId,
     });
 }
 
-function useEvidence(caseId: string, prepId: string | undefined) {
+function useEvidence(caseId: string, prepId: string | undefined, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.evidence.list(caseId, prepId || "")],
-        queryFn: () => api.get(routes.evidence.list(caseId, prepId!)),
+        queryFn: () => api.get(routes.evidence.list(caseId, prepId!), { getToken }),
         enabled: !!prepId,
     });
 }
 
-function useWarGameSessions(caseId: string, prepId: string | undefined) {
+function useWarGameSessions(caseId: string, prepId: string | undefined, getToken: TokenFn) {
     return useQuery<any>({
         queryKey: [...queryKeys.warGame.sessions(caseId, prepId || "")],
-        queryFn: () => api.get(routes.warGame.sessions(caseId, prepId!)),
+        queryFn: () => api.get(routes.warGame.sessions(caseId, prepId!), { getToken }),
         enabled: !!prepId,
     });
 }
@@ -131,16 +134,17 @@ function LoadingSkeleton() {
 
 export default function CommandCenterPage() {
     const { id: caseId } = useParams<{ id: string }>();
+    const { getToken } = useAuth();
     const { data: caseData } = useCase(caseId);
     const { activePrep: prep } = usePrep();
     const prepId = prep?.id;
 
-    const { data: scoreData, isLoading: scoreLoading } = usePredictiveScore(caseId, prepId);
-    const { data: deadlines, isLoading: deadlinesLoading } = useDeadlines(caseId);
-    const { data: activity, isLoading: activityLoading } = useActivity(caseId);
-    const { data: witnesses, isLoading: witnessesLoading } = useWitnesses(caseId, prepId);
-    const { data: evidence, isLoading: evidenceLoading } = useEvidence(caseId, prepId);
-    const { data: warGames } = useWarGameSessions(caseId, prepId);
+    const { data: scoreData, isLoading: scoreLoading } = usePredictiveScore(caseId, prepId, getToken);
+    const { data: deadlines, isLoading: deadlinesLoading } = useDeadlines(caseId, getToken);
+    const { data: activity, isLoading: activityLoading } = useActivity(caseId, getToken);
+    const { data: witnesses, isLoading: witnessesLoading } = useWitnesses(caseId, prepId, getToken);
+    const { data: evidence, isLoading: evidenceLoading } = useEvidence(caseId, prepId, getToken);
+    const { data: warGames } = useWarGameSessions(caseId, prepId, getToken);
 
     const score = scoreData?.score;
     const dims = score?.dimensions || {};
