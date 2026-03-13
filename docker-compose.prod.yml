@@ -33,7 +33,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: "postgresql+asyncpg://mushroom:${DB_PASSWORD}@db:5432/mushroom_cloud?ssl=require"
+      DATABASE_URL: "postgresql+asyncpg://mushroom:${DB_PASSWORD}@db:5432/mushroom_cloud"
       JWT_SECRET: "${JWT_SECRET}"
       CLERK_SECRET_KEY: "${CLERK_SECRET_KEY}"
       CLERK_JWKS_URL: "${CLERK_JWKS_URL}"
