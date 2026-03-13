@@ -324,6 +324,16 @@ export const routes = {
       `/cases/${caseId}/on-demand/demand-letter`,
   },
 
+  // --- Research ---
+  research: {
+    lexisQueries: (caseId: string, prepId: string) =>
+      `/cases/${caseId}/preparations/${prepId}/generate/lexis-queries`,
+    lexisAnalysis: (caseId: string, prepId: string) =>
+      `/cases/${caseId}/preparations/${prepId}/generate/lexis-analysis`,
+    cheatSheet: (caseId: string, prepId: string) =>
+      `/cases/${caseId}/preparations/${prepId}/generate/cheat-sheet`,
+  },
+
   // --- Module Notes ---
   moduleNotes: {
     get: (caseId: string, module: string) =>
@@ -378,11 +388,32 @@ export const routes = {
     feed: (caseId: string) => `/cases/${caseId}/activity`,
   },
 
+  // --- Predictive Score ---
+  predictiveScore: {
+    score: (caseId: string, prepId: string) =>
+      `/cases/${caseId}/preparations/${prepId}/predictive-score`,
+    history: (caseId: string, prepId: string) =>
+      `/cases/${caseId}/preparations/${prepId}/predictive-score/history`,
+    compare: (caseId: string, prepId: string) =>
+      `/cases/${caseId}/preparations/${prepId}/predictive-score/compare`,
+  },
+
+  // --- Smart Intake ---
+  intake: {
+    start: "/crm/intake/start",
+    step: (sessionId: string) => `/crm/intake/${sessionId}/step`,
+    complete: (sessionId: string) => `/crm/intake/${sessionId}/complete`,
+  },
+
   // --- Portal ---
   portal: {
     cases: "/portal/cases",
     case: (caseId: string) => `/portal/cases/${caseId}`,
     clientStatus: (clientId: string) => `/portal/client/${clientId}/status`,
+    documents: (clientId: string) => `/portal/client/${clientId}/documents`,
+    invoices: (clientId: string) => `/portal/client/${clientId}/invoices`,
+    messages: (clientId: string) => `/portal/client/${clientId}/messages`,
+    deadlines: (clientId: string) => `/portal/client/${clientId}/deadlines`,
   },
 
   // --- Morning Brief ---
@@ -470,6 +501,22 @@ export const routes = {
     session: (caseId: string, sessionId: string) =>
       `/cases/${caseId}/mock-exam/sessions/${sessionId}`,
     start: (caseId: string) => `/cases/${caseId}/mock-exam/start`,
+  },
+
+  // --- Contradiction Matrix ---
+  contradictions: {
+    matrix: (caseId: string, prepId: string) =>
+      `/cases/${caseId}/preparations/${prepId}/contradiction-matrix`,
+  },
+
+  // --- Redaction ---
+  redaction: {
+    scan: (caseId: string) => `/cases/${caseId}/redaction/scan`,
+    reports: (caseId: string) => `/cases/${caseId}/redaction/reports`,
+    report: (caseId: string, reportId: string) =>
+      `/cases/${caseId}/redaction/reports/${reportId}`,
+    apply: (caseId: string) => `/cases/${caseId}/redaction/apply`,
+    categories: (caseId: string) => `/cases/${caseId}/redaction/categories`,
   },
 
   // --- War Game ---

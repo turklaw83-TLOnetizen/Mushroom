@@ -208,10 +208,28 @@ export const queryKeys = {
     feed: (caseId: string) => ["activity", caseId] as const,
   },
 
+  // --- Predictive Score ---
+  predictiveScore: {
+    score: (caseId: string, prepId: string) =>
+      ["predictive-score", caseId, prepId] as const,
+    history: (caseId: string, prepId: string) =>
+      ["predictive-score", "history", caseId, prepId] as const,
+  },
+
+  // --- Smart Intake ---
+  intake: {
+    session: (sessionId: string) =>
+      ["intake", sessionId] as const,
+  },
+
   // --- Portal ---
   portal: {
     cases: ["portal", "cases"] as const,
     status: (clientId: string) => ["portal", "status", clientId] as const,
+    documents: (clientId: string) => ["portal", "documents", clientId] as const,
+    invoices: (clientId: string) => ["portal", "invoices", clientId] as const,
+    messages: (clientId: string) => ["portal", "messages", clientId] as const,
+    deadlines: (clientId: string) => ["portal", "deadlines", clientId] as const,
   },
 
   // --- Morning Brief ---
@@ -248,6 +266,32 @@ export const queryKeys = {
   // --- Mock Exam ---
   mockExam: {
     sessions: (caseId: string) => ["mock-exam", caseId] as const,
+  },
+
+  // --- Research ---
+  research: {
+    lexisQueries: (caseId: string, prepId: string) =>
+      ["research", "lexis-queries", caseId, prepId] as const,
+    lexisAnalysis: (caseId: string, prepId: string) =>
+      ["research", "lexis-analysis", caseId, prepId] as const,
+    cheatSheet: (caseId: string, prepId: string) =>
+      ["research", "cheat-sheet", caseId, prepId] as const,
+  },
+
+  // --- Contradiction Matrix ---
+  contradictions: {
+    matrix: (caseId: string, prepId: string) =>
+      ["contradictions", "matrix", caseId, prepId] as const,
+  },
+
+  // --- Redaction ---
+  redaction: {
+    reports: (caseId: string) =>
+      ["redaction", "reports", caseId] as const,
+    report: (caseId: string, reportId: string) =>
+      ["redaction", "report", caseId, reportId] as const,
+    categories: (caseId: string) =>
+      ["redaction", "categories", caseId] as const,
   },
 
   // --- War Game ---

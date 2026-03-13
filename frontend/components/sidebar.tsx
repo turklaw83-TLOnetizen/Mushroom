@@ -146,6 +146,7 @@ export function Sidebar() {
                         <NavItem href="/tasks" label="Tasks" icon="📋" active={pathname === "/tasks"} collapsed={!sidebarOpen} />
                         <NavItem href="/calendar" label="Calendar" icon="📅" active={pathname === "/calendar"} collapsed={!sidebarOpen} />
                         <NavItem href="/crm" label="Clients" icon="👥" active={pathname === "/crm"} collapsed={!sidebarOpen} />
+                        <NavItem href="/intake" label="Intake" icon="📝" active={pathname === "/intake"} collapsed={!sidebarOpen} />
                         <NavItem href="/email" label="Email" icon="📧" active={pathname === "/email"} collapsed={!sidebarOpen} />
                         <NavItem href="/comms" label="Comms" icon="💬" active={pathname === "/comms"} collapsed={!sidebarOpen} />
                         <NavItem href="/payments" label="Payments" icon="💰" active={pathname === "/payments"} collapsed={!sidebarOpen} />

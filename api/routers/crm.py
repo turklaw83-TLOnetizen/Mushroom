@@ -361,3 +361,88 @@ def crm_stats(
     except Exception as e:
         logger.exception("Failed to get CRM stats")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ---- Smart Intake Wizard -------------------------------------------------
+
+
+class IntakeStartRequest(BaseModel):
+    template: str = Field(..., pattern="^(general|criminal|civil|family)$")
+    client_id: Optional[str] = None
+
+
+class IntakeStepRequest(BaseModel):
+    responses: dict = Field(default_factory=dict)
+
+
+class IntakeCompleteRequest(BaseModel):
+    create_case: bool = False
+
+
+@router.post("/intake/start")
+def start_intake(
+    body: IntakeStartRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Start a new smart intake wizard session.
+
+    Returns a session_id and the first step's fields.
+    """
+    try:
+        from core.crm import create_intake_session
+
+        result = create_intake_session(
+            template=body.template,
+            client_id=body.client_id or "",
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("Failed to start intake session")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/intake/{session_id}/step")
+def submit_intake_step(
+    session_id: str,
+    body: IntakeStepRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Submit responses for the current intake step and receive the next step.
+
+    Returns either the next step's fields or a completion summary.
+    """
+    try:
+        from core.crm import submit_intake_step as _submit
+
+        result = _submit(session_id, body.responses)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception:
+        logger.exception("Failed to process intake step")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/intake/{session_id}/complete")
+def complete_intake_session(
+    session_id: str,
+    body: IntakeCompleteRequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Finalize the intake session.
+
+    Saves all responses to the client record and optionally auto-creates
+    a case from the intake data.
+    """
+    try:
+        from core.crm import finalize_intake
+
+        result = finalize_intake(session_id, create_case=body.create_case)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception:
+        logger.exception("Failed to complete intake session")
+        raise HTTPException(status_code=500, detail="Internal server error")

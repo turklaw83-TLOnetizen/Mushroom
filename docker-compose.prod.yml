@@ -33,11 +33,27 @@ services:
       RATE_LIMIT_REQUESTS: "120"
       RATE_LIMIT_WINDOW_SECONDS: "60"
       MAX_UPLOAD_SIZE_BYTES: "21474836480" # 20GB
+      WORKER_MODE: "queue"  # Use file-based queue for worker container
     expose:
       - "8000"
     volumes:
       - appdata:/app/data
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATA_DIR: "/app/data"
+      WORKER_POLL_INTERVAL: "5"
+    volumes:
+      - appdata:/app/data
 
   frontend:
     build:

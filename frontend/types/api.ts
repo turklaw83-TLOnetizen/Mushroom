@@ -798,6 +798,122 @@ export interface SupervisionEntry {
     notes: string;
 }
 
+// ---- Legal Research ---------------------------------------------------------
+
+export interface LexisQuery {
+  search_string: string;
+  description: string;
+  filters: {
+    jurisdiction?: string;
+    date_range?: string;
+    court_level?: string;
+  };
+  case_relevance: string;
+}
+
+export interface LexisAnalysisCase {
+  citation: string;
+  court?: string;
+  year?: string;
+  holding: string;
+  relevant_facts: string;
+  favorability: "FAVORABLE" | "UNFAVORABLE" | "NEUTRAL";
+  strategic_use: string;
+  key_quotes: string[];
+  strength: "HIGH" | "MEDIUM" | "LOW";
+}
+
+export interface LexisAnalysisResult {
+  cases: LexisAnalysisCase[];
+  summary: string;
+  recommended_next_searches: string[];
+  _parse_error?: boolean;
+}
+
+// ---- Contradiction Matrix ---------------------------------------------------
+
+export interface ContradictionFinding {
+  id: number;
+  category: "factual" | "temporal" | "identity" | "quantity" | "sequence" | "omission";
+  doc_a_says: string;
+  doc_b_says: string;
+  severity: "critical" | "significant" | "minor";
+  impeachment_value: "high" | "medium" | "low";
+  explanation: string;
+  suggested_question: string;
+}
+
+export interface DocumentComparison {
+  doc_a: string;
+  doc_b: string;
+  relationship: "contradicts" | "supports" | "supplements" | "mixed";
+  contradictions: ContradictionFinding[];
+  timeline_discrepancies: { event: string; doc_a_time: string; doc_b_time: string; gap: string; significance: string }[];
+  omissions: { present_in: string; missing_from: string; detail: string; significance: string }[];
+  corroborations: { fact: string; significance: string }[];
+}
+
+export interface ContradictionMatrix {
+  generated_at: string;
+  document_count: number;
+  pairs_compared: number;
+  total_contradictions: number;
+  critical_findings: number;
+  matrix: DocumentComparison[];
+  by_severity: { critical: ContradictionFinding[]; significant: ContradictionFinding[]; minor: ContradictionFinding[] };
+  by_document: Record<string, { contradictions_found: number; most_contradicted_by: string }>;
+  by_entity: Record<string, { doc_a: string; doc_b: string; what_they_disagree_on: string }[]>;
+  executive_summary: string;
+  impeachment_priorities: { rank: number; target_document: string; against_document?: string; contradiction_id?: number; why: string }[];
+  investigation_leads: { lead: string; based_on: string; priority: string }[];
+}
+
+// ---- Redaction ---------------------------------------------------------------
+
+export interface RedactionFinding {
+  category: string;
+  text: string;
+  start: number;
+  end: number;
+  context: string;
+  confidence: "high" | "medium" | "low";
+  source: "regex" | "llm";
+}
+
+export interface RedactionReport {
+  id: string;
+  case_id?: string;
+  scan_type?: string;
+  scanned_at?: string;
+  saved_at?: string;
+  categories?: string[];
+  filename?: string;
+  files?: Record<string, {
+    findings_count: number;
+    summary: Record<string, number>;
+    findings?: RedactionFinding[];
+  }>;
+  per_file_summary?: Record<string, { findings_count: number; summary: Record<string, number> }>;
+  total_findings?: number;
+  total_redactions?: number;
+  summary?: Record<string, number>;
+  by_category?: Record<string, number>;
+  findings?: RedactionFinding[];
+  redaction_log?: {
+    document: string;
+    total_redactions: number;
+    entries: { id: number; category: string; basis: string; description: string }[];
+  };
+}
+
+export interface RedactionCategory {
+  key: string;
+  label: string;
+  has_pattern: boolean;
+  requires_llm: boolean;
+  default: boolean;
+}
+
 // ---- War Game ---------------------------------------------------------------
 
 export interface WarGameRound {
@@ -849,4 +965,116 @@ export interface WarGameSession {
   rounds: WarGameRound[];
   report: WarGameReport | null;
   current_round: number;
+}
+
+// ---- Predictive Case Score ----
+export interface PredictiveScoreDimension {
+  score: number;
+  grade: string;
+  signals: string[];
+  concerns: string[];
+}
+
+export interface PredictiveScore {
+  overall_score: number;
+  overall_grade: string;
+  overall_label: string;
+  dimensions: {
+    evidence_strength: PredictiveScoreDimension;
+    witness_reliability: PredictiveScoreDimension;
+    element_coverage: PredictiveScoreDimension;
+    legal_authority: PredictiveScoreDimension;
+    narrative_coherence: PredictiveScoreDimension;
+    adversarial_resilience: PredictiveScoreDimension;
+  };
+  top_strengths: { dimension: string; signal: string; impact: string }[];
+  top_vulnerabilities: { dimension: string; concern: string; suggested_action: string; impact: string }[];
+  trend: "improving" | "declining" | "stable" | null;
+  previous_score: number | null;
+  computed_at: string;
+}
+
+export interface ScoreHistoryEntry {
+  overall_score: number;
+  overall_grade: string;
+  overall_label: string;
+  dimension_scores: Record<string, number>;
+  computed_at: string;
+}
+
+// ---- Smart Intake Wizard ----
+export interface IntakeField {
+  name: string;
+  type: "text" | "textarea" | "select" | "date" | "email" | "tel";
+  label: string;
+  required: boolean;
+  options?: string[];
+  placeholder?: string;
+}
+
+export interface IntakeStep {
+  step: number;
+  title: string;
+  fields: IntakeField[];
+  complete?: boolean;
+  summary?: Record<string, unknown>;
+}
+
+export interface IntakeSession {
+  session_id: string;
+  template: string;
+  current_step: IntakeStep;
+}
+
+// ---- Client Portal (Extended) ----
+export interface PortalDocument {
+  filename: string;
+  tags: string[];
+  case_id: string;
+  case_name: string;
+  uploaded_at: string;
+  size_bytes: number;
+}
+
+export interface PortalInvoice {
+  id: string;
+  invoice_number: string;
+  case_id: string;
+  status: "draft" | "sent" | "paid" | "overdue" | "partial";
+  total: number;
+  amount_paid: number;
+  balance_due: number;
+  date_created: string;
+  due_date: string;
+}
+
+export interface PortalMessage {
+  id: string;
+  direction: "firm_to_client" | "client_to_firm";
+  subject: string;
+  body: string;
+  channel: string;
+  sent_at: string;
+  status: string;
+}
+
+export interface PortalDeadline {
+  id: string;
+  title: string;
+  event_type: string;
+  date: string;
+  time: string;
+  location: string;
+  case_id: string;
+  status: string;
+  days_until: number;
+}
+
+export interface PortalPaymentPlan {
+  id: string;
+  status: string;
+  total_amount: number;
+  total_paid: number;
+  remaining: number;
+  upcoming_payments: { due_date: string; amount: number; status: string }[];
 }
