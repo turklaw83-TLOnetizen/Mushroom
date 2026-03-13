@@ -91,7 +91,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: blob: https:",
-        "connect-src 'self' https://*.clerk.accounts.dev wss://*.clerk.accounts.dev https://api.clerk.com https://*.turkclaw.net ws://localhost:* http://localhost:*",
+        "connect-src 'self' https://*.clerk.accounts.dev wss://*.clerk.accounts.dev https://api.clerk.com https://*.turkclaw.net https://*.ingest.sentry.io ws://localhost:* http://localhost:*",
         "frame-src 'self' https://clerk.accounts.dev https://*.turkclaw.net",
         "object-src 'none'",
         "base-uri 'self'",

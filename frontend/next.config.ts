@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 // CSP: Tightened for production security.
 // - 'unsafe-eval' REMOVED from script-src (was unnecessary)
@@ -12,7 +13,7 @@ const cspDirectives = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
-  "connect-src 'self' https://*.clerk.accounts.dev wss://*.clerk.accounts.dev https://*.clerk.com wss://*.clerk.com https://*.turkclaw.net wss://*.turkclaw.net https://api.clerk.com https://challenges.cloudflare.com ws://localhost:* http://localhost:*",
+  "connect-src 'self' https://*.clerk.accounts.dev wss://*.clerk.accounts.dev https://*.clerk.com wss://*.clerk.com https://*.turkclaw.net wss://*.turkclaw.net https://api.clerk.com https://challenges.cloudflare.com https://*.ingest.sentry.io ws://localhost:* http://localhost:*",
   "frame-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://*.turkclaw.net https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",
@@ -44,4 +45,10 @@ const nextConfig: NextConfig = {
   ],
 };
 
-export default nextConfig;
+// Wrap with Sentry. No-ops gracefully if NEXT_PUBLIC_SENTRY_DSN is not set.
+export default withSentryConfig(nextConfig, {
+  // Suppress source map upload warnings when no auth token is set
+  silent: true,
+  // Don't widen the scope of the Sentry integration
+  disableLogger: true,
+});

@@ -532,4 +532,10 @@ export const routes = {
     finalize: (caseId: string, prepId: string, sessionId: string) =>
       `/cases/${caseId}/preparations/${prepId}/war-game/sessions/${sessionId}/finalize`,
   },
+
+  // --- Case Q&A ---
+  caseQA: {
+    ask: (caseId: string, prepId: string) =>
+      `/cases/${caseId}/preparations/${prepId}/generate/case-qa`,
+  },
 } as const;

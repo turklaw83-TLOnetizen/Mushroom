@@ -41,6 +41,8 @@ const tabs = [
     { label: "Exports", href: "/exports" },
     { label: "Activity", href: "/activity" },
     { label: "Case Score", href: "/predictive-score" },
+    { label: "Ask Case", href: "/ask" },
+    { label: "Command Center", href: "/command-center" },
 ];
 
 // Prep creation schema

@@ -301,4 +301,10 @@ export const queryKeys = {
     session: (caseId: string, prepId: string, sessionId: string) =>
       ["war-game", "session", caseId, prepId, sessionId] as const,
   },
+
+  // --- Case Q&A ---
+  caseQA: {
+    history: (caseId: string, prepId: string) =>
+      ["case-qa", "history", caseId, prepId] as const,
+  },
 } as const;
