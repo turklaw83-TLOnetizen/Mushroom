@@ -3,9 +3,12 @@
 # Each calls a core/nodes function via asyncio.to_thread().
 
 import asyncio
+import json
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from api.auth import require_role
@@ -507,3 +510,148 @@ async def gen_mock_jury(
     except Exception as e:
         logger.exception("Mock jury simulation failed")
         raise HTTPException(status_code=500, detail="Generation failed")
+
+
+# ---- Case Q&A (Ask Your Case Anything) -----------------------------------
+
+
+class CaseQARequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=5000)
+
+
+@router.post("/case-qa")
+async def gen_case_qa(
+    case_id: str,
+    prep_id: str,
+    body: CaseQARequest,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Answer any question about the case using all available analysis data.
+
+    Streams the response as Server-Sent Events for real-time display.
+    Searches across: case summary, evidence, witnesses, strategy, timeline,
+    legal research, consistency analysis, and attorney directives.
+    """
+    state = _load_state_or_404(case_id, prep_id)
+
+    from api.deps import get_config
+    config = get_config()
+    provider = config.get("llm", {}).get("provider", "anthropic")
+
+    # Build comprehensive context from ALL available case data
+    ctx = []
+
+    if state.get("case_summary"):
+        ctx.append(f"## Case Summary\n{str(state['case_summary'])[:3000]}")
+
+    if state.get("charges"):
+        charges_text = "\n".join(
+            f"- {c.get('name', 'Unknown')} ({c.get('statute_number', '')})"
+            for c in state["charges"][:10]
+        )
+        ctx.append(f"## Charges\n{charges_text}")
+
+    if state.get("evidence_foundations"):
+        ef = state["evidence_foundations"][:15]
+        ctx.append(f"## Evidence ({len(ef)} items)\n{json.dumps(ef, indent=1, default=str)[:2500]}")
+
+    if state.get("witnesses"):
+        w = state["witnesses"][:20]
+        ctx.append(f"## Witnesses ({len(w)})\n{json.dumps(w, indent=1, default=str)[:2500]}")
+
+    if state.get("strategy_notes"):
+        ctx.append(f"## Strategy Analysis\n{str(state['strategy_notes'])[:2500]}")
+
+    if state.get("devils_advocate_notes"):
+        ctx.append(f"## Vulnerabilities & Weaknesses\n{str(state['devils_advocate_notes'])[:2000]}")
+
+    if state.get("timeline"):
+        tl = state["timeline"][:25]
+        ctx.append(f"## Timeline ({len(tl)} events)\n{json.dumps(tl, indent=1, default=str)[:2000]}")
+
+    if state.get("consistency_check"):
+        cc = state["consistency_check"][:10]
+        ctx.append(f"## Inconsistencies\n{json.dumps(cc, indent=1, default=str)[:2000]}")
+
+    if state.get("legal_elements"):
+        le = state["legal_elements"][:15]
+        ctx.append(f"## Legal Elements\n{json.dumps(le, indent=1, default=str)[:2000]}")
+
+    if state.get("legal_research_data"):
+        lr = state["legal_research_data"][:10]
+        ctx.append(f"## Legal Research\n{json.dumps(lr, indent=1, default=str)[:2000]}")
+
+    if state.get("cross_examination_plan"):
+        ctx.append(f"## Cross-Examination Plans\n{str(state['cross_examination_plan'])[:2000]}")
+
+    if state.get("direct_examination_plan"):
+        ctx.append(f"## Direct-Examination Plans\n{str(state['direct_examination_plan'])[:2000]}")
+
+    if state.get("attorney_directives"):
+        directives = "\n".join(f"- {d.get('text', '')}" for d in state["attorney_directives"][:10])
+        ctx.append(f"## Attorney Directives\n{directives}")
+
+    context_block = "\n\n".join(ctx)
+    if len(context_block) > 20000:
+        context_block = context_block[:20000] + "\n\n[Context truncated]"
+
+    case_type = state.get("case_type", "criminal")
+    client_name = state.get("client_name", "the client")
+
+    system_prompt = f"""You are a senior legal AI analyst with deep expertise in {case_type} law.
+You have complete access to the case analysis for {client_name}.
+
+CASE DATA:
+{context_block}
+
+INSTRUCTIONS:
+- Answer the attorney's question directly and specifically
+- Reference exact facts, evidence items, witnesses, or timeline events when relevant
+- Cite the source of your information (e.g., "According to the evidence analysis...", "Witness John Doe stated...")
+- If the case data doesn't contain enough information to answer, say so clearly
+- Use markdown formatting with headers, bullet points, and bold for emphasis
+- Be concise but thorough — attorneys don't have time for fluff"""
+
+    async def event_generator():
+        try:
+            from core.llm import get_llm, invoke_with_retry_streaming
+            from langchain_core.messages import HumanMessage, SystemMessage
+
+            llm = get_llm(provider, max_output_tokens=4096)
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=body.question),
+            ]
+
+            full_answer = ""
+            for event_type, data in await asyncio.to_thread(
+                lambda: list(invoke_with_retry_streaming(llm, messages))
+            ):
+                if event_type == "token":
+                    yield f"data: {json.dumps({'type': 'token', 'content': data})}\n\n"
+                elif event_type == "done":
+                    full_answer = data
+                    yield f"data: {json.dumps({'type': 'done', 'content': data})}\n\n"
+
+            # Save Q&A to prep state history
+            try:
+                qa_history = state.get("case_qa_history", [])
+                qa_history.append({
+                    "question": body.question,
+                    "answer": full_answer[:5000],
+                    "timestamp": datetime.now().isoformat(),
+                    "user": user.get("name", user.get("id", "")),
+                })
+                _save_result(case_id, prep_id, {"case_qa_history": qa_history[-50:]})
+            except Exception:
+                logger.warning("Failed to save Q&A history", exc_info=True)
+
+        except Exception as e:
+            logger.exception("Case Q&A streaming failed")
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
