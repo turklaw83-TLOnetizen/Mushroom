@@ -97,6 +97,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "base-uri 'self'",
         "form-action 'self'",
         "frame-ancestors 'none'",
+        "worker-src 'self' blob:",
+        "manifest-src 'self'",
     ])
 
     async def dispatch(self, request: Request, call_next):
@@ -105,5 +107,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), hid=(), accelerometer=(), gyroscope=(), magnetometer=()"
+
+        # Prevent browsers from caching sensitive API responses
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+
         return response

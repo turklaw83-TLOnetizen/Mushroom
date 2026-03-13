@@ -1,0 +1,3 @@
+# Never commit actual certificates to git
+server.key
+server.crt
