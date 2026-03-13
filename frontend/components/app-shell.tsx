@@ -9,6 +9,7 @@ import { Breadcrumbs } from "@/components/breadcrumbs";
 import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { ShortcutsPanel } from "@/components/shortcuts-panel";
+import { SessionLock } from "@/components/session-lock";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const AUTH_ROUTES = ["/sign-in", "/sign-up"];
@@ -23,20 +24,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
     return (
         <TooltipProvider delayDuration={0}>
-            <div className="flex h-screen overflow-hidden bg-background text-foreground">
-                <Sidebar />
-                <main className="flex-1 overflow-y-auto flex flex-col">
-                    <div className="flex items-center justify-between">
-                        <Breadcrumbs />
-                        <div className="pr-4">
-                            <NotificationBell />
+            <SessionLock>
+                <div className="flex h-screen overflow-hidden bg-background text-foreground">
+                    <Sidebar />
+                    <main className="flex-1 overflow-y-auto flex flex-col">
+                        <div className="flex items-center justify-between">
+                            <Breadcrumbs />
+                            <div className="pr-4">
+                                <NotificationBell />
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex-1">{children}</div>
-                </main>
-            </div>
-            <CommandPalette />
-            <ShortcutsPanel />
+                        <div className="flex-1">{children}</div>
+                    </main>
+                </div>
+                <CommandPalette />
+                <ShortcutsPanel />
+            </SessionLock>
         </TooltipProvider>
     );
 }
