@@ -21,20 +21,20 @@ const tabs = [
     { label: "Overview", href: "" },
     { label: "Files", href: "/files" },
     { label: "Analysis", href: "/analysis" },
+    { label: "Documents", href: "/documents" },
     { label: "Witnesses", href: "/witnesses" },
+    { label: "Evidence", href: "/evidence" },
+    { label: "Strategy", href: "/strategy" },
+    { label: "Timeline", href: "/timeline" },
     { label: "Mock Exam", href: "/mock-exam" },
     { label: "War Game", href: "/war-game" },
     { label: "Contradictions", href: "/contradictions" },
-    { label: "Redaction", href: "/redaction" },
-    { label: "Evidence", href: "/evidence" },
-    { label: "Discovery", href: "/discovery" },
-    { label: "Strategy", href: "/strategy" },
-    { label: "Documents", href: "/documents" },
     { label: "Research", href: "/research" },
+    { label: "Discovery", href: "/discovery" },
+    { label: "Redaction", href: "/redaction" },
     { label: "Billing", href: "/billing" },
     { label: "Calendar", href: "/calendar" },
     { label: "Compliance", href: "/compliance" },
-    { label: "Timeline", href: "/timeline" },
     { label: "Exhibits", href: "/exhibits" },
     { label: "E-Sign", href: "/esign" },
     { label: "Transcription", href: "/transcription" },
@@ -59,11 +59,10 @@ const prepFields: FieldConfig<PrepInput>[] = [
         type: "select",
         required: true,
         options: [
-            { value: "trial", label: "Trial" },
-            { value: "hearing", label: "Hearing" },
-            { value: "motion", label: "Motion" },
-            { value: "deposition", label: "Deposition" },
-            { value: "mediation", label: "Mediation" },
+            { value: "general", label: "General Analysis" },
+            { value: "trial", label: "Trial Preparation" },
+            { value: "prelim_hearing", label: "Preliminary Hearing" },
+            { value: "motion_hearing", label: "Motion Hearing" },
         ],
     },
     { name: "name", label: "Name (optional)", placeholder: "e.g. Suppression Hearing" },
@@ -153,22 +152,31 @@ function CaseLayoutInner({
                                         <SelectContent>
                                             {preparations.map((p) => (
                                                 <SelectItem key={p.id} value={p.id} className="text-xs">
-                                                    {p.name || p.type} prep
+                                                    {p.name || p.type}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                 ) : (
-                                    <span className="text-xs text-muted-foreground">No preps</span>
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 text-xs border-dashed border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+                                        onClick={() => setPrepDialogOpen(true)}
+                                    >
+                                        Create Preparation to Start
+                                    </Button>
                                 )}
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 text-xs px-2"
-                                    onClick={() => setPrepDialogOpen(true)}
-                                >
-                                    + Prep
-                                </Button>
+                                {preparations.length > 0 && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 text-xs px-2"
+                                        onClick={() => setPrepDialogOpen(true)}
+                                    >
+                                        + Prep
+                                    </Button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -195,9 +203,9 @@ function CaseLayoutInner({
                 open={prepDialogOpen}
                 onOpenChange={setPrepDialogOpen}
                 title="New Preparation"
-                description="Create a preparation for trial, hearing, motion, or other proceeding."
+                description="Create a preparation to organize your case analysis. General Analysis runs all modules."
                 schema={prepSchema}
-                defaultValues={{ type: "trial", name: "" }}
+                defaultValues={{ type: "general", name: "" }}
                 fields={prepFields}
                 onSubmit={handleCreatePrep}
                 submitLabel="Create Prep"

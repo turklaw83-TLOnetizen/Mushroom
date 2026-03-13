@@ -405,6 +405,18 @@ export default function CaseOverviewPage() {
                     <h2 className="text-sm font-medium text-muted-foreground mb-3">Quick Actions</h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <QuickAction
+                            href={`${basePath}/analysis`}
+                            icon="🔬"
+                            label="Run Analysis"
+                            description="AI analysis pipeline — 14 modules across all documents"
+                        />
+                        <QuickAction
+                            href={`${basePath}/documents`}
+                            icon="📝"
+                            label="Draft Document"
+                            description="Civil complaint, motions, briefs, and more"
+                        />
+                        <QuickAction
                             href={`${basePath}/ask`}
                             icon="💬"
                             label="Ask Your Case"

@@ -1,9 +1,13 @@
 # ---- Worker Status WebSocket ---------------------------------------------
 # Unified real-time stream of analysis, ingestion, and OCR worker status.
 # Fix #4: WebSocket auth via query parameter token.
+# Fix #5: Scan all prep dirs for analysis progress (not a fixed prep_id).
 
 import asyncio
+import glob
+import json
 import logging
+import os
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
@@ -33,6 +37,40 @@ async def _authenticate_ws(token: str) -> dict | None:
     except Exception:
         pass
     return None
+
+
+DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.getcwd(), "data"))
+
+
+def _get_any_active_progress(case_id: str) -> dict:
+    """Scan all prep directories for analysis progress.
+
+    Returns the first running progress, or the most recently updated one,
+    or {"status": "idle"} if no progress files exist.
+    """
+    preps_dir = os.path.join(DATA_DIR, "cases", case_id, "preparations")
+    if not os.path.isdir(preps_dir):
+        return {"status": "idle"}
+
+    best = None
+    best_ts = ""
+
+    for progress_file in glob.glob(os.path.join(preps_dir, "*", "progress.json")):
+        try:
+            with open(progress_file, "r") as f:
+                data = json.load(f)
+            # If any prep is actively running, return it immediately
+            if data.get("status") == "running":
+                return data
+            # Track the most recently updated progress
+            updated = data.get("updated_at", "")
+            if updated > best_ts:
+                best_ts = updated
+                best = data
+        except (json.JSONDecodeError, IOError, OSError):
+            continue
+
+    return best or {"status": "idle"}
 
 
 @router.websocket("/ws/workers/{case_id}")
@@ -65,12 +103,11 @@ async def worker_status_stream(
         while True:
             status = {}
 
-            # Analysis progress
+            # Analysis progress — scan all prep dirs for any active progress
             try:
-                from core.bg_analysis import get_analysis_progress
-                status["analysis"] = get_analysis_progress(case_id, None) or {"status": "idle"}
+                status["analysis"] = _get_any_active_progress(case_id)
             except Exception:
-                status["analysis"] = {"status": "unavailable"}
+                status["analysis"] = {"status": "idle"}
 
             # Ingestion status
             try:

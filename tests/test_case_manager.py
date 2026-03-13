@@ -89,10 +89,14 @@ class TestDirectives:
 class TestPreparations:
     def test_create_preparation(self, cm):
         case_id = cm.create_case("Prep Test")
+        # create_case auto-creates a "General Analysis" prep
+        preps_before = cm.list_preparations(case_id)
+        assert len(preps_before) == 1
+        assert preps_before[0]["type"] == "general"
         prep_id = cm.create_preparation(case_id, "trial", "Trial Prep 1")
         preps = cm.list_preparations(case_id)
-        assert len(preps) == 1
-        assert preps[0]["type"] == "trial"
+        assert len(preps) == 2
+        assert any(p["type"] == "trial" for p in preps)
 
     def test_save_and_load_prep_state(self, cm, sample_state):
         case_id = cm.create_case("State Test")
@@ -103,9 +107,12 @@ class TestPreparations:
 
     def test_delete_preparation(self, cm):
         case_id = cm.create_case("Test")
+        # Auto-created general prep + new trial prep
         prep_id = cm.create_preparation(case_id, "trial")
+        preps_before = cm.list_preparations(case_id)
         cm.delete_preparation(case_id, prep_id)
-        assert len(cm.list_preparations(case_id)) == 0
+        # Only the auto-created general prep remains
+        assert len(cm.list_preparations(case_id)) == len(preps_before) - 1
 
     def test_merge_append_only(self, cm, sample_state):
         case_id = cm.create_case("Merge Test")
@@ -126,7 +133,9 @@ class TestPreparations:
 
     def test_has_preparations(self, cm):
         case_id = cm.create_case("Test")
-        assert not cm.has_preparations(case_id)
+        # create_case auto-creates a General Analysis prep, so has_preparations is True
+        assert cm.has_preparations(case_id)
+        # Create another and verify still true
         cm.create_preparation(case_id, "trial")
         assert cm.has_preparations(case_id)
 
@@ -217,7 +226,9 @@ class TestSnapshots:
 class TestActivityLog:
     def test_log_and_retrieve(self, cm):
         case_id = cm.create_case("Activity Test")
-        # create_case already logs an activity
+        # create_case logs case_created + auto-creates a prep (prep_created)
         log = cm.get_activity_log(case_id)
-        assert len(log) >= 1
-        assert log[0]["action"] == "case_created"
+        assert len(log) >= 2
+        actions = [entry["action"] for entry in log]
+        assert "case_created" in actions
+        assert "prep_created" in actions

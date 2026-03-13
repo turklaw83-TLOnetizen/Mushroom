@@ -296,8 +296,13 @@ export default function AnalysisPage() {
 
     if (!activePrepId && !prepLoading) {
         return (
-            <div className="text-center py-16">
-                <p className="text-muted-foreground">No preparations found. Create one to run analysis.</p>
+            <div className="text-center py-16 space-y-4">
+                <div className="text-4xl" aria-hidden="true">🔬</div>
+                <p className="text-muted-foreground text-lg">No preparation selected</p>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                    Create a preparation to start analyzing your case.
+                    A &quot;General Analysis&quot; prep runs all 14 AI modules across your uploaded documents.
+                </p>
             </div>
         );
     }

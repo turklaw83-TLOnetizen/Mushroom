@@ -21,7 +21,7 @@ from core.storage.base import StorageBackend
 logger = logging.getLogger(__name__)
 
 # Preparation types
-PREP_TYPES = {"trial", "prelim_hearing", "motion_hearing"}
+PREP_TYPES = {"trial", "prelim_hearing", "motion_hearing", "general"}
 
 # Master case phases
 PHASES = ("active", "closed", "archived")
@@ -229,6 +229,12 @@ class CaseManager:
         }
         self.storage.create_case(case_id, metadata)
         self.log_activity(case_id, "case_created", f"Case '{case_name}' created")
+        # Auto-create a General Analysis preparation so users can immediately
+        # upload documents and run analysis without manual prep setup.
+        try:
+            self.create_preparation(case_id, "general", "General Analysis")
+        except Exception as e:
+            logger.warning("Failed to auto-create General Analysis prep for %s: %s", case_id, e)
         return case_id
 
     def delete_case(self, case_id: str) -> None:
