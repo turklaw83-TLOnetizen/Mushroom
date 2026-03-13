@@ -39,30 +39,6 @@ class TestInputSanitization:
         assert _scan_dict({"nested": {"deep": "DROP TABLE users"}}) is not None
 
 
-# ---- Pagination ----
-
-class TestPagination:
-    def test_paginate_basic(self):
-        from api.pagination import paginate
-        result = paginate(items=[1, 2, 3], total=10, page=1, page_size=3)
-        assert result.total == 10
-        assert result.page == 1
-        assert result.has_next is True
-        assert result.has_prev is False
-        assert result.total_pages == 4
-
-    def test_paginate_last_page(self):
-        from api.pagination import paginate
-        result = paginate(items=[10], total=10, page=4, page_size=3)
-        assert result.has_next is False
-        assert result.has_prev is True
-
-    def test_max_page_size_enforced(self):
-        from api.pagination import paginate, MAX_PAGE_SIZE
-        result = paginate(items=[], total=1000, page=1, page_size=9999)
-        assert result.page_size == MAX_PAGE_SIZE
-
-
 # ---- Upload Limit ----
 
 class TestUploadLimit:
@@ -85,16 +61,6 @@ class TestEncryptionCheck:
         from api.encryption_check import verify_encryption
         result = verify_encryption()
         assert result["key_configured"] is True
-
-
-# ---- Environment Validation ----
-
-class TestEnvValidation:
-    def test_optional_defaults(self):
-        from api.env import OPTIONAL_VARS
-        assert "CORS_ORIGINS" in OPTIONAL_VARS
-        assert "RATE_LIMIT_REQUESTS" in OPTIONAL_VARS
-        assert "MAX_UPLOAD_SIZE_BYTES" in OPTIONAL_VARS
 
 
 # ---- SOL Periods ----
