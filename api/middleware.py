@@ -87,14 +87,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     CSP = "; ".join([
         "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.accounts.dev https://*.clerk.accounts.dev",
+        "script-src 'self' 'unsafe-inline' https://clerk.accounts.dev https://*.clerk.accounts.dev https://*.turkclaw.net",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: blob: https:",
-        "connect-src 'self' https://*.clerk.accounts.dev wss://*.clerk.accounts.dev https://api.clerk.com ws://localhost:* http://localhost:*",
-        "frame-src 'self' https://clerk.accounts.dev",
+        "connect-src 'self' https://*.clerk.accounts.dev wss://*.clerk.accounts.dev https://api.clerk.com https://*.turkclaw.net ws://localhost:* http://localhost:*",
+        "frame-src 'self' https://clerk.accounts.dev https://*.turkclaw.net",
         "object-src 'none'",
         "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
     ])
 
     async def dispatch(self, request: Request, call_next):

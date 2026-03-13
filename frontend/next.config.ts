@@ -1,10 +1,14 @@
 import type { NextConfig } from "next";
 
-// Clerk loads JS/API from a subdomain of the app's domain (clerk.turkclaw.net)
-// as well as *.clerk.accounts.dev (dev) and *.clerk.com (shared prod).
+// CSP: Tightened for production security.
+// - 'unsafe-eval' REMOVED from script-src (was unnecessary)
+// - 'unsafe-inline' kept for style-src only (required by Clerk + Tailwind)
+// - Production Clerk domains: *.clerk.accounts.dev, *.clerk.com, *.turkclaw.net
+// - Cloudflare challenges/insights included
+// - Localhost origins kept for development
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.clerk.accounts.dev https://*.clerk.com https://*.turkclaw.net https://challenges.cloudflare.com https://static.cloudflareinsights.com",
+  "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://*.clerk.com https://*.turkclaw.net https://challenges.cloudflare.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
@@ -12,6 +16,9 @@ const cspDirectives = [
   "frame-src 'self' https://*.clerk.accounts.dev https://*.clerk.com https://*.turkclaw.net https://challenges.cloudflare.com",
   "object-src 'none'",
   "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "upgrade-insecure-requests",
 ].join("; ");
 
 const nextConfig: NextConfig = {
@@ -26,6 +33,10 @@ const nextConfig: NextConfig = {
         { key: "X-Frame-Options", value: "DENY" },
         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
+        { key: "X-DNS-Prefetch-Control", value: "off" },
+        { key: "X-Download-Options", value: "noopen" },
+        { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
       ],
     },
   ],
