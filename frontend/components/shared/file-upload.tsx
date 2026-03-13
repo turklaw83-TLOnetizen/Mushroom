@@ -195,11 +195,19 @@ export function FileUpload({
         );
 
         try {
+            // Read CSRF token from cookie
+            const csrfMatch = document.cookie.match(/(?:^|;\s*)mc-csrf=([^;]*)/);
+            const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : "";
+            const uploadHeaders: Record<string, string> = {};
+            if (token) uploadHeaders["Authorization"] = `Bearer ${token}`;
+            if (csrfToken) uploadHeaders["X-CSRF-Token"] = csrfToken;
+
             const response = await fetch(
                 `${API_BASE}/api/v1/cases/${caseId}/files`,
                 {
                     method: "POST",
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    headers: uploadHeaders,
+                    credentials: "include",
                     body: formData,
                 },
             );

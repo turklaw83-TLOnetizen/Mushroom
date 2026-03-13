@@ -59,10 +59,26 @@ if (typeof window !== "undefined") {
     window.addEventListener("offline", () => _setOffline(true));
 }
 
+// ---- CSRF Token ---------------------------------------------------------
+
+function _getCsrfToken(): string {
+    if (typeof document === "undefined") return "";
+    const match = document.cookie.match(/(?:^|;\s*)mc-csrf=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : "";
+}
+
 // ---- Core Request Function with Retry -----------------------------------
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const { method = "GET", body, params, headers = {}, getToken, noRetry } = options;
+
+    // Attach CSRF token on mutation requests
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+        const csrfToken = _getCsrfToken();
+        if (csrfToken) {
+            headers["X-CSRF-Token"] = csrfToken;
+        }
+    }
 
     // Build URL with query params
     const url = new URL(`/api/v1${path}`, API_BASE);
@@ -103,6 +119,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         try {
             const response = await fetch(url.toString(), {
                 ...fetchOptions,
+                credentials: "include",
                 signal: controller.signal,
             });
 
@@ -199,10 +216,14 @@ export const api = {
             const token = await getToken();
             if (token) headers["Authorization"] = `Bearer ${token}`;
         }
+        // CSRF token for uploads
+        const csrfToken = _getCsrfToken();
+        if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
 
         const response = await fetch(url.toString(), {
             method: "POST",
             headers,
+            credentials: "include",
             body: formData,
         });
 

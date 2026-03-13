@@ -76,38 +76,44 @@ async def lifespan(app: FastAPI):
 
 # ---- Application ---------------------------------------------------------
 
+# Hide API documentation in production (no reason to show attackers your surface)
+_IS_PRODUCTION = os.getenv("ENVIRONMENT", "development") == "production"
+
 app = FastAPI(
     title="Project Mushroom Cloud",
     description="Legal Intelligence Suite API",
     version="1.0.0",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=None if _IS_PRODUCTION else "/docs",
+    redoc_url=None if _IS_PRODUCTION else "/redoc",
+    openapi_url=None if _IS_PRODUCTION else "/openapi.json",
 )
 
 
 @app.get("/")
 def root():
-    """Root endpoint — API welcome + navigation."""
-    return {
+    """Root endpoint — API welcome."""
+    result = {
         "name": "Project Mushroom Cloud",
         "version": "1.0.0",
         "status": "running",
-        "docs": "/docs",
         "health": "/api/v1/health",
-        "routers": 34,
     }
+    if not _IS_PRODUCTION:
+        result["docs"] = "/docs"
+    return result
 # ---- Middleware (order matters: last added = outermost) -------------------
 
 from api.middleware import RequestIDMiddleware, SecurityHeadersMiddleware, structured_error_handler
 from api.audit import AuditTrailMiddleware
+from api.csrf import CSRFMiddleware
 from api.rate_limit import RateLimitMiddleware
 from api.upload_limit import UploadSizeMiddleware
 from api.input_sanitize import InputSanitizationMiddleware
 from api.metrics import MetricsMiddleware
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CSRFMiddleware)
 app.add_middleware(AuditTrailMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(UploadSizeMiddleware, max_size=20 * 1024 * 1024 * 1024)  # 20GB
@@ -117,12 +123,16 @@ app.add_middleware(MetricsMiddleware)
 # Fix #10: Global structured error handler
 app.add_exception_handler(Exception, structured_error_handler)
 
-# Encryption verification on startup
+# Encryption verification on startup — FATAL in production
 from api.encryption_check import require_encryption_in_production
+_env = os.getenv("ENVIRONMENT", "development")
 try:
     require_encryption_in_production()
 except RuntimeError:
-    pass  # Logged; non-fatal in dev
+    if _env == "production":
+        logger.critical("REFUSING TO START: encryption at rest is required in production")
+        sys.exit(1)
+    # Non-fatal in dev — just a warning
 
 # CORS — locked to explicit origins (no wildcards in production)
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
@@ -132,8 +142,8 @@ app.add_middleware(
     allow_origins=[o.strip() for o in CORS_ORIGINS],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-    expose_headers=["X-Request-ID"],  # Let frontend read request IDs
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
+    expose_headers=["X-Request-ID", "X-CSRF-Token"],
 )
 
 

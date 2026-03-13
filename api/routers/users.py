@@ -2,11 +2,15 @@
 # Authentication and user management endpoints.
 #
 # Fix #14: Input length validation on all request models
+# Security: PIN login rate limiting (5 attempts per 15 minutes per IP)
 
 import logging
+import time
+from collections import defaultdict
+from threading import Lock
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from api.auth import (
@@ -20,6 +24,31 @@ from api.schemas import SHORT_TEXT_MAX, PaginatedResponse, paginate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["Users"])
+
+# ---- Login Rate Limiter (anti-brute-force) --------------------------------
+# 5 failed attempts per IP per 15 minutes, then locked out.
+
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 900  # 15 minutes
+_login_attempts: dict[str, list[float]] = defaultdict(list)
+_login_lock = Lock()
+
+
+def _check_login_rate(client_ip: str) -> bool:
+    """Return True if allowed, False if rate-limited."""
+    now = time.time()
+    with _login_lock:
+        attempts = _login_attempts[client_ip]
+        cutoff = now - _LOGIN_WINDOW_SECONDS
+        attempts[:] = [t for t in attempts if t > cutoff]
+        return len(attempts) < _LOGIN_MAX_ATTEMPTS
+
+
+def _record_failed_login(client_ip: str):
+    """Record a failed login attempt."""
+    now = time.time()
+    with _login_lock:
+        _login_attempts[client_ip].append(now)
 
 
 # ---- Schemas -------------------------------------------------------------
@@ -65,20 +94,57 @@ class TeamStatsResponse(BaseModel):
 # ---- Endpoints -----------------------------------------------------------
 
 @router.post("/login", response_model=LoginResponse)
-def login(body: LoginRequest):
+def login(body: LoginRequest, request: Request):
     """
     Authenticate via PIN (legacy/development auth).
     Returns a JWT token for subsequent requests.
+
+    Rate limited: 5 failed attempts per IP per 15 minutes.
     """
+    # Extract client IP
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or (request.client.host if request.client else "unknown")
+    )
+
+    # Check rate limit BEFORE doing any auth work
+    if not _check_login_rate(client_ip):
+        logger.warning("Login rate limit hit for IP %s (user_id: %s)", client_ip, body.user_id)
+        try:
+            from api.audit import log_security_event
+            log_security_event("login_rate_limited", {
+                "user_id": body.user_id,
+                "client_ip": client_ip,
+            }, request)
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Try again in 15 minutes.",
+            headers={"Retry-After": str(_LOGIN_WINDOW_SECONDS)},
+        )
+
     um = get_user_manager()
     user = um.get_user(body.user_id)
     if not user:
+        _record_failed_login(client_ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
     if not user.get("active", True):
+        _record_failed_login(client_ip)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User deactivated")
 
     if not um.authenticate(body.user_id, body.pin):
+        _record_failed_login(client_ip)
+        # Log failed auth as security event
+        try:
+            from api.audit import log_security_event
+            log_security_event("login_failed", {
+                "user_id": body.user_id,
+                "client_ip": client_ip,
+            }, request)
+        except Exception:
+            pass
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid PIN")
 
     um.record_login(body.user_id)
