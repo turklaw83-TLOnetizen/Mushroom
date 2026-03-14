@@ -29,16 +29,17 @@ const IDLE_PROGRESS: AnalysisProgress = {
 
 /**
  * Polls the analysis progress endpoint while analysis is running.
- * Automatically stops polling once analysis is complete/idle.
+ * Uses fast polling (1.5s) when known running, slow heartbeat (10s)
+ * as fallback to detect running state even when WebSocket is unavailable.
  *
  * @param caseId - The case ID
  * @param prepId - The preparation ID (null if no prep selected)
- * @param isRunning - Whether to enable polling (set by parent from WebSocket status)
+ * @param wsRunning - Whether WebSocket reports running (primary signal)
  */
 export function useAnalysisProgress(
     caseId: string,
     prepId: string | null,
-    isRunning: boolean = false,
+    wsRunning: boolean = false,
 ) {
     const { getToken } = useAuth();
 
@@ -49,13 +50,18 @@ export function useAnalysisProgress(
                 `/cases/${caseId}/analysis/status?prep_id=${prepId}`,
                 { getToken },
             ),
-        enabled: !!prepId && isRunning,
-        refetchInterval: isRunning ? 1500 : false, // Poll every 1.5s while running
+        enabled: !!prepId,
+        // Fast poll when running, slow heartbeat otherwise to detect running state
+        refetchInterval: wsRunning ? 1500 : 10000,
         refetchIntervalInBackground: true,
     });
 
+    // Detect running from HTTP response as fallback when WS is down
+    const httpDetectedRunning = query.data?.status === "running";
+
     return {
         progress: query.data ?? IDLE_PROGRESS,
-        isPolling: query.isFetching && isRunning,
+        isPolling: query.isFetching,
+        isRunning: wsRunning || httpDetectedRunning,
     };
 }

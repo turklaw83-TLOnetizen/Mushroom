@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+// Collapsible removed — stream panel is always visible during analysis
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { InvestigationItem } from "@/hooks/use-prep-state";
@@ -102,7 +102,7 @@ function ProgressBar({ percent, label }: { percent: number; label?: string }) {
             {label && (
                 <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground font-medium">{label}</p>
-                    <p className="text-xs font-semibold tabular-nums">{Math.round(clamped)}%</p>
+                    <p className="text-xs font-semibold tabular-nums">{clamped.toFixed(2)}%</p>
                 </div>
             )}
             <div className="analysis-progress">
@@ -110,6 +110,14 @@ function ProgressBar({ percent, label }: { percent: number; label?: string }) {
             </div>
         </div>
     );
+}
+
+// ---- Elapsed Time + ETA Helpers -------------------------------------------
+
+function formatElapsed(s: number): string {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
 }
 
 // ---- Module Detail Modal ------------------------------------------------
@@ -236,7 +244,7 @@ export default function AnalysisPage() {
     const { status: workerStatus, reconnect } = useWorkerStatus(caseId);
     const [selectedModule, setSelectedModule] = useState<string | null>(null);
 
-    const isAnalysisRunning = workerStatus.analysis.status === "running";
+    const wsAnalysisRunning = workerStatus.analysis.status === "running";
     const isIngestionRunning = workerStatus.ingestion.status === "running";
 
     // Stream-of-consciousness auto-scroll ref
@@ -244,8 +252,40 @@ export default function AnalysisPage() {
     // Track previous analysis status for completion detection
     const prevAnalysisStatus = useRef(workerStatus.analysis.status);
 
-    // Poll progress while analysis is running
-    const { progress } = useAnalysisProgress(caseId, activePrepId, isAnalysisRunning);
+    // Poll progress — uses HTTP fallback if WebSocket is unavailable
+    const { progress, isRunning: httpRunning } = useAnalysisProgress(caseId, activePrepId, wsAnalysisRunning);
+    const isAnalysisRunning = wsAnalysisRunning || httpRunning;
+
+    // Fine-grained progress: completed nodes + sub-node fraction
+    const totalNodes = progress.total_modules || 14;
+    const completedNodes = progress.completed_modules?.length || 0;
+    const nodeFraction = ((progress as any).node_pct || 0) / 100;
+    const fineProgress = ((completedNodes + nodeFraction) / totalNodes) * 100;
+
+    // Elapsed time (ticks every second while running)
+    const [elapsed, setElapsed] = useState(0);
+    useEffect(() => {
+        if (!isAnalysisRunning) { setElapsed(0); return; }
+        const started = (progress as any).started_at;
+        if (!started) return;
+        const start = new Date(started).getTime();
+        const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000));
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [isAnalysisRunning, (progress as any).started_at]);
+
+    // ETA from per_node_times
+    const calcETA = useCallback((): string | null => {
+        const perNodeTimes = (progress as any).per_node_times;
+        if (!perNodeTimes || completedNodes === 0) return null;
+        const times = Object.values(perNodeTimes) as number[];
+        if (times.length === 0) return null;
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        const remaining = totalNodes - completedNodes;
+        const etaSeconds = Math.round(avg * remaining);
+        return formatElapsed(etaSeconds);
+    }, [progress, completedNodes, totalNodes]);
 
     // Shared prep state (analysis results)
     const { state: analysisState, sections, isLoading: stateLoading } = usePrepState(
@@ -379,13 +419,34 @@ export default function AnalysisPage() {
 
             {/* ---- Pipeline Tab ---- */}
             <TabsContent value="pipeline" className="space-y-6">
+                {/* Analysis Running Banner */}
+                {isAnalysisRunning && (
+                    <div className="flex items-center gap-3 rounded-lg border border-blue-500/30 bg-blue-500/5 px-4 py-3">
+                        <span className="relative flex h-3 w-3 shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500" />
+                        </span>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">Analysis Running</p>
+                            <p className="text-xs text-muted-foreground tabular-nums">
+                                {progress.module_description || progress.current_module || "Initializing"}
+                                {elapsed > 0 && ` · ${formatElapsed(elapsed)}`}
+                                {calcETA() && ` · ETA: ~${calcETA()}`}
+                            </p>
+                        </div>
+                        <Badge variant="outline" className="tabular-nums shrink-0">
+                            {fineProgress.toFixed(2)}%
+                        </Badge>
+                    </div>
+                )}
+
                 {/* Worker Status + Controls */}
                 <Card>
                     <CardHeader className="pb-3">
                         <CardTitle className="text-base flex items-center justify-between">
                             <span>AI Analysis Engine</span>
-                            <Badge variant="outline" className={statusColor(workerStatus.analysis.status)}>
-                                {workerStatus.analysis.status}
+                            <Badge variant="outline" className={statusColor(isAnalysisRunning ? "running" : workerStatus.analysis.status)}>
+                                {isAnalysisRunning ? "running" : workerStatus.analysis.status}
                             </Badge>
                         </CardTitle>
                     </CardHeader>
@@ -393,47 +454,52 @@ export default function AnalysisPage() {
                         {isAnalysisRunning && (
                             <div className="space-y-2">
                                 <ProgressBar
-                                    percent={progress.progress * 100}
+                                    percent={fineProgress}
                                     label={progress.current_module
                                         ? `${progress.module_description || progress.current_module}`
                                         : "Initializing..."
                                     }
                                 />
-                                {progress.completed_modules && (
-                                    <p className="text-xs text-muted-foreground">
-                                        {progress.completed_modules.length}/{progress.total_modules || "?"} modules complete
-                                        {progress.tokens_used ? ` · ${progress.tokens_used.toLocaleString()} tokens` : ""}
-                                    </p>
-                                )}
+                                <p className="text-xs text-muted-foreground tabular-nums">
+                                    {completedNodes}/{totalNodes} modules complete
+                                    {elapsed > 0 && ` · Elapsed: ${formatElapsed(elapsed)}`}
+                                    {calcETA() && ` · ETA: ~${calcETA()}`}
+                                    {progress.tokens_used ? ` · ${progress.tokens_used.toLocaleString()} tokens` : ""}
+                                </p>
                             </div>
                         )}
 
-                        {isAnalysisRunning && (progress as any).streamed_text && (
-                            <Collapsible defaultOpen={true}>
-                                <Card className="border-[oklch(0.55_0.23_264_/_30%)] bg-[oklch(0.55_0.23_264_/_5%)]">
-                                    <CollapsibleTrigger asChild>
-                                        <CardHeader className="pb-2 cursor-pointer hover:bg-accent/30 transition-colors">
-                                            <CardTitle className="text-sm flex items-center gap-2">
-                                                <span>🧠</span> AI Thinking...
-                                                <span className="ml-auto text-xs font-normal text-muted-foreground">
-                                                    {(progress as any).node_token_rate > 0 && `${(progress as any).node_token_rate} tok/s`}
-                                                    {(progress as any).node_pct > 0 && ` · ${Math.round((progress as any).node_pct)}% node`}
-                                                </span>
-                                            </CardTitle>
-                                        </CardHeader>
-                                    </CollapsibleTrigger>
-                                    <CollapsibleContent>
-                                        <CardContent className="pt-0">
-                                            <div
-                                                ref={streamRef}
-                                                className="font-mono text-xs leading-relaxed text-muted-foreground max-h-64 overflow-auto whitespace-pre-wrap bg-black/20 rounded-md p-3"
-                                            >
+                        {/* Stream of Consciousness — always visible while running */}
+                        {isAnalysisRunning && (
+                            <Card className="border-[oklch(0.55_0.23_264_/_30%)] bg-[oklch(0.55_0.23_264_/_5%)]">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="text-sm flex items-center gap-2">
+                                        <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                                        AI Stream of Consciousness
+                                        <span className="ml-auto text-xs font-normal text-muted-foreground tabular-nums">
+                                            {(progress as any).node_token_rate > 0 && `${(progress as any).node_token_rate} tok/s`}
+                                            {(progress as any).node_pct > 0 && ` · ${((progress as any).node_pct).toFixed(1)}% of node`}
+                                        </span>
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="pt-0">
+                                    <div
+                                        ref={streamRef}
+                                        className="font-mono text-xs leading-relaxed text-foreground/80 max-h-[50vh] overflow-auto whitespace-pre-wrap bg-black/20 rounded-md p-3"
+                                    >
+                                        {(progress as any).streamed_text ? (
+                                            <>
                                                 {(progress as any).streamed_text}
-                                            </div>
-                                        </CardContent>
-                                    </CollapsibleContent>
-                                </Card>
-                            </Collapsible>
+                                                <span className="inline-block w-1.5 h-3.5 bg-primary/60 animate-pulse ml-0.5 align-text-bottom" />
+                                            </>
+                                        ) : (
+                                            <span className="text-muted-foreground italic">
+                                                Waiting for AI stream...
+                                            </span>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
                         )}
 
                         <div className="flex gap-4 text-sm text-muted-foreground">

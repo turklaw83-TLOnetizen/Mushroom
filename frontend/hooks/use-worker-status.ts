@@ -6,9 +6,16 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 
-const WS_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
-    .replace("http://", "ws://")
-    .replace("https://", "wss://");
+// Extract just the origin (no path) to avoid double-prefix when
+// NEXT_PUBLIC_API_URL includes a path like "https://example.com/api".
+const WS_ORIGIN = (() => {
+    try {
+        return new URL(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").origin;
+    } catch {
+        return "http://localhost:8000";
+    }
+})();
+const WS_BASE = WS_ORIGIN.replace("http://", "ws://").replace("https://", "wss://");
 
 export interface WorkerStatus {
     analysis: { status: string; progress?: number; current_module?: string; error?: string };
