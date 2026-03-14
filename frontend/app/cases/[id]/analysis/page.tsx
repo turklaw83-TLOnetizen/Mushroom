@@ -245,7 +245,6 @@ export default function AnalysisPage() {
     const [selectedModule, setSelectedModule] = useState<string | null>(null);
 
     const wsAnalysisRunning = workerStatus.analysis.status === "running";
-    const isIngestionRunning = workerStatus.ingestion.status === "running";
 
     // Stream-of-consciousness auto-scroll ref
     const streamRef = useRef<HTMLDivElement>(null);
@@ -357,17 +356,6 @@ export default function AnalysisPage() {
             api.post(`/cases/${caseId}/analysis/stop?prep_id=${activePrepId}`, {}, { getToken }),
         successMessage: "Analysis stopping...",
         errorMessage: "Failed to stop analysis",
-    });
-
-    // Start Ingestion mutation
-    const startIngestion = useMutationWithToast({
-        mutationFn: () =>
-            api.post(`/cases/${caseId}/analysis/ingestion/start`, {
-                force_ocr: false,
-            }, { getToken }),
-        successMessage: "Document ingestion started",
-        errorMessage: "Failed to start ingestion",
-        onSuccess: () => reconnect(),
     });
 
     // Keyboard shortcuts
@@ -534,14 +522,6 @@ export default function AnalysisPage() {
                                         {stopAnalysis.isPending ? "Stopping..." : "Stop"}
                                     </Button>
                                 )}
-                                <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => startIngestion.mutate({})}
-                                    disabled={isIngestionRunning || startIngestion.isPending}
-                                >
-                                    {isIngestionRunning ? "Ingesting..." : startIngestion.isPending ? "Starting..." : "Ingest Documents"}
-                                </Button>
                             </div>
                         )}
                     </CardContent>
