@@ -119,11 +119,14 @@ async def worker_status_stream(
     await websocket.accept()
     logger.info("WebSocket connected for case %s (user: %s)", case_id, user.get("id"))
 
-    idle_count = 0
-    max_idle = 10  # Stop after 5s of all-idle
+    # Keep the connection open as long as the client is connected.
+    # Poll fast (500ms) when something is running, slow (3s) when idle.
+    # Max lifetime 30 min to prevent leaked connections.
+    max_lifetime = 30 * 60  # seconds
+    elapsed = 0.0
 
     try:
-        while True:
+        while elapsed < max_lifetime:
             status = {}
 
             # Analysis progress — scan all prep dirs for any active progress
@@ -140,20 +143,14 @@ async def worker_status_stream(
 
             await websocket.send_json(status)
 
-            # Check if all workers are idle — if so, increment counter
-            all_idle = all(
-                s.get("status") in (None, "idle", "complete", "error", "unavailable")
+            # Poll fast when something is active, slow when idle
+            any_active = any(
+                s.get("status") in ("running", "processing")
                 for s in status.values()
             )
-            if all_idle:
-                idle_count += 1
-                if idle_count >= max_idle:
-                    await websocket.send_json({"_done": True})
-                    break
-            else:
-                idle_count = 0
-
-            await asyncio.sleep(0.5)
+            interval = 0.5 if any_active else 3.0
+            await asyncio.sleep(interval)
+            elapsed += interval
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for case %s", case_id)

@@ -1,5 +1,6 @@
 // ---- Worker Status WebSocket Hook ---------------------------------------
 // Connects to the backend WebSocket for real-time worker updates.
+// Auto-reconnects on close with exponential backoff.
 
 "use client";
 
@@ -34,20 +35,35 @@ export function useWorkerStatus(caseId: string | null) {
     const [status, setStatus] = useState<WorkerStatus>(IDLE_STATUS);
     const [connected, setConnected] = useState(false);
     const wsRef = useRef<WebSocket | null>(null);
+    const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const backoffRef = useRef(1000); // Start at 1s, max 10s
+    const unmountedRef = useRef(false);
 
     const connect = useCallback(async () => {
-        if (!caseId) return;
+        if (!caseId || unmountedRef.current) return;
+
+        // Close any existing connection
+        if (wsRef.current) {
+            wsRef.current.onclose = null; // Prevent reconnect loop
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+
         const token = await getToken();
-        if (!token) return;
+        if (!token || unmountedRef.current) return;
 
         const ws = new WebSocket(`${WS_BASE}/api/v1/ws/workers/${caseId}?token=${token}`);
         wsRef.current = ws;
 
-        ws.onopen = () => setConnected(true);
+        ws.onopen = () => {
+            setConnected(true);
+            backoffRef.current = 1000; // Reset backoff on successful connect
+        };
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
                 if (data._done) {
+                    // Server lifetime expired — reconnect
                     ws.close();
                     return;
                 }
@@ -59,16 +75,30 @@ export function useWorkerStatus(caseId: string | null) {
         ws.onclose = () => {
             setConnected(false);
             wsRef.current = null;
+            // Auto-reconnect with backoff (unless component unmounted)
+            if (!unmountedRef.current) {
+                reconnectTimer.current = setTimeout(() => {
+                    connect();
+                }, backoffRef.current);
+                backoffRef.current = Math.min(backoffRef.current * 1.5, 10000);
+            }
         };
         ws.onerror = () => {
+            // onclose will fire after onerror, triggering reconnect
             setConnected(false);
         };
     }, [caseId, getToken]);
 
     useEffect(() => {
+        unmountedRef.current = false;
         connect();
         return () => {
-            wsRef.current?.close();
+            unmountedRef.current = true;
+            if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+            if (wsRef.current) {
+                wsRef.current.onclose = null; // Prevent reconnect on cleanup
+                wsRef.current.close();
+            }
         };
     }, [connect]);
 
