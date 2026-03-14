@@ -139,8 +139,10 @@ export interface FileItem {
     size: number;
     tags: string[];
     uploaded_at?: string;
+    ingested_at?: string;
     ocr_status?: string;
     pinned?: boolean;
+    excluded?: boolean;
 }
 
 // ---- Client (CRM) ----

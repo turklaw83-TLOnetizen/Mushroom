@@ -68,15 +68,30 @@ def _get_case_manager():
     return CaseManager(JSONStorageBackend(data_dir))
 
 
+def _load_excluded_files(case_id: str) -> set:
+    """Load the set of filenames excluded from analysis."""
+    data_dir = os.environ.get("DATA_DIR", str(_PROJECT_ROOT / "data"))
+    path = os.path.join(data_dir, "cases", case_id, "excluded_files.json")
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except (json.JSONDecodeError, IOError):
+        return set()
+
+
 def _load_or_ingest_documents(case_id: str, cm, model_provider: str) -> list:
     """Load documents from ingestion cache, or auto-ingest if cache is missing.
 
+    Respects excluded_files.json — excluded files are skipped.
     Returns a list of LangChain Document objects ready for analysis.
     """
     from langchain_core.documents import Document
 
     data_dir = os.environ.get("DATA_DIR", str(_PROJECT_ROOT / "data"))
     cache_path = os.path.join(data_dir, "cases", case_id, "ingestion_cache.json")
+    excluded = _load_excluded_files(case_id)
 
     # Try loading from ingestion cache first
     file_cache = {}
@@ -89,16 +104,24 @@ def _load_or_ingest_documents(case_id: str, cm, model_provider: str) -> list:
 
     if file_cache:
         docs = []
+        skipped = 0
         for file_key, cached_docs in file_cache.items():
+            # file_key may be "filename" or "filename:size" — check both
+            base_name = file_key.split(":")[0] if ":" in file_key else file_key
+            if base_name in excluded or file_key in excluded:
+                skipped += 1
+                continue
             for cd in cached_docs:
                 docs.append(Document(
                     page_content=cd.get("page_content", ""),
                     metadata=cd.get("metadata", {}),
                 ))
+        if skipped:
+            logger.info("Skipped %d excluded files from ingestion cache for case %s", skipped, case_id)
         logger.info("Loaded %d documents from ingestion cache for case %s", len(docs), case_id)
         return docs
 
-    # No cache — auto-ingest all case files
+    # No cache — auto-ingest all case files (excluding excluded ones)
     logger.info("No ingestion cache for case %s — auto-ingesting files", case_id)
     all_files = cm.get_case_files(case_id)
     if not all_files:
@@ -116,6 +139,9 @@ def _load_or_ingest_documents(case_id: str, cm, model_provider: str) -> list:
 
     for fpath in all_files:
         fname = os.path.basename(fpath)
+        if fname in excluded:
+            logger.info("Skipping excluded file: %s", fname)
+            continue
         try:
             docs = ingester.process_file_with_cache(
                 fpath, ocr_cache, vision_model=vision_llm,

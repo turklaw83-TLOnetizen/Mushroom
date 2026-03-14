@@ -23,12 +23,29 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/analysis", tags=["Analysis"])
 
 
+def _load_excluded_files(case_id: str, data_dir: str) -> set:
+    """Load the set of filenames excluded from analysis."""
+    import json as _json
+    path = os.path.join(data_dir, "cases", case_id, "excluded_files.json")
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return set(_json.load(f))
+    except (ValueError, IOError):
+        return set()
+
+
 def _load_documents_from_cache(case_id: str, cm, data_dir: str, model_provider: str) -> list:
-    """Load documents from the ingestion cache, or auto-ingest if missing."""
+    """Load documents from the ingestion cache, or auto-ingest if missing.
+
+    Respects excluded_files.json — excluded files are skipped.
+    """
     import json as _json
     from langchain_core.documents import Document
 
     cache_path = os.path.join(data_dir, "cases", case_id, "ingestion_cache.json")
+    excluded = _load_excluded_files(case_id, data_dir)
     file_cache = {}
     if os.path.exists(cache_path):
         try:
@@ -39,13 +56,17 @@ def _load_documents_from_cache(case_id: str, cm, data_dir: str, model_provider: 
 
     if file_cache:
         docs = []
-        for cached_docs in file_cache.values():
+        for file_key, cached_docs in file_cache.items():
+            base_name = file_key.split(":")[0] if ":" in file_key else file_key
+            if base_name in excluded or file_key in excluded:
+                continue
             for cd in cached_docs:
                 docs.append(Document(
                     page_content=cd.get("page_content", ""),
                     metadata=cd.get("metadata", {}),
                 ))
-        logger.info("Loaded %d documents from ingestion cache for case %s", len(docs), case_id)
+        logger.info("Loaded %d documents from ingestion cache for case %s (excluded %d files)",
+                     len(docs), case_id, len(excluded))
         return docs
 
     # No cache — auto-ingest
@@ -65,6 +86,8 @@ def _load_documents_from_cache(case_id: str, cm, data_dir: str, model_provider: 
 
     for fpath in all_files:
         fname = os.path.basename(fpath)
+        if fname in excluded:
+            continue
         try:
             docs = ingester.process_file_with_cache(fpath, ocr_cache, vision_model=vision_llm)
             all_docs.extend(docs)

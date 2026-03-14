@@ -4,17 +4,19 @@
 # Upload/download use `async def` (they do async file reads via UploadFile).
 # All other endpoints use sync `def` for thread-pooled Postgres safety.
 
+import json
 import logging
 import os
+from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from api.auth import get_current_user, require_role
-from api.deps import get_case_manager
+from api.deps import get_case_manager, get_data_dir
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/files", tags=["Files"])
@@ -27,6 +29,9 @@ class FileInfo(BaseModel):
     size: int = 0
     tags: List[str] = []
     pinned: bool = False
+    uploaded_at: Optional[str] = None
+    ingested_at: Optional[str] = None
+    excluded: bool = False
 
 
 class UploadResult(BaseModel):
@@ -35,6 +40,47 @@ class UploadResult(BaseModel):
 
 
 # ---- Endpoints -----------------------------------------------------------
+
+def _load_excluded_files(case_id: str) -> set:
+    """Load the set of filenames excluded from analysis."""
+    data_dir = get_data_dir()
+    path = os.path.join(data_dir, "cases", case_id, "excluded_files.json")
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except (json.JSONDecodeError, IOError):
+        return set()
+
+
+def _save_excluded_files(case_id: str, excluded: set):
+    """Save the set of excluded filenames."""
+    data_dir = get_data_dir()
+    path = os.path.join(data_dir, "cases", case_id, "excluded_files.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(sorted(excluded), f)
+
+
+def _load_ingestion_cache(case_id: str) -> dict:
+    """Load the ingestion cache to check which files have been ingested."""
+    data_dir = get_data_dir()
+    cache_path = os.path.join(data_dir, "cases", case_id, "ingestion_cache.json")
+    if not os.path.exists(cache_path):
+        return {}
+    try:
+        # Just get file modification time of the cache as proxy for ingestion time
+        mtime = os.path.getmtime(cache_path)
+        with open(cache_path, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+        return {
+            "keys": set(cache.keys()),
+            "mtime": datetime.fromtimestamp(mtime).isoformat(timespec="seconds"),
+        }
+    except (json.JSONDecodeError, IOError):
+        return {}
+
 
 @router.get("", response_model=List[FileInfo])
 def list_files(case_id: str, user: dict = Depends(get_current_user)):
@@ -47,19 +93,35 @@ def list_files(case_id: str, user: dict = Depends(get_current_user)):
     file_paths = cm.get_case_files(case_id)
     tags = cm.storage.get_file_tags(case_id)
     pinned_files = cm.get_pinned_files(case_id)
+    excluded_files = _load_excluded_files(case_id)
+    ingestion_info = _load_ingestion_cache(case_id)
+    ingested_keys = ingestion_info.get("keys", set())
+    ingestion_mtime = ingestion_info.get("mtime")
 
     files = []
     for fp in file_paths:
         basename = os.path.basename(fp)
         try:
-            size = os.path.getsize(fp)
+            stat = os.stat(fp)
+            size = stat.st_size
+            # Use file modification time as upload timestamp
+            uploaded_at = datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds")
         except OSError:
             size = 0
+            uploaded_at = None
+
+        # Check if file was ingested (key format: "filename:size" or just "filename")
+        file_key = f"{basename}:{size}" if size else basename
+        is_ingested = file_key in ingested_keys or basename in ingested_keys
+
         files.append(FileInfo(
             filename=basename,
             size=size,
             tags=tags.get(basename, []),
             pinned=basename in pinned_files,
+            uploaded_at=uploaded_at,
+            ingested_at=ingestion_mtime if is_ingested else None,
+            excluded=basename in excluded_files,
         ))
     # Sort pinned files to the top
     files.sort(key=lambda f: (not f.pinned, f.filename))
@@ -176,3 +238,29 @@ def unpin_file(
         raise HTTPException(status_code=404, detail="Case not found")
     cm.unpin_file(case_id, filename)
     return {"status": "unpinned", "filename": filename}
+
+
+@router.post("/{filename}/exclude")
+def exclude_file(
+    case_id: str,
+    filename: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Exclude a file from analysis."""
+    excluded = _load_excluded_files(case_id)
+    excluded.add(filename)
+    _save_excluded_files(case_id, excluded)
+    return {"status": "excluded", "filename": filename}
+
+
+@router.delete("/{filename}/exclude")
+def include_file(
+    case_id: str,
+    filename: str,
+    user: dict = Depends(require_role("admin", "attorney")),
+):
+    """Re-include a file in analysis."""
+    excluded = _load_excluded_files(case_id)
+    excluded.discard(filename)
+    _save_excluded_files(case_id, excluded)
+    return {"status": "included", "filename": filename}
