@@ -42,6 +42,29 @@ async def _authenticate_ws(token: str) -> dict | None:
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(os.getcwd(), "data"))
 
 
+def _read_json_status(path: str, default: dict) -> dict:
+    """Read a JSON status file from disk, returning default on any error."""
+    if not os.path.exists(path):
+        return dict(default)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError, OSError):
+        return dict(default)
+
+
+def _get_ingestion_status(case_id: str) -> dict:
+    """Read ingestion status directly from disk (no heavy imports)."""
+    path = os.path.join(DATA_DIR, "cases", case_id, "ingestion_status.json")
+    return _read_json_status(path, {"status": "idle", "progress": 0, "message": ""})
+
+
+def _get_ocr_status(case_id: str) -> dict:
+    """Read OCR status directly from disk (no heavy imports)."""
+    path = os.path.join(DATA_DIR, "cases", case_id, "ocr_status.json")
+    return _read_json_status(path, {"status": "idle", "files_done": 0, "files_total": 0})
+
+
 def _get_any_active_progress(case_id: str) -> dict:
     """Scan all prep directories for analysis progress.
 
@@ -109,19 +132,11 @@ async def worker_status_stream(
             except Exception:
                 status["analysis"] = {"status": "idle"}
 
-            # Ingestion status
-            try:
-                from core.ingestion_worker import get_ingestion_status
-                status["ingestion"] = get_ingestion_status(case_id) or {"status": "idle"}
-            except Exception:
-                status["ingestion"] = {"status": "unavailable"}
+            # Ingestion status — read directly from disk (avoids heavy core imports)
+            status["ingestion"] = _get_ingestion_status(case_id)
 
-            # OCR status
-            try:
-                from core.ocr_worker import get_ocr_status
-                status["ocr"] = get_ocr_status(case_id) or {"status": "idle"}
-            except Exception:
-                status["ocr"] = {"status": "unavailable"}
+            # OCR status — read directly from disk
+            status["ocr"] = _get_ocr_status(case_id)
 
             await websocket.send_json(status)
 
