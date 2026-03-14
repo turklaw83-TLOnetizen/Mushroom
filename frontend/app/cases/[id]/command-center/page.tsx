@@ -75,7 +75,7 @@ function MetricCard({
     label,
     value,
     sub,
-    color = "text-white",
+    color = "text-foreground",
 }: {
     label: string;
     value: string | number;
@@ -83,7 +83,7 @@ function MetricCard({
     color?: string;
 }) {
     return (
-        <Card className="border-white/5">
+        <Card className="border-border/50">
             <CardContent className="pt-4 pb-3">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">{label}</p>
                 <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
@@ -106,7 +106,7 @@ function ScoreRing({ score, grade, label }: { score: number; grade: string; labe
             <div className="relative w-24 h-24">
                 <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
                     <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor"
-                        className="text-white/5" strokeWidth="6" />
+                        className="text-muted-foreground/10" strokeWidth="6" />
                     <circle cx="50" cy="50" r="40" fill="none"
                         className={color} strokeWidth="6" strokeLinecap="round"
                         strokeDasharray={circumference} strokeDashoffset={circumference - progress} />
@@ -213,7 +213,7 @@ export default function CommandCenterPage() {
             {scoreLoading ? (
                 <div className="grid grid-cols-6 gap-4">
                     {Array.from({ length: 6 }).map((_, i) => (
-                        <Card key={i} className="border-white/5">
+                        <Card key={i} className="border-border/50">
                             <CardContent className="pt-4 flex justify-center">
                                 <Skeleton className="w-24 h-24 rounded-full" />
                             </CardContent>
@@ -223,7 +223,7 @@ export default function CommandCenterPage() {
             ) : score ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                     {Object.entries(dims).map(([key, dim]: [string, any]) => (
-                        <Card key={key} className="border-white/5">
+                        <Card key={key} className="border-border/50">
                             <CardContent className="pt-4 flex justify-center">
                                 <ScoreRing
                                     score={dim.score || 0}
@@ -235,7 +235,7 @@ export default function CommandCenterPage() {
                     ))}
                 </div>
             ) : (
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardContent className="py-8 text-center text-muted-foreground text-sm">
                         Run analysis to generate case scores
                     </CardContent>
@@ -272,7 +272,7 @@ export default function CommandCenterPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Upcoming Deadlines */}
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium">Upcoming Deadlines</CardTitle>
                     </CardHeader>
@@ -293,9 +293,9 @@ export default function CommandCenterPage() {
                                     </div>
                                 ))}
                                 {upcomingDeadlines.map((d: any, i: number) => (
-                                    <div key={i} className="flex items-center justify-between p-2 rounded bg-white/[0.02]">
+                                    <div key={i} className="flex items-center justify-between p-2 rounded bg-muted/30">
                                         <div>
-                                            <p className="text-sm font-medium text-zinc-300">{d.title || d.description}</p>
+                                            <p className="text-sm font-medium text-foreground/90">{d.title || d.description}</p>
                                             <p className="text-xs text-muted-foreground">{formatDate(d.due_date || d.date)}</p>
                                         </div>
                                         <span className="text-xs text-muted-foreground">
@@ -309,7 +309,7 @@ export default function CommandCenterPage() {
                 </Card>
 
                 {/* Strengths & Vulnerabilities */}
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium">Strengths & Vulnerabilities</CardTitle>
                     </CardHeader>
@@ -322,7 +322,7 @@ export default function CommandCenterPage() {
                                     <div>
                                         <p className="text-xs font-medium text-green-400 mb-2">STRENGTHS</p>
                                         {score.strengths.slice(0, 4).map((s: string, i: number) => (
-                                            <p key={i} className="text-sm text-zinc-400 mb-1">+ {s}</p>
+                                            <p key={i} className="text-sm text-muted-foreground mb-1">+ {s}</p>
                                         ))}
                                     </div>
                                 )}
@@ -330,7 +330,7 @@ export default function CommandCenterPage() {
                                     <div>
                                         <p className="text-xs font-medium text-red-400 mb-2">VULNERABILITIES</p>
                                         {score.vulnerabilities.slice(0, 4).map((v: string, i: number) => (
-                                            <p key={i} className="text-sm text-zinc-400 mb-1">- {v}</p>
+                                            <p key={i} className="text-sm text-muted-foreground mb-1">- {v}</p>
                                         ))}
                                     </div>
                                 )}
@@ -345,7 +345,7 @@ export default function CommandCenterPage() {
                 </Card>
 
                 {/* Witness Overview */}
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium">Witness Roster</CardTitle>
                     </CardHeader>
@@ -357,12 +357,12 @@ export default function CommandCenterPage() {
                         ) : (
                             <div className="space-y-2">
                                 {witnessList.slice(0, 8).map((w: any, i: number) => (
-                                    <div key={i} className="flex items-center justify-between p-2 rounded bg-white/[0.02]">
+                                    <div key={i} className="flex items-center justify-between p-2 rounded bg-muted/30">
                                         <div className="flex items-center gap-2">
                                             <div className="w-7 h-7 rounded-full bg-indigo-500/20 flex items-center justify-center text-xs font-medium text-indigo-400">
                                                 {(w.name || "?")[0]}
                                             </div>
-                                            <p className="text-sm text-zinc-300">{w.name}</p>
+                                            <p className="text-sm text-foreground/90">{w.name}</p>
                                         </div>
                                         <StatusBadge
                                             status={w.type || "unknown"}
@@ -381,7 +381,7 @@ export default function CommandCenterPage() {
                 </Card>
 
                 {/* Recent Activity */}
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
                     </CardHeader>
@@ -393,10 +393,10 @@ export default function CommandCenterPage() {
                         ) : (
                             <div className="space-y-2">
                                 {activityList.slice(0, 8).map((a: any, i: number) => (
-                                    <div key={i} className="flex items-start gap-2 p-2 rounded bg-white/[0.02]">
+                                    <div key={i} className="flex items-start gap-2 p-2 rounded bg-muted/30">
                                         <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 flex-shrink-0" />
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm text-zinc-300 truncate">
+                                            <p className="text-sm text-foreground/90 truncate">
                                                 {a.description || a.action || a.event}
                                             </p>
                                             <p className="text-xs text-muted-foreground">

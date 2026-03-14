@@ -120,6 +120,18 @@ app.add_middleware(UploadSizeMiddleware, max_size=20 * 1024 * 1024 * 1024)  # 20
 app.add_middleware(InputSanitizationMiddleware)
 app.add_middleware(MetricsMiddleware)
 
+# Domain exception handler — registered before the generic handler so
+# FastAPI matches AppError (and subclasses) before the catch-all Exception.
+from core.exceptions import AppError
+from starlette.responses import JSONResponse as _JSONResponse
+
+@app.exception_handler(AppError)
+async def app_error_handler(request, exc: AppError):
+    return _JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message},
+    )
+
 # Fix #10: Global structured error handler
 app.add_exception_handler(Exception, structured_error_handler)
 

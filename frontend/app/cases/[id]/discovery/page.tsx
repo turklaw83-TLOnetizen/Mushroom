@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
@@ -88,7 +89,7 @@ export default function DiscoveryPage() {
     const { data, isLoading } = useQuery<DiscoveryData>({
         queryKey: ["discovery", caseId],
         queryFn: () =>
-            api.get<DiscoveryData>(`/api/v1/cases/${caseId}/discovery`, { getToken }),
+            api.get<DiscoveryData>(`/cases/${caseId}/discovery`, { getToken }),
         enabled: !!caseId,
     });
 
@@ -263,7 +264,7 @@ function RequestsTab({
 
     const createMutation = useMutationWithToast({
         mutationFn: (data: Record<string, unknown>) =>
-            api.post(`/api/v1/cases/${caseId}/discovery/requests`, data, { getToken }),
+            api.post(`/cases/${caseId}/discovery/requests`, data, { getToken }),
         successMessage: "Discovery request created",
         onSuccess: () => {
             setCreateOpen(false);
@@ -273,21 +274,21 @@ function RequestsTab({
 
     const statusMutation = useMutationWithToast({
         mutationFn: ({ requestId, status }: { requestId: string; status: string }) =>
-            api.patch(`/api/v1/cases/${caseId}/discovery/requests/${requestId}/status`, { status }, { getToken }),
+            api.patch(`/cases/${caseId}/discovery/requests/${requestId}/status`, { status }, { getToken }),
         successMessage: "Status updated",
         onSuccess: onRefresh,
     });
 
     const deleteMutation = useMutationWithToast({
         mutationFn: (requestId: string) =>
-            api.delete(`/api/v1/cases/${caseId}/discovery/requests/${requestId}`, { getToken }),
+            api.delete(`/cases/${caseId}/discovery/requests/${requestId}`, { getToken }),
         successMessage: "Request deleted",
         onSuccess: onRefresh,
     });
 
     const itemMutation = useMutationWithToast({
         mutationFn: ({ requestId, itemNumber, data }: { requestId: string; itemNumber: number; data: Record<string, unknown> }) =>
-            api.patch(`/api/v1/cases/${caseId}/discovery/requests/${requestId}/items/${itemNumber}`, data, { getToken }),
+            api.patch(`/cases/${caseId}/discovery/requests/${requestId}/items/${itemNumber}`, data, { getToken }),
         successMessage: "Item updated",
         onSuccess: onRefresh,
     });
@@ -304,11 +305,11 @@ function RequestsTab({
             </div>
 
             {requests.length === 0 ? (
-                <Card className="glass-card">
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                        No {direction === "outbound" ? "sent" : "received"} discovery requests yet.
-                    </CardContent>
-                </Card>
+                <EmptyState
+                    icon={direction === "outbound" ? "\uD83D\uDCE4" : "\uD83D\uDCE5"}
+                    title={`No ${direction === "outbound" ? "sent" : "received"} discovery requests yet`}
+                    description={direction === "outbound" ? "Create an outbound request to send interrogatories, document requests, or admissions." : "Log incoming discovery requests received from opposing counsel."}
+                />
             ) : (
                 <div className="space-y-3">
                     {requests.map((req) => (
@@ -682,7 +683,7 @@ function AIDraftTab({
 
     const draftMutation = useMutationWithToast<void, { items: DraftResultItem[] }>({
         mutationFn: () =>
-            api.post<{ items: DraftResultItem[] }>(`/api/v1/cases/${caseId}/discovery/draft`, {
+            api.post<{ items: DraftResultItem[] }>(`/cases/${caseId}/discovery/draft`, {
                 request_type: requestType,
                 focus_witnesses: focusWitnesses ? focusWitnesses.split(",").map((s) => s.trim()) : [],
                 focus_themes: focusThemes ? focusThemes.split(",").map((s) => s.trim()) : [],
@@ -704,7 +705,7 @@ function AIDraftTab({
             const items = draftItems
                 .filter((i) => selectedItems.has(i.number))
                 .map((i) => ({ number: i.number, text: i.text, response: "", objection: "", status: "pending" }));
-            return api.post(`/api/v1/cases/${caseId}/discovery/requests`, {
+            return api.post(`/cases/${caseId}/discovery/requests`, {
                 direction: "outbound",
                 request_type: requestType,
                 title: `${TYPE_LABELS[requestType]} — AI Draft`,
@@ -722,7 +723,7 @@ function AIDraftTab({
 
     const meetConferMutation = useMutationWithToast<void, { letter: string }>({
         mutationFn: () =>
-            api.post<{ letter: string }>(`/api/v1/cases/${caseId}/discovery/meet-confer`, {
+            api.post<{ letter: string }>(`/cases/${caseId}/discovery/meet-confer`, {
                 request_id: meetConferRequestId,
                 deficient_item_numbers: meetConferItems.split(",").map((s) => parseInt(s.trim())).filter(Boolean),
                 custom_instructions: meetConferInstructions,
@@ -1019,7 +1020,7 @@ function ProductionsTab({
 
     const createMutation = useMutationWithToast<void>({
         mutationFn: () =>
-            api.post(`/api/v1/cases/${caseId}/discovery/productions`, {
+            api.post(`/cases/${caseId}/discovery/productions`, {
                 title,
                 bates_prefix: batesPrefix,
                 produced_to: producedTo,
@@ -1042,11 +1043,11 @@ function ProductionsTab({
             </div>
 
             {sets.length === 0 ? (
-                <Card className="glass-card">
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                        No production sets yet. Create one to track document productions with Bates numbering.
-                    </CardContent>
-                </Card>
+                <EmptyState
+                    icon="\uD83D\uDCE6"
+                    title="No production sets yet"
+                    description="Create one to track document productions with Bates numbering."
+                />
             ) : (
                 <div className="space-y-3">
                     {sets.map((ps) => (
@@ -1153,7 +1154,7 @@ function PrivilegeTab({
 
     const createMutation = useMutationWithToast<void>({
         mutationFn: () =>
-            api.post(`/api/v1/cases/${caseId}/discovery/privilege`, {
+            api.post(`/cases/${caseId}/discovery/privilege`, {
                 document,
                 bates_number: batesNumber,
                 privilege_type: privilegeType,
@@ -1181,7 +1182,7 @@ function PrivilegeTab({
 
     const deleteMutation = useMutationWithToast({
         mutationFn: (entryId: string) =>
-            api.delete(`/api/v1/cases/${caseId}/discovery/privilege/${entryId}`, { getToken }),
+            api.delete(`/cases/${caseId}/discovery/privilege/${entryId}`, { getToken }),
         successMessage: "Entry removed",
         onSuccess: onRefresh,
     });
@@ -1194,15 +1195,15 @@ function PrivilegeTab({
             </div>
 
             {entries.length === 0 ? (
-                <Card className="glass-card">
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                        No privilege log entries. Add entries for documents withheld from production.
-                    </CardContent>
-                </Card>
+                <EmptyState
+                    icon="\uD83D\uDD12"
+                    title="No privilege log entries"
+                    description="Add entries for documents withheld from production."
+                />
             ) : (
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-background">
                             <tr className="border-b border-border text-left text-muted-foreground">
                                 <th className="py-2 px-3">Document</th>
                                 <th className="py-2 px-3">Bates #</th>

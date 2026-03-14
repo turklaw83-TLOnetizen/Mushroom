@@ -6,6 +6,7 @@
 
 import logging
 import os
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import AsyncGenerator
@@ -96,12 +97,37 @@ def get_user_manager():
     return UserManager()
 
 
-@lru_cache(maxsize=1)
-def get_config() -> dict:
-    """Load and return config.yaml (cached after first read)."""
-    import yaml
-    config_path = PROJECT_ROOT / "config.yaml"
-    if config_path.exists():
-        with open(config_path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    return {}
+def get_config():
+    """Return the validated AppConfig singleton from core.config.
+
+    AppConfig supports dict-style ``.get()`` calls, so existing code
+    like ``config.get("llm", {}).get("provider", ...)`` keeps working.
+    """
+    from core.config import CONFIG
+    return CONFIG
+
+
+# ---- Path Traversal Protection -------------------------------------------
+
+_SAFE_PATH_SEGMENT = re.compile(r'^[a-zA-Z0-9_\-\.]+$')
+
+
+def sanitize_path_param(value: str, param_name: str = "parameter") -> str:
+    """Validate a path segment to prevent directory traversal.
+
+    Rejects values containing '..', '/', '\\', null bytes, or other
+    dangerous characters. Only allows alphanumeric, underscore, hyphen, dot.
+    """
+    if not value or not isinstance(value, str):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: empty value")
+    if '..' in value or '/' in value or '\\' in value or '\0' in value:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: contains forbidden characters")
+    if not _SAFE_PATH_SEGMENT.match(value):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: contains forbidden characters")
+    if len(value) > 255:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"Invalid {param_name}: too long")
+    return value

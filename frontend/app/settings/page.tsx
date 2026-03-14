@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { routes } from "@/lib/api-routes";
 import { queryKeys } from "@/lib/query-keys";
-import { formatBytes } from "@/lib/constants";
+import { formatBytes, formatDate } from "@/lib/constants";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -364,7 +364,7 @@ export default function SettingsPage() {
                         ) : (
                             <div className="rounded-md border">
                                 <table className="w-full text-sm">
-                                    <thead>
+                                    <thead className="sticky top-0 z-10 bg-background">
                                         <tr className="border-b bg-muted/50">
                                             <th className="text-left font-medium px-3 py-2 text-xs">Date</th>
                                             <th className="text-left font-medium px-3 py-2 text-xs">Target</th>
@@ -377,13 +377,7 @@ export default function SettingsPage() {
                                         {backupList.backups.map((entry, i) => (
                                             <tr key={i} className="border-b last:border-0">
                                                 <td className="px-3 py-2 text-xs">
-                                                    {new Date(entry.timestamp).toLocaleDateString("en-US", {
-                                                        month: "short",
-                                                        day: "numeric",
-                                                        year: "numeric",
-                                                        hour: "numeric",
-                                                        minute: "2-digit",
-                                                    })}
+                                                    {formatDate(entry.timestamp)}
                                                 </td>
                                                 <td className="px-3 py-2 text-xs capitalize">
                                                     {entry.target}

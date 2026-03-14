@@ -38,7 +38,7 @@ async def test_health_check():
     """Health endpoint should be accessible without auth."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/health")
+        response = await client.get("/api/v1/health")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
@@ -50,7 +50,7 @@ async def test_list_cases_unauthorized():
     """Listing cases without auth should return 401/403."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/cases")
+        response = await client.get("/api/v1/cases")
         assert response.status_code in (401, 403)
 
 
@@ -59,7 +59,7 @@ async def test_list_cases_with_auth(admin_headers):
     """Listing cases with valid admin auth should return 200."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/cases", headers=admin_headers)
+        response = await client.get("/api/v1/cases", headers=admin_headers)
         assert response.status_code == 200
         data = response.json()
         # Fix #3: endpoint returns PaginatedResponse, not a plain list
@@ -74,14 +74,21 @@ async def test_create_case(admin_headers):
     """Creating a case should return 201 with case_id."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # First GET to obtain a CSRF cookie (CSRF middleware sets it on every response)
+        get_resp = await client.get("/api/v1/health")
+        csrf_token = get_resp.cookies.get("mc-csrf")
+        assert csrf_token, "CSRF cookie should be set on GET response"
+
+        headers = {**admin_headers, "X-CSRF-Token": csrf_token}
         response = await client.post(
-            "/api/cases",
+            "/api/v1/cases",
             json={
                 "case_name": "Test v. State",
                 "case_type": "criminal",
                 "description": "Test case for API",
             },
-            headers=admin_headers,
+            headers=headers,
+            cookies={"mc-csrf": csrf_token},
         )
         assert response.status_code == 201
         data = response.json()
@@ -93,7 +100,7 @@ async def test_get_providers():
     """Providers endpoint should return configured LLM providers."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/config/providers")
+        response = await client.get("/api/v1/config/providers")
         assert response.status_code == 200
         data = response.json()
         assert "default_provider" in data

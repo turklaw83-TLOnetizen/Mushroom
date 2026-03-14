@@ -31,7 +31,10 @@ export default function RootLayout({
                         __html: `
               try {
                 var stored = JSON.parse(localStorage.getItem('mc-ui-store') || '{}');
-                var theme = (stored.state && stored.state.theme) || 'dark';
+                var theme = stored.state && stored.state.theme;
+                if (!theme) {
+                  theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                }
                 document.documentElement.classList.toggle('dark', theme === 'dark');
               } catch(e) {
                 document.documentElement.classList.add('dark');

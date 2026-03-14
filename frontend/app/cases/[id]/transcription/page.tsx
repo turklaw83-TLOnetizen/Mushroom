@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
     Dialog,
@@ -904,15 +905,11 @@ export default function TranscriptionPage() {
                             ))}
                         </div>
                     ) : jobs.length === 0 ? (
-                        <Card className="border-dashed">
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                <p className="text-base mb-1">No transcription jobs yet</p>
-                                <p className="text-sm">
-                                    Start one by clicking the button above. Supported formats:
-                                    MP3, MP4, WAV, M4A, OGG, WebM, and more.
-                                </p>
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="\uD83C\uDF99\uFE0F"
+                            title="No transcription jobs yet"
+                            description="Start one by clicking the button above. Supported formats: MP3, MP4, WAV, M4A, OGG, WebM, and more."
+                        />
                     ) : (
                         <div className="space-y-2">
                             {jobs.map((job) => (

@@ -41,7 +41,7 @@ export function ExportPanel({ caseId }: { caseId: string }) {
         try {
             const token = await getToken();
             const response = await fetch(
-                `${API_BASE}/api/cases/${caseId}/export/${exp.endpoint}/${activePrepId}`,
+                `${API_BASE}/api/v1/cases/${caseId}/export/${exp.endpoint}/${activePrepId}`,
                 {
                     headers: token ? { Authorization: `Bearer ${token}` } : {},
                 },

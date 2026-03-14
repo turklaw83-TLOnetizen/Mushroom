@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import type {
     RedactionCategory,
     RedactionFinding,
@@ -235,9 +236,36 @@ export default function RedactionPage() {
 
     if (categoriesQuery.isLoading) {
         return (
-            <div className="space-y-4">
-                <Skeleton className="h-8 w-48" />
-                <Skeleton className="h-64 w-full" />
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <Skeleton className="h-7 w-40" />
+                    <Skeleton className="h-8 w-32" />
+                </div>
+                <Card>
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                            <Skeleton className="h-4 w-44" />
+                            <div className="flex gap-2">
+                                <Skeleton className="h-6 w-16" />
+                                <Skeleton className="h-6 w-20" />
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {Array.from({ length: 8 }).map((_, i) => (
+                                <div key={i} className="flex items-center gap-3 rounded-md border p-3">
+                                    <Skeleton className="h-4 w-4 rounded shrink-0" />
+                                    <div className="flex-1 min-w-0">
+                                        <Skeleton className="h-4 w-24 mb-1" />
+                                    </div>
+                                    <Skeleton className="h-5 w-14 rounded-full shrink-0" />
+                                </div>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+                <Skeleton className="h-9 w-44" />
             </div>
         );
     }
@@ -354,7 +382,7 @@ export default function RedactionPage() {
                         <CardContent>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-xs">
-                                    <thead>
+                                    <thead className="sticky top-0 z-10 bg-background">
                                         <tr className="border-b border-border text-left text-muted-foreground">
                                             <th className="pb-2 pr-3">#</th>
                                             <th className="pb-2 pr-3">Category</th>
@@ -506,11 +534,11 @@ export default function RedactionPage() {
                 {/* Per-File Results */}
                 <div className="space-y-3">
                     {fileEntries.length === 0 ? (
-                        <Card>
-                            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                                No PII findings detected in any files.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="\u2705"
+                            title="No PII findings detected"
+                            description="No personally identifiable information was found in any scanned files."
+                        />
                     ) : (
                         fileEntries.map((file) => {
                             const isExpanded = expandedFile === file.name;
@@ -650,11 +678,11 @@ export default function RedactionPage() {
                 </div>
 
                 {reports.length === 0 ? (
-                    <Card>
-                        <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                            No previous scan reports found.
-                        </CardContent>
-                    </Card>
+                    <EmptyState
+                        icon="\uD83D\uDCCB"
+                        title="No previous scan reports"
+                        description="Run a PII scan to generate redaction reports."
+                    />
                 ) : (
                     <div className="space-y-3">
                         {reports.map((report) => (

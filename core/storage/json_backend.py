@@ -205,7 +205,11 @@ class JSONStorageBackend(StorageBackend):
         return False
 
     def get_file_path(self, case_id: str, filename: str) -> str:
-        return str(self._source_docs_dir(case_id) / filename)
+        docs_dir = self._source_docs_dir(case_id)
+        path = (docs_dir / filename).resolve()
+        if not str(path).startswith(str(docs_dir.resolve())):
+            raise ValueError(f"Path traversal rejected: {filename}")
+        return str(path)
 
     def purge_source_docs(self, case_id: str) -> int:
         """Delete all files in source_docs/. Return count of files deleted."""

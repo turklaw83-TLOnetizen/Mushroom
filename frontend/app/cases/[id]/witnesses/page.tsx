@@ -20,20 +20,25 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 // ---- Witness Type Colors ------------------------------------------------
 
-const WITNESS_TYPE_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-    State: { bg: "bg-amber-500/20", border: "border-amber-500", text: "text-amber-300" },
-    Defense: { bg: "bg-blue-500/20", border: "border-blue-500", text: "text-blue-300" },
-    Expert: { bg: "bg-violet-500/20", border: "border-violet-500", text: "text-violet-300" },
-    Character: { bg: "bg-emerald-500/20", border: "border-emerald-500", text: "text-emerald-300" },
+const WITNESS_TYPE_COLORS: Record<string, { bg: string; border: string; text: string; dot: string; borderTop: string }> = {
+    State: { bg: "bg-amber-500/20", border: "border-amber-500", text: "text-amber-300", dot: "bg-amber-500", borderTop: "border-t-amber-500" },
+    Defense: { bg: "bg-blue-500/20", border: "border-blue-500", text: "text-blue-300", dot: "bg-blue-500", borderTop: "border-t-blue-500" },
+    Expert: { bg: "bg-violet-500/20", border: "border-violet-500", text: "text-violet-300", dot: "bg-violet-500", borderTop: "border-t-violet-500" },
+    Character: { bg: "bg-emerald-500/20", border: "border-emerald-500", text: "text-emerald-300", dot: "bg-emerald-500", borderTop: "border-t-emerald-500" },
+    Swing: { bg: "bg-orange-500/20", border: "border-orange-500", text: "text-orange-300", dot: "bg-orange-500", borderTop: "border-t-orange-500" },
 };
 
-const WITNESS_TYPE_ORDER = ["State", "Expert", "Defense", "Character"];
+const DEFAULT_TYPE_COLORS = { bg: "bg-muted/40", border: "border-muted-foreground", text: "text-muted-foreground", dot: "bg-muted-foreground", borderTop: "border-t-muted-foreground" };
+
+const WITNESS_TYPE_ORDER = ["State", "Expert", "Defense", "Character", "Swing"];
 
 // ---- Witness Timeline Overlay -------------------------------------------
 
@@ -50,11 +55,13 @@ function WitnessTimeline({ witnesses }: { witnesses: Witness[] }) {
 
     if (sorted.length === 0) {
         return (
-            <Card className="mb-4">
-                <CardContent className="py-6 text-center">
-                    <p className="text-sm text-muted-foreground">No witnesses to display in timeline.</p>
-                </CardContent>
-            </Card>
+            <div className="mb-4">
+                <EmptyState
+                    icon="👥"
+                    title="No witnesses recorded"
+                    description="Add witnesses to build your witness list for examination preparation."
+                />
+            </div>
         );
     }
 
@@ -67,9 +74,10 @@ function WitnessTimeline({ witnesses }: { witnesses: Witness[] }) {
                 </CardTitle>
                 <div className="flex gap-2 mt-1">
                     {WITNESS_TYPE_ORDER.map((type) => {
-                        const colors = WITNESS_TYPE_COLORS[type] ?? WITNESS_TYPE_COLORS.State;
+                        const colors = WITNESS_TYPE_COLORS[type] ?? DEFAULT_TYPE_COLORS;
                         return (
                             <Badge key={type} variant="outline" className={`text-[10px] ${colors.text} ${colors.border}`}>
+                                <span className={`inline-block w-1.5 h-1.5 rounded-full ${colors.dot} mr-1`} />
                                 {type}
                             </Badge>
                         );
@@ -80,11 +88,11 @@ function WitnessTimeline({ witnesses }: { witnesses: Witness[] }) {
                 <div className="overflow-x-auto">
                     <div className="flex gap-2 min-w-max pb-1">
                         {sorted.map((w, i) => {
-                            const colors = WITNESS_TYPE_COLORS[w.type] ?? WITNESS_TYPE_COLORS.State;
+                            const colors = WITNESS_TYPE_COLORS[w.type] ?? DEFAULT_TYPE_COLORS;
                             return (
                                 <div
                                     key={`${w.name}-${i}`}
-                                    className={`flex-shrink-0 rounded-md border-l-4 ${colors.border} ${colors.bg} px-3 py-2 min-w-[140px] max-w-[200px]`}
+                                    className={`flex-shrink-0 rounded-md border-t-2 ${colors.borderTop} border-l-4 ${colors.border} ${colors.bg} px-3 py-2 min-w-[220px] max-w-[260px]`}
                                 >
                                     <p className="text-sm font-medium truncate">{w.name}</p>
                                     <p className="text-xs text-muted-foreground truncate">{w.role || w.type}</p>
@@ -186,18 +194,15 @@ function WitnessDetailPanel({
                         <span aria-hidden="true">👤</span> {witness.name}
                     </SheetTitle>
                     <SheetDescription>
-                        <Badge
-                            variant="outline"
-                            className={
-                                witness.type === "Defense"
-                                    ? "text-blue-400 border-blue-500/30"
-                                    : witness.type === "Expert"
-                                        ? "text-violet-400 border-violet-500/30"
-                                        : "text-amber-400 border-amber-500/30"
-                            }
-                        >
-                            {witness.type}
-                        </Badge>
+                        {(() => {
+                            const tc = WITNESS_TYPE_COLORS[witness.type] ?? DEFAULT_TYPE_COLORS;
+                            return (
+                                <Badge variant="outline" className={`${tc.text} ${tc.border}`}>
+                                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${tc.dot} mr-1`} />
+                                    {witness.type}
+                                </Badge>
+                            );
+                        })()}
                         {witness.role && (
                             <Badge variant="secondary" className="ml-2 text-xs">{witness.role}</Badge>
                         )}
@@ -315,13 +320,11 @@ function WitnessDetailPanel({
                                 </CardContent>
                             </Card>
                         ) : (
-                            <Card className="border-dashed">
-                                <CardContent className="py-8 text-center">
-                                    <p className="text-sm text-muted-foreground italic">
-                                        No cross-examination plan generated yet. Run analysis to generate questions for this witness.
-                                    </p>
-                                </CardContent>
-                            </Card>
+                            <EmptyState
+                                icon="🗡️"
+                                title="No cross-examination plan yet"
+                                description="Run analysis with the cross-examiner module to generate cross-examination strategies for this witness."
+                            />
                         )}
                     </TabsContent>
 
@@ -339,13 +342,11 @@ function WitnessDetailPanel({
                                 </CardContent>
                             </Card>
                         ) : (
-                            <Card className="border-dashed">
-                                <CardContent className="py-8 text-center">
-                                    <p className="text-sm text-muted-foreground italic">
-                                        No direct-examination plan generated yet. Run analysis to generate questions for this witness.
-                                    </p>
-                                </CardContent>
-                            </Card>
+                            <EmptyState
+                                icon="🛡️"
+                                title="No direct examination plan yet"
+                                description="Run analysis with the direct-examiner module to generate direct examination questions for this witness."
+                            />
                         )}
                     </TabsContent>
 
@@ -429,6 +430,41 @@ export default function WitnessesPage() {
             ),
         enabled: !!activePrepId,
     });
+
+    // ---- Loading skeleton ----
+    if (prepLoading || query.isLoading) {
+        return (
+            <div className="space-y-4 p-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <Skeleton className="h-7 w-36" />
+                        <Skeleton className="h-4 w-64 mt-1" />
+                    </div>
+                    <Skeleton className="h-9 w-28" />
+                </div>
+                <Skeleton className="h-9 w-full max-w-sm" />
+                <div className="space-y-2">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <Card key={i}>
+                            <CardContent className="flex items-center justify-between py-3">
+                                <div className="flex items-center gap-3">
+                                    <Skeleton className="h-8 w-8 rounded-full" />
+                                    <div>
+                                        <Skeleton className="h-4 w-32 mb-1" />
+                                        <Skeleton className="h-3 w-48" />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Skeleton className="h-5 w-14 rounded-full" />
+                                    <Skeleton className="h-5 w-16 rounded-full" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            </div>
+        );
+    }
 
     if (!activePrepId && !prepLoading) {
         return (
@@ -538,23 +574,24 @@ export default function WitnessesPage() {
                             </div>
                             <div className="flex items-center gap-2">
                                 {hasCross && (
-                                    <Badge variant="outline" className="text-[10px] text-emerald-400 border-emerald-500/30">Cross</Badge>
+                                    <Badge variant="outline" className="text-xs bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                                        <span className="mr-0.5" aria-hidden="true">&#10003;</span> Cross
+                                    </Badge>
                                 )}
                                 {hasDirect && (
-                                    <Badge variant="outline" className="text-[10px] text-blue-400 border-blue-500/30">Direct</Badge>
+                                    <Badge variant="outline" className="text-xs bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/30">
+                                        <span className="mr-0.5" aria-hidden="true">&#10003;</span> Direct
+                                    </Badge>
                                 )}
-                                <Badge
-                                    variant="outline"
-                                    className={
-                                        witness.type === "Defense"
-                                            ? "text-blue-400 border-blue-500/30"
-                                            : witness.type === "Expert"
-                                                ? "text-violet-400 border-violet-500/30"
-                                                : "text-amber-400 border-amber-500/30"
-                                    }
-                                >
-                                    {witness.type}
-                                </Badge>
+                                {(() => {
+                                    const tc = WITNESS_TYPE_COLORS[witness.type] ?? DEFAULT_TYPE_COLORS;
+                                    return (
+                                        <Badge variant="outline" className={`${tc.text} ${tc.border}`}>
+                                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${tc.dot} mr-1`} />
+                                            {witness.type}
+                                        </Badge>
+                                    );
+                                })()}
                                 {witness.role && (
                                     <Badge variant="secondary" className="text-xs">{witness.role}</Badge>
                                 )}

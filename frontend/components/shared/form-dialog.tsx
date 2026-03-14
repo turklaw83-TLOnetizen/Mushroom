@@ -4,6 +4,7 @@
 
 import { type ReactNode, useEffect, useRef } from "react";
 import { useForm, type DefaultValues, type Path, type FieldValues } from "react-hook-form";
+import { useUnsavedWarning } from "@/hooks/use-unsaved-warning";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type ZodType } from "zod";
 import {
@@ -66,6 +67,9 @@ export function FormDialog<T extends FieldValues>({
     });
     const firstInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
+    // Warn before closing tab/window when form has unsaved changes
+    useUnsavedWarning(open && form.formState.isDirty);
+
     // Reset form and autofocus when dialog opens
     useEffect(() => {
         if (open) {
@@ -106,7 +110,7 @@ export function FormDialog<T extends FieldValues>({
                                         value={form.watch(field.name) as string}
                                         onValueChange={(val) => form.setValue(field.name, val as never)}
                                     >
-                                        <SelectTrigger>
+                                        <SelectTrigger aria-required={field.required || undefined}>
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -122,6 +126,7 @@ export function FormDialog<T extends FieldValues>({
                                         {...form.register(field.name)}
                                         placeholder={field.placeholder}
                                         rows={3}
+                                        aria-required={field.required || undefined}
                                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none"
                                     />
                                 ) : field.type === "number" ? (
@@ -130,11 +135,13 @@ export function FormDialog<T extends FieldValues>({
                                         step="any"
                                         {...form.register(field.name, { valueAsNumber: true })}
                                         placeholder={field.placeholder}
+                                        aria-required={field.required || undefined}
                                     />
                                 ) : (
                                     <Input
                                         {...form.register(field.name)}
                                         placeholder={field.placeholder}
+                                        aria-required={field.required || undefined}
                                         ref={(el) => {
                                             // Set ref for first text input for autofocus
                                             if (fieldIndex === 0 && field.type !== "select") {

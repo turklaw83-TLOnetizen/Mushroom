@@ -132,6 +132,40 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* ---- Focus Ring Enhancement ---- */
+  /* Visible focus rings for keyboard users (not mouse clicks) */
+  :focus-visible {
+    outline: 2px solid oklch(0.55 0.23 264);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Buttons, links, inputs — prominent focus ring */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid oklch(0.55 0.23 264);
+    outline-offset: 2px;
+  }
+
+  /* Inputs — inset ring looks better */
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid oklch(0.55 0.23 264);
+    outline-offset: -1px;
+  }
+}
+
+/* ---- Theme Transition ---- */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease, box-shadow 200ms ease !important;
+  transition-delay: 0s !important;
 }
 
 /* ---- Animations ---- */
@@ -150,20 +184,66 @@
   to   { opacity: 1; }
 }
 
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes pulseGlow {
   0%, 100% { box-shadow: 0 0 8px oklch(0.55 0.23 264 / 25%); }
   50%      { box-shadow: 0 0 24px oklch(0.55 0.23 264 / 45%); }
 }
 
+/* ---- Page Transition Fade ---- */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: pageEnter 200ms ease-out both;
+}
+
+/* ---- Staggered List Animations ---- */
+.stagger-item {
+  animation: slideInUp 300ms ease-out both;
+}
+.stagger-item:nth-child(1)  { animation-delay: 0ms; }
+.stagger-item:nth-child(2)  { animation-delay: 40ms; }
+.stagger-item:nth-child(3)  { animation-delay: 80ms; }
+.stagger-item:nth-child(4)  { animation-delay: 120ms; }
+.stagger-item:nth-child(5)  { animation-delay: 160ms; }
+.stagger-item:nth-child(6)  { animation-delay: 200ms; }
+.stagger-item:nth-child(7)  { animation-delay: 240ms; }
+.stagger-item:nth-child(8)  { animation-delay: 280ms; }
+.stagger-item:nth-child(9)  { animation-delay: 320ms; }
+.stagger-item:nth-child(10) { animation-delay: 360ms; }
+.stagger-item:nth-child(n+11) { animation-delay: 400ms; }
+
+/* ---- Skeleton Shimmer (theme-aware) ---- */
 [data-slot="skeleton"] {
-  background: linear-gradient(
-    90deg,
-    oklch(0.269 0 0) 25%,
-    oklch(0.269 0 0 / 50%) 50%,
-    oklch(0.269 0 0) 75%
-  );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Dark mode skeleton: brighter shimmer for visibility */
+.dark [data-slot="skeleton"] {
+  background: linear-gradient(
+    90deg,
+    oklch(0.30 0.005 264) 25%,
+    oklch(0.38 0.01 264) 50%,
+    oklch(0.30 0.005 264) 75%
+  );
+}
+
+/* Light mode skeleton */
+:root:not(.dark) [data-slot="skeleton"] {
+  background: linear-gradient(
+    90deg,
+    oklch(0.92 0 0) 25%,
+    oklch(0.88 0.01 264) 50%,
+    oklch(0.92 0 0) 75%
+  );
 }
 
 /* ---- Glass Card ---- */

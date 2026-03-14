@@ -19,8 +19,8 @@ CLERK_WEBHOOK_SECRET = os.getenv("CLERK_WEBHOOK_SECRET", "")
 def _verify_signature(payload: bytes, signature: str, secret: str) -> bool:
     """Verify Clerk webhook signature (HMAC SHA-256)."""
     if not secret:
-        logger.warning("CLERK_WEBHOOK_SECRET not set — skipping signature verification")
-        return True
+        logger.warning("CLERK_WEBHOOK_SECRET not configured — rejecting webhook")
+        return False
     expected = hmac.HMAC(secret.encode(), payload, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
@@ -68,7 +68,7 @@ async def clerk_webhook(request: Request):
         raise HTTPException(status_code=500, detail="Webhook processing failed")
 
 
-def _sync_user(user_data: dict, action: str = "create"):
+def _sync_user(user_data: dict, action: str = "create") -> None:
     """Sync user data from Clerk to local database."""
     try:
         from api.deps import get_db_session
@@ -85,7 +85,7 @@ def _sync_user(user_data: dict, action: str = "create"):
         logger.error("User sync failed: %s", e)
 
 
-def _revoke_user_access(user_id: str):
+def _revoke_user_access(user_id: str) -> None:
     """Revoke all access for a deleted user."""
     try:
         logger.warning("Access revoked for user %s — all sessions invalidated", user_id)

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.auth import require_role
+from api.deps import sanitize_path_param
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/backup", tags=["Backup"])
@@ -52,6 +53,9 @@ def run_backup(
     try:
         import os
         data_dir = os.path.join(os.getcwd(), "data")
+
+        if body.case_id:
+            sanitize_path_param(body.case_id, "case_id")
 
         if body.target == "b2":
             from core.cloud_backup import B2Backup

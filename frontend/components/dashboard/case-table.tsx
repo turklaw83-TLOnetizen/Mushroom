@@ -2,8 +2,10 @@
 "use client";
 
 import type { CaseItem } from "@/hooks/use-cases";
+import { formatDate } from "@/lib/constants";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
     Table,
     TableBody,
@@ -19,17 +21,12 @@ const phaseColors: Record<string, string> = {
     archived: "bg-amber-500/15 text-amber-400 border-amber-500/30",
 };
 
-function formatDate(iso: string): string {
-    if (!iso) return "—";
-    try {
-        return new Date(iso).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-        });
-    } catch {
-        return iso;
-    }
+function readinessGrade(score: number): { letter: string; color: string } {
+    if (score >= 90) return { letter: "A", color: "text-emerald-400 bg-emerald-500/15" };
+    if (score >= 80) return { letter: "B", color: "text-blue-400 bg-blue-500/15" };
+    if (score >= 70) return { letter: "C", color: "text-yellow-400 bg-yellow-500/15" };
+    if (score >= 60) return { letter: "D", color: "text-orange-400 bg-orange-500/15" };
+    return { letter: "F", color: "text-red-400 bg-red-500/15" };
 }
 
 export function CaseTable({
@@ -43,15 +40,11 @@ export function CaseTable({
 }) {
     if (cases.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16">
-                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4 text-xl">
-                    ⚖️
-                </div>
-                <p className="text-lg font-medium">No cases found</p>
-                <p className="text-sm text-muted-foreground mt-1 max-w-sm text-center">
-                    Create your first case to start managing your legal practice with AI-powered analysis.
-                </p>
-            </div>
+            <EmptyState
+                icon="📁"
+                title="No cases yet"
+                description="Create your first case to get started with analysis and preparation."
+            />
         );
     }
 
@@ -64,6 +57,7 @@ export function CaseTable({
                         <TableHead className="font-semibold hidden md:table-cell">Client</TableHead>
                         <TableHead className="font-semibold hidden lg:table-cell">Category</TableHead>
                         <TableHead className="font-semibold">Phase</TableHead>
+                        <TableHead className="font-semibold text-center hidden lg:table-cell">Health</TableHead>
                         <TableHead className="font-semibold text-right hidden sm:table-cell">Updated</TableHead>
                         {onDelete && <TableHead className="w-10" />}
                     </TableRow>
@@ -73,7 +67,7 @@ export function CaseTable({
                         <TableRow
                             key={c.id}
                             onClick={() => onRowClick(c)}
-                            className="cursor-pointer transition-colors hover:bg-accent/50 group"
+                            className="cursor-pointer transition-colors hover:bg-accent/50 group stagger-item"
                         >
                             <TableCell className="font-medium">{c.name}</TableCell>
                             <TableCell className="text-muted-foreground hidden md:table-cell">
@@ -90,6 +84,15 @@ export function CaseTable({
                                     {c.phase}
                                     {c.sub_phase && ` / ${c.sub_phase}`}
                                 </Badge>
+                            </TableCell>
+                            <TableCell className="text-center hidden lg:table-cell">
+                                {c.readiness_score != null ? (
+                                    <span className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold ${readinessGrade(c.readiness_score).color}`}>
+                                        {readinessGrade(c.readiness_score).letter}
+                                    </span>
+                                ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                )}
                             </TableCell>
                             <TableCell className="text-right text-muted-foreground text-sm hidden sm:table-cell">
                                 {formatDate(c.last_updated)}

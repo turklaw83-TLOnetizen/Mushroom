@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type {
@@ -313,12 +314,11 @@ export default function DocumentsPage() {
                         {[1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
                     </div>
                 ) : !draftsQuery.data?.length ? (
-                    <Card className="glass-card">
-                        <CardContent className="py-12 text-center text-muted-foreground">
-                            <p className="text-lg mb-2">No document drafts yet</p>
-                            <p className="text-sm">Click &quot;New Document&quot; to start drafting a major legal document.</p>
-                        </CardContent>
-                    </Card>
+                    <EmptyState
+                        icon="\uD83D\uDCC4"
+                        title="No document drafts yet"
+                        description="Click &quot;New Document&quot; to start drafting a major legal document."
+                    />
                 ) : (
                     <div className="space-y-2">
                         {draftsQuery.data.map((draft) => (
@@ -955,14 +955,18 @@ export default function DocumentsPage() {
                                         return;
                                     }
                                     try {
+                                        const token = await getToken();
+                                        const csrfMatch = document.cookie.match(/(?:^|;\s*)mc-csrf=([^;]*)/);
+                                        const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : "";
+                                        const docHeaders: Record<string, string> = { "Content-Type": "application/json" };
+                                        if (token) docHeaders["Authorization"] = `Bearer ${token}`;
+                                        if (csrfToken) docHeaders["X-CSRF-Token"] = csrfToken;
                                         const response = await fetch(
                                             `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/documents/${caseId}/export-word`,
                                             {
                                                 method: "POST",
-                                                headers: {
-                                                    "Content-Type": "application/json",
-                                                    Authorization: `Bearer ${await getToken()}`,
-                                                },
+                                                headers: docHeaders,
+                                                credentials: "include",
                                                 body: JSON.stringify({
                                                     draft_id: activeDraftId,
                                                     jurisdiction,

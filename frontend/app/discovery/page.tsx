@@ -42,7 +42,7 @@ export default function DiscoveryDashboardPage() {
 
     const { data, isLoading } = useQuery<DashboardResponse>({
         queryKey: ["discovery-dashboard"],
-        queryFn: () => api.get<DashboardResponse>("/api/v1/discovery/dashboard", { getToken }),
+        queryFn: () => api.get<DashboardResponse>("/discovery/dashboard", { getToken }),
     });
 
     if (isLoading) {
@@ -114,7 +114,7 @@ export default function DiscoveryDashboardPage() {
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead>
+                                <thead className="sticky top-0 z-10 bg-background">
                                     <tr className="border-b border-border text-left text-muted-foreground">
                                         <th className="py-2 px-3">Case</th>
                                         <th className="py-2 px-3">Direction</th>

@@ -141,13 +141,6 @@ def safe_update_and_save(case_mgr_or_state, case_id_or_new=None,
             logger.exception("Failed to save merged state for %s/%s", cid, pid)
             raise
 
-        # Update session state if available
-        try:
-            import streamlit as st
-            st.session_state.agent_results = merged
-        except Exception:
-            pass
-
         return merged
     else:
         # Functional convention: (current_state, new_state, save_fn)

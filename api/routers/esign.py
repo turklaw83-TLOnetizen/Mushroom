@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.auth import get_current_user, require_role
-from api.deps import get_case_manager, get_data_dir
+from api.deps import get_case_manager, get_data_dir, sanitize_path_param
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/esign", tags=["E-Signature"])
@@ -27,7 +27,7 @@ class SignatureRequest(BaseModel):
     message: str = ""
 
 
-def _get_esign_manager(case_id: str):
+def _get_esign_manager(case_id: str) -> "ESignManager":
     """Get an ESignManager instance for a case."""
     from core.esign import ESignManager
     data_dir = get_data_dir()
@@ -49,7 +49,8 @@ def send_for_signature(
         cm = get_case_manager()
         # Resolve file path from case files
         data_dir = get_data_dir()
-        file_path = os.path.join(data_dir, "cases", case_id, "source_docs", body.file_key)
+        safe_file_key = sanitize_path_param(body.file_key, "file_key")
+        file_path = os.path.join(data_dir, "cases", case_id, "source_docs", safe_file_key)
         result = mgr.send_request(
             file_path=file_path,
             signers=[{"name": body.signer_name, "email_address": body.signer_email}],

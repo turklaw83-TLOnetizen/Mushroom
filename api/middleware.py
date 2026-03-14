@@ -3,6 +3,7 @@
 # Fix #11: Request ID + request logging
 
 import logging
+import os
 import time
 import traceback
 import uuid
@@ -83,23 +84,41 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     - X-Frame-Options
     - Referrer-Policy
     - Permissions-Policy
+
+    Extra CSP domains can be added via the CSP_EXTRA_DOMAINS env var
+    (space-separated list of origins, e.g. "https://*.example.com https://cdn.foo.bar").
     """
 
-    CSP = "; ".join([
-        "default-src 'self'",
-        "script-src 'self' 'unsafe-inline' https://clerk.accounts.dev https://*.clerk.accounts.dev https://*.turkclaw.net",
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "font-src 'self' https://fonts.gstatic.com",
-        "img-src 'self' data: blob: https:",
-        "connect-src 'self' https://*.clerk.accounts.dev wss://*.clerk.accounts.dev https://api.clerk.com https://*.turkclaw.net https://*.ingest.sentry.io ws://localhost:* http://localhost:*",
-        "frame-src 'self' https://clerk.accounts.dev https://*.turkclaw.net",
-        "object-src 'none'",
-        "base-uri 'self'",
-        "form-action 'self'",
-        "frame-ancestors 'none'",
-        "worker-src 'self' blob:",
-        "manifest-src 'self'",
-    ])
+    @staticmethod
+    def _build_csp() -> str:
+        """Build CSP string, appending any extra domains from env."""
+        extra = os.environ.get("CSP_EXTRA_DOMAINS", "").strip()
+        extra_origins = f" {extra}" if extra else ""
+
+        return "; ".join([
+            "default-src 'self'",
+            f"script-src 'self' 'unsafe-inline' https://clerk.accounts.dev https://*.clerk.accounts.dev https://*.turkclaw.net{extra_origins}",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com",
+            "img-src 'self' data: blob: https:",
+            f"connect-src 'self' https://*.clerk.accounts.dev wss://*.clerk.accounts.dev https://api.clerk.com https://*.turkclaw.net https://*.ingest.sentry.io ws://localhost:* http://localhost:*{extra_origins}",
+            f"frame-src 'self' https://clerk.accounts.dev https://*.turkclaw.net{extra_origins}",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+            "worker-src 'self' blob:",
+            "manifest-src 'self'",
+        ])
+
+    # Built once at import time; reads CSP_EXTRA_DOMAINS from env
+    CSP: str = ""
+
+    def __init__(self, app: object) -> None:  # type: ignore[override]
+        super().__init__(app)  # type: ignore[arg-type]
+        # Build CSP on first instantiation so env vars are available
+        if not SecurityHeadersMiddleware.CSP:
+            SecurityHeadersMiddleware.CSP = self._build_csp()
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)

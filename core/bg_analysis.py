@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 DATA_DIR = os.path.join(os.getcwd(), "data", "cases")
 
+STALE_TIMEOUT_SECONDS = 300  # 5 minutes
+
 # Lock to serialize progress.json writes (main thread + updater thread)
 _progress_lock = threading.Lock()
 
@@ -113,7 +115,7 @@ def get_analysis_progress(case_id: str, prep_id: str) -> dict:
             try:
                 last_dt = datetime.fromisoformat(last_update)
                 elapsed = (datetime.now() - last_dt).total_seconds()
-                if elapsed > 300:  # 5 minutes with no update
+                if elapsed > STALE_TIMEOUT_SECONDS:  # 5 minutes with no update
                     logger.warning(
                         "Analysis progress stale for %s/%s (%ds). Marking as error.",
                         case_id, prep_id, int(elapsed),
@@ -147,7 +149,7 @@ def is_analysis_running(case_id: str, prep_id: str) -> bool:
         try:
             last_dt = datetime.fromisoformat(last_update)
             elapsed = (datetime.now() - last_dt).total_seconds()
-            if elapsed > 300:  # 5 minutes with no update = crashed
+            if elapsed > STALE_TIMEOUT_SECONDS:  # 5 minutes with no update = crashed
                 _write_progress(case_id, prep_id, {
                     "status": "error",
                     "error": f"Analysis appears to have crashed (no update for {int(elapsed)}s). Partial results were saved.",

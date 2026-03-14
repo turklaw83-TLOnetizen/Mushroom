@@ -251,7 +251,7 @@ export function DataTable<T>({
                 /* Table */
                 <div className={bordered ? "rounded-lg border border-border overflow-hidden" : ""}>
                     <table className="w-full text-sm">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-background">
                             <tr className="border-b border-border bg-muted/30">
                                 {columns.map((col) => (
                                     <th

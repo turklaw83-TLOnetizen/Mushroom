@@ -36,7 +36,8 @@ interface CaseCosts {
 
 // ---- Helpers --------------------------------------------------------------
 
-function formatCost(cost: number): string {
+/** Format cost with 4 decimal places for per-token cost display */
+function fmtTokenCost(cost: number): string {
     return `$${cost.toFixed(4)}`;
 }
 
@@ -195,7 +196,7 @@ export default function CostAnalyticsPage() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <StatCard
                         title="Total Cost"
-                        value={formatCost(summary.total_cost)}
+                        value={fmtTokenCost(summary.total_cost)}
                         variant="warning"
                     />
                     <StatCard
@@ -255,7 +256,7 @@ export default function CostAnalyticsPage() {
                                             {formatTokens(mb.tokens_out)}
                                         </span>
                                         <span className="text-right font-medium">
-                                            {formatCost(mb.cost)}
+                                            {fmtTokenCost(mb.cost)}
                                         </span>
                                         <span className="text-right text-muted-foreground">
                                             {summary.total_cost > 0
@@ -311,7 +312,7 @@ export default function CostAnalyticsPage() {
                                         {formatTokens(costs.tokens_out)}
                                     </span>
                                     <span className="text-right font-medium">
-                                        {formatCost(costs.total_cost)}
+                                        {fmtTokenCost(costs.total_cost)}
                                     </span>
                                 </div>
                             ))}
@@ -348,7 +349,7 @@ export default function CostAnalyticsPage() {
                                             </span>
                                         </div>
                                         <span className="text-sm font-mono font-medium shrink-0 ml-3">
-                                            {formatCost(costs.total_cost)}
+                                            {fmtTokenCost(costs.total_cost)}
                                         </span>
                                     </div>
                                     <div className="h-2 rounded-full bg-muted overflow-hidden">

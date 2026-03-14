@@ -56,7 +56,12 @@ export function useMockExam(
         ws.onopen = () => setConnected(true);
 
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
+            let data: any;
+            try {
+                data = JSON.parse(event.data);
+            } catch {
+                return; // Skip malformed JSON messages
+            }
 
             switch (data.type) {
                 case "session_loaded":

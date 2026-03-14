@@ -52,6 +52,14 @@ const ROUND_LABELS: Record<string, string> = {
 
 const ROUND_ORDER = ["theory", "evidence", "witnesses", "elements", "jury"];
 
+const ROUND_STEP_META: { key: string; label: string; shortLabel: string; icon: string }[] = [
+    { key: "theory", label: "Theory Attack", shortLabel: "Theory", icon: "\u2694\uFE0F" },
+    { key: "evidence", label: "Evidence Challenge", shortLabel: "Evidence", icon: "\uD83D\uDCCB" },
+    { key: "witnesses", label: "Witness Assault", shortLabel: "Witnesses", icon: "\uD83D\uDC65" },
+    { key: "elements", label: "Element Gaps", shortLabel: "Elements", icon: "\uD83D\uDD0D" },
+    { key: "jury", label: "Jury Verdict", shortLabel: "Jury", icon: "\u2696\uFE0F" },
+];
+
 const DIFFICULTY_DESCRIPTIONS: Record<string, { label: string; description: string }> = {
     standard: {
         label: "Standard",
@@ -239,10 +247,34 @@ export default function WarGamePage() {
 
     if (prepLoading || (view === "dashboard" && sessionsQuery.isLoading)) {
         return (
-            <div className="space-y-4">
-                <Skeleton className="h-10 w-64" />
-                <Skeleton className="h-32 w-full" />
-                <Skeleton className="h-32 w-full" />
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <Skeleton className="h-7 w-36" />
+                        <Skeleton className="h-4 w-52 mt-1" />
+                    </div>
+                    <Skeleton className="h-9 w-36" />
+                </div>
+                <Skeleton className="h-4 w-28" />
+                <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Card key={i}>
+                            <CardContent className="py-3 flex items-center gap-4">
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <Skeleton className="h-4 w-24" />
+                                        <Skeleton className="h-5 w-20 rounded-full" />
+                                        <Skeleton className="h-3 w-16" />
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Skeleton className="h-5 w-20 rounded-full" />
+                                    <Skeleton className="h-5 w-24 rounded-full" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
             </div>
         );
     }
@@ -457,6 +489,147 @@ function NewWarGameDialog({
     );
 }
 
+// ---- Round Progress Stepper -----------------------------------------------
+
+function RoundProgressStepper({
+    session,
+}: {
+    session: WarGameSession;
+}) {
+    return (
+        <div className="w-full py-3">
+            {/* Desktop: full labels */}
+            <div className="hidden sm:flex items-center justify-between relative">
+                {ROUND_STEP_META.map((step, idx) => {
+                    const round = session.rounds[idx];
+                    const isComplete = round?.status === "completed";
+                    const isCurrent =
+                        !isComplete &&
+                        idx === session.current_round &&
+                        session.status !== "completed";
+                    const isFuture = !isComplete && !isCurrent;
+
+                    return (
+                        <div key={step.key} className="flex items-center flex-1 last:flex-none">
+                            {/* Step circle + label */}
+                            <div className="flex flex-col items-center gap-1.5 relative z-10">
+                                <div
+                                    className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all duration-300 ${
+                                        isComplete
+                                            ? "bg-emerald-500 border-emerald-500 text-white shadow-[0_0_12px_rgba(16,185,129,0.3)]"
+                                            : isCurrent
+                                              ? "bg-[var(--brand-indigo)]/15 border-[var(--brand-indigo)] text-[var(--brand-indigo)] animate-pulse shadow-[0_0_16px_rgba(99,102,241,0.4)]"
+                                              : "bg-muted/40 border-muted-foreground/25 text-muted-foreground"
+                                    }`}
+                                >
+                                    {isComplete ? (
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            viewBox="0 0 20 20"
+                                            fill="currentColor"
+                                            className="w-5 h-5"
+                                        >
+                                            <path
+                                                fillRule="evenodd"
+                                                d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                                                clipRule="evenodd"
+                                            />
+                                        </svg>
+                                    ) : (
+                                        <span>{step.icon}</span>
+                                    )}
+                                </div>
+                                <span
+                                    className={`text-[11px] font-medium whitespace-nowrap ${
+                                        isComplete
+                                            ? "text-emerald-400"
+                                            : isCurrent
+                                              ? "text-[var(--brand-indigo)] font-semibold"
+                                              : "text-muted-foreground"
+                                    }`}
+                                >
+                                    {step.label}
+                                </span>
+                            </div>
+                            {/* Connecting line (not after last step) */}
+                            {idx < ROUND_STEP_META.length - 1 && (
+                                <div className="flex-1 h-0.5 mx-2 mt-[-22px] relative">
+                                    <div className="absolute inset-0 bg-muted-foreground/20 rounded-full" />
+                                    <div
+                                        className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
+                                            isComplete
+                                                ? "bg-emerald-500 w-full"
+                                                : "w-0"
+                                        }`}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Mobile: compact circles with active label only */}
+            <div className="flex sm:hidden items-center justify-center gap-2">
+                {ROUND_STEP_META.map((step, idx) => {
+                    const round = session.rounds[idx];
+                    const isComplete = round?.status === "completed";
+                    const isCurrent =
+                        !isComplete &&
+                        idx === session.current_round &&
+                        session.status !== "completed";
+
+                    return (
+                        <div key={step.key} className="flex items-center gap-2">
+                            <div className="flex flex-col items-center gap-1">
+                                <div
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                                        isComplete
+                                            ? "bg-emerald-500 border-emerald-500 text-white"
+                                            : isCurrent
+                                              ? "bg-[var(--brand-indigo)]/15 border-[var(--brand-indigo)] text-[var(--brand-indigo)] animate-pulse"
+                                              : "bg-muted/40 border-muted-foreground/25 text-muted-foreground"
+                                    }`}
+                                >
+                                    {isComplete ? (
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            viewBox="0 0 20 20"
+                                            fill="currentColor"
+                                            className="w-4 h-4"
+                                        >
+                                            <path
+                                                fillRule="evenodd"
+                                                d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                                                clipRule="evenodd"
+                                            />
+                                        </svg>
+                                    ) : (
+                                        <span className="text-[10px]">{step.icon}</span>
+                                    )}
+                                </div>
+                                {isCurrent && (
+                                    <span className="text-[10px] font-semibold text-[var(--brand-indigo)] whitespace-nowrap">
+                                        {step.shortLabel}
+                                    </span>
+                                )}
+                            </div>
+                            {/* Mini connecting line */}
+                            {idx < ROUND_STEP_META.length - 1 && (
+                                <div
+                                    className={`w-4 h-0.5 rounded-full ${
+                                        isComplete ? "bg-emerald-500" : "bg-muted-foreground/20"
+                                    }`}
+                                />
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 // ---- View 2: Active Session View ----------------------------------------
 
 function ActiveSessionView({
@@ -538,30 +711,10 @@ function ActiveSessionView({
                         </Badge>
                     )}
                 </div>
-                {/* Round progress indicators */}
-                <div className="flex items-center gap-1.5">
-                    {ROUND_ORDER.map((type, idx) => {
-                        const round = session.rounds[idx];
-                        const isComplete = round?.status === "completed";
-                        const isCurrent = idx === currentRoundIndex;
-                        return (
-                            <div
-                                key={type}
-                                className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-colors ${
-                                    isComplete
-                                        ? "bg-green-500/20 border-green-500 text-green-400"
-                                        : isCurrent
-                                          ? "bg-brand-indigo/20 border-brand-indigo text-brand-indigo"
-                                          : "bg-muted/30 border-muted-foreground/30 text-muted-foreground"
-                                }`}
-                                title={ROUND_LABELS[type]}
-                            >
-                                {idx + 1}
-                            </div>
-                        );
-                    })}
-                </div>
             </div>
+
+            {/* Round Progress Stepper */}
+            <RoundProgressStepper session={session} />
 
             {/* Main content: sidebar + center */}
             <div className="grid grid-cols-[220px_1fr] gap-6">
@@ -891,7 +1044,7 @@ function RoundEvaluation({
                     <CardContent>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead>
+                                <thead className="sticky top-0 z-10 bg-background">
                                     <tr className="border-b border-border">
                                         <th className="text-left py-2 pr-4 text-xs font-medium text-muted-foreground">Item</th>
                                         <th className="text-left py-2 pr-4 text-xs font-medium text-muted-foreground">Ruling</th>
@@ -969,7 +1122,7 @@ function RoundEvaluation({
                     <CardContent>
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                                <thead>
+                                <thead className="sticky top-0 z-10 bg-background">
                                     <tr className="border-b border-border">
                                         <th className="text-left py-2 pr-4 text-xs font-medium text-muted-foreground">Charge</th>
                                         <th className="text-left py-2 pr-4 text-xs font-medium text-muted-foreground">Element</th>

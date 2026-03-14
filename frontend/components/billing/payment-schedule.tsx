@@ -40,7 +40,7 @@ export function PaymentSchedule({ schedule }: PaymentScheduleProps) {
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-background">
                     <tr className="border-b text-xs text-muted-foreground">
                         <th className="text-left py-2 px-2 font-medium">Due Date</th>
                         <th className="text-left py-2 px-2 font-medium">Type</th>

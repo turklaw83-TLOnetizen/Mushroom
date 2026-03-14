@@ -25,7 +25,7 @@ _AUDIT_LOG_FILE = os.path.join(_GDPR_DIR, "audit_log.json")
 _ERASURE_REQUESTS_FILE = os.path.join(_GDPR_DIR, "erasure_requests.json")
 
 
-def _ensure_dir():
+def _ensure_dir() -> None:
     os.makedirs(_GDPR_DIR, exist_ok=True)
 
 
@@ -41,7 +41,7 @@ def _load_audit_log() -> List[Dict]:
     return []
 
 
-def _save_audit_log(log: List[Dict]):
+def _save_audit_log(log: List[Dict]) -> None:
     """Persist the GDPR audit log."""
     _ensure_dir()
     with open(_AUDIT_LOG_FILE, "w", encoding="utf-8") as f:
@@ -53,7 +53,7 @@ def _append_audit_entry(
     client_id: str,
     performed_by: str,
     details: str = "",
-):
+) -> None:
     """Append an entry to the GDPR audit log."""
     log = _load_audit_log()
     log.append({
@@ -79,11 +79,169 @@ def _load_erasure_requests() -> List[Dict]:
     return []
 
 
-def _save_erasure_requests(requests: List[Dict]):
+def _save_erasure_requests(requests: List[Dict]) -> None:
     """Persist erasure requests."""
     _ensure_dir()
     with open(_ERASURE_REQUESTS_FILE, "w", encoding="utf-8") as f:
         json.dump(requests, f, indent=2, ensure_ascii=False)
+
+
+# ---- Export Helpers (GDPR Article 20) ------------------------------------
+
+
+def _collect_personal_data(client: Dict) -> Dict:
+    """Extract personal data fields from a client record."""
+    return {
+        "client_id": client.get("id", ""),
+        "name": client.get("name", ""),
+        "first_name": client.get("first_name", ""),
+        "last_name": client.get("last_name", ""),
+        "email": client.get("email", ""),
+        "phone": client.get("phone", ""),
+        "mailing_address": client.get("mailing_address", ""),
+        "home_address": client.get("home_address", ""),
+        "date_of_birth": client.get("date_of_birth", ""),
+        "employer": client.get("employer", ""),
+        "referral_source": client.get("referral_source", ""),
+        "intake_status": client.get("intake_status", ""),
+        "intake_date": client.get("intake_date", ""),
+        "tags": client.get("tags", []),
+        "notes": client.get("notes", ""),
+        "created_at": client.get("created_at", ""),
+    }
+
+
+def _collect_case_data(case_ids: List[str], cm) -> List[Dict]:
+    """Collect metadata-only case records for linked cases."""
+    cases: List[Dict] = []
+    for cid in case_ids:
+        meta = cm.get_case_metadata(cid)
+        if meta:
+            cases.append({
+                "id": cid,
+                "name": meta.get("name", cid),
+                "case_type": meta.get("case_type", ""),
+                "phase": meta.get("phase", meta.get("status", "active")),
+                "sub_phase": meta.get("sub_phase", ""),
+                "created_at": meta.get("created_at", ""),
+                "last_updated": meta.get("last_updated", ""),
+                "jurisdiction": meta.get("jurisdiction", ""),
+                "docket_number": meta.get("docket_number", ""),
+            })
+    return cases
+
+
+def _collect_billing_records(client_id: str, case_ids: List[str]) -> List[Dict]:
+    """Collect invoices and payment plans for a client's cases."""
+    records: List[Dict] = []
+    try:
+        from core.billing import load_invoices, load_payment_plans
+
+        client_case_set = set(case_ids)
+        for inv in load_invoices():
+            if inv.get("case_id") in client_case_set:
+                records.append({
+                    "type": "invoice",
+                    "id": inv.get("id", ""),
+                    "case_id": inv.get("case_id", ""),
+                    "status": inv.get("status", ""),
+                    "total": inv.get("total", 0),
+                    "date_created": inv.get("date_created", ""),
+                    "due_date": inv.get("due_date", ""),
+                })
+
+        for plan in load_payment_plans(client_id):
+            records.append({
+                "type": "payment_plan",
+                "id": plan.get("id", ""),
+                "status": plan.get("status", ""),
+                "total_amount": plan.get("total_amount", 0),
+                "created_at": plan.get("created_at", ""),
+                "payments": [
+                    {
+                        "amount": p.get("amount", 0),
+                        "date": p.get("date", p.get("paid_at", "")),
+                        "method": p.get("method", ""),
+                    }
+                    for p in plan.get("payments", [])
+                ],
+            })
+    except Exception:
+        logger.warning("Failed to load billing records for GDPR export (client %s)", client_id)
+    return records
+
+
+def _collect_communications(client_id: str) -> List[Dict]:
+    """Collect communication log entries for a client."""
+    communications: List[Dict] = []
+    try:
+        from core.comms import get_client_comm_log
+
+        for comm in get_client_comm_log(client_id):
+            communications.append({
+                "id": comm.get("id", ""),
+                "subject": comm.get("subject", ""),
+                "channel": comm.get("channel", ""),
+                "sent_at": comm.get("sent_at", ""),
+                "status": comm.get("status", ""),
+                "trigger_type": comm.get("trigger_type", ""),
+            })
+    except Exception:
+        logger.warning("Failed to load communications for GDPR export (client %s)", client_id)
+    return communications
+
+
+def _collect_calendar_events(client_id: str, case_ids: List[str]) -> List[Dict]:
+    """Collect calendar events linked to a client or their cases."""
+    events: List[Dict] = []
+    try:
+        from core.calendar_events import load_events
+
+        client_case_set = set(case_ids)
+        for evt in load_events():
+            if evt.get("client_id") == client_id or evt.get("case_id") in client_case_set:
+                events.append({
+                    "id": evt.get("id", ""),
+                    "title": evt.get("title", ""),
+                    "event_type": evt.get("event_type", ""),
+                    "date": evt.get("date", ""),
+                    "time": evt.get("time", ""),
+                    "location": evt.get("location", ""),
+                    "status": evt.get("status", ""),
+                })
+    except Exception:
+        logger.warning("Failed to load calendar events for GDPR export (client %s)", client_id)
+    return events
+
+
+def _format_export_package(
+    client_id: str,
+    personal_data: Dict,
+    cases: List[Dict],
+    billing_records: List[Dict],
+    communications: List[Dict],
+    calendar_events: List[Dict],
+    consent_records: List[Dict],
+    intake_data: Dict,
+    exported_by: str,
+) -> Dict:
+    """Assemble the final GDPR export JSON package with metadata."""
+    return {
+        "export_metadata": {
+            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "client_id": client_id,
+            "format": "JSON",
+            "gdpr_article": "Article 20 -- Right to Data Portability",
+            "exported_by": exported_by,
+        },
+        "personal_data": personal_data,
+        "cases": cases,
+        "billing_records": billing_records,
+        "communications": communications,
+        "calendar_events": calendar_events,
+        "consent_records": consent_records,
+        "intake_data": intake_data,
+    }
 
 
 # ---- Endpoints -----------------------------------------------------------
@@ -104,149 +262,35 @@ def export_client_data(client_id: str, user: dict = Depends(require_role("admin"
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    # --- Personal data ---
-    personal_data = {
-        "client_id": client.get("id", ""),
-        "name": client.get("name", ""),
-        "first_name": client.get("first_name", ""),
-        "last_name": client.get("last_name", ""),
-        "email": client.get("email", ""),
-        "phone": client.get("phone", ""),
-        "mailing_address": client.get("mailing_address", ""),
-        "home_address": client.get("home_address", ""),
-        "date_of_birth": client.get("date_of_birth", ""),
-        "employer": client.get("employer", ""),
-        "referral_source": client.get("referral_source", ""),
-        "intake_status": client.get("intake_status", ""),
-        "intake_date": client.get("intake_date", ""),
-        "tags": client.get("tags", []),
-        "notes": client.get("notes", ""),
-        "created_at": client.get("created_at", ""),
-    }
-
-    # --- Linked cases (metadata only, no analysis) ---
     from api.deps import get_case_manager
     cm = get_case_manager()
     case_ids = get_cases_for_client(client_id)
-    cases = []
-    for cid in case_ids:
-        meta = cm.get_case_metadata(cid)
-        if meta:
-            cases.append({
-                "id": cid,
-                "name": meta.get("name", cid),
-                "case_type": meta.get("case_type", ""),
-                "phase": meta.get("phase", meta.get("status", "active")),
-                "sub_phase": meta.get("sub_phase", ""),
-                "created_at": meta.get("created_at", ""),
-                "last_updated": meta.get("last_updated", ""),
-                "jurisdiction": meta.get("jurisdiction", ""),
-                "docket_number": meta.get("docket_number", ""),
-            })
 
-    # --- Billing records ---
-    billing_records = []
-    try:
-        from core.billing import load_invoices, load_payment_plans
-        # Invoices linked to this client's cases
-        all_invoices = load_invoices()
-        client_case_set = set(case_ids)
-        for inv in all_invoices:
-            if inv.get("case_id") in client_case_set:
-                billing_records.append({
-                    "type": "invoice",
-                    "id": inv.get("id", ""),
-                    "case_id": inv.get("case_id", ""),
-                    "status": inv.get("status", ""),
-                    "total": inv.get("total", 0),
-                    "date_created": inv.get("date_created", ""),
-                    "due_date": inv.get("due_date", ""),
-                })
-
-        # Payment plans
-        plans = load_payment_plans(client_id)
-        for plan in plans:
-            billing_records.append({
-                "type": "payment_plan",
-                "id": plan.get("id", ""),
-                "status": plan.get("status", ""),
-                "total_amount": plan.get("total_amount", 0),
-                "created_at": plan.get("created_at", ""),
-                "payments": [
-                    {
-                        "amount": p.get("amount", 0),
-                        "date": p.get("date", p.get("paid_at", "")),
-                        "method": p.get("method", ""),
-                    }
-                    for p in plan.get("payments", [])
-                ],
-            })
-    except Exception:
-        logger.warning("Failed to load billing records for GDPR export (client %s)", client_id)
-
-    # --- Communications ---
-    communications = []
-    try:
-        from core.comms import get_client_comm_log
-        for comm in get_client_comm_log(client_id):
-            communications.append({
-                "id": comm.get("id", ""),
-                "subject": comm.get("subject", ""),
-                "channel": comm.get("channel", ""),
-                "sent_at": comm.get("sent_at", ""),
-                "status": comm.get("status", ""),
-                "trigger_type": comm.get("trigger_type", ""),
-            })
-    except Exception:
-        logger.warning("Failed to load communications for GDPR export (client %s)", client_id)
-
-    # --- Calendar events ---
-    calendar_events = []
-    try:
-        from core.calendar_events import load_events
-        all_events = load_events()
-        for evt in all_events:
-            if evt.get("client_id") == client_id or evt.get("case_id") in client_case_set:
-                calendar_events.append({
-                    "id": evt.get("id", ""),
-                    "title": evt.get("title", ""),
-                    "event_type": evt.get("event_type", ""),
-                    "date": evt.get("date", ""),
-                    "time": evt.get("time", ""),
-                    "location": evt.get("location", ""),
-                    "status": evt.get("status", ""),
-                })
-    except Exception:
-        logger.warning("Failed to load calendar events for GDPR export (client %s)", client_id)
-
-    # --- Consent records ---
+    personal_data = _collect_personal_data(client)
+    cases = _collect_case_data(case_ids, cm)
+    billing_records = _collect_billing_records(client_id, case_ids)
+    communications = _collect_communications(client_id)
+    calendar_events = _collect_calendar_events(client_id, case_ids)
     consent_records = _get_consent_records(client)
-
-    # --- Intake answers ---
     intake_data = client.get("intake_answers", {})
 
-    export = {
-        "export_metadata": {
-            "exported_at": datetime.utcnow().isoformat() + "Z",
-            "client_id": client_id,
-            "format": "JSON",
-            "gdpr_article": "Article 20 -- Right to Data Portability",
-            "exported_by": user.get("name", user.get("id", "")),
-        },
-        "personal_data": personal_data,
-        "cases": cases,
-        "billing_records": billing_records,
-        "communications": communications,
-        "calendar_events": calendar_events,
-        "consent_records": consent_records,
-        "intake_data": intake_data,
-    }
+    exported_by = user.get("name", user.get("id", ""))
+    export = _format_export_package(
+        client_id=client_id,
+        personal_data=personal_data,
+        cases=cases,
+        billing_records=billing_records,
+        communications=communications,
+        calendar_events=calendar_events,
+        consent_records=consent_records,
+        intake_data=intake_data,
+        exported_by=exported_by,
+    )
 
-    # Audit trail
     _append_audit_entry(
         action="data_export",
         client_id=client_id,
-        performed_by=user.get("name", user.get("id", "")),
+        performed_by=exported_by,
         details=f"Full data export generated. {len(cases)} cases, "
                 f"{len(billing_records)} billing records, "
                 f"{len(communications)} communications.",

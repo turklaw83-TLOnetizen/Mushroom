@@ -109,12 +109,20 @@ def test_set_phase_to_closed(cm, case_id):
 
 
 def test_set_phase_to_archived(cm, case_id):
+    # Must go active → closed → archived (state machine)
+    cm.set_phase(case_id, "closed")
     cm.set_phase(case_id, "archived")
     phase, sub = cm.get_phase(case_id)
     assert phase == "archived"
 
     meta = cm.storage.get_case_metadata(case_id)
     assert meta["status"] == "archived"
+
+
+def test_set_phase_invalid_transition_raises(cm, case_id):
+    """Cannot jump directly from active to archived."""
+    with pytest.raises(ValueError, match="Invalid phase transition"):
+        cm.set_phase(case_id, "archived")
 
 
 def test_set_phase_invalid_raises(cm, case_id):
@@ -204,6 +212,7 @@ def test_purge_archived_case_succeeds(cm, case_id):
     files_before = cm.get_case_files(case_id)
     assert len(files_before) == 2
 
+    cm.set_phase(case_id, "closed")
     cm.set_phase(case_id, "archived")
     count = cm.purge_source_docs(case_id)
     assert count == 2
@@ -214,6 +223,7 @@ def test_purge_archived_case_succeeds(cm, case_id):
 
 def test_purge_sets_metadata(cm, case_id):
     cm.storage.save_file(case_id, "doc1.pdf", b"content")
+    cm.set_phase(case_id, "closed")
     cm.set_phase(case_id, "archived")
     cm.purge_source_docs(case_id)
 
@@ -224,6 +234,7 @@ def test_purge_sets_metadata(cm, case_id):
 
 
 def test_purge_empty_source_docs(cm, case_id):
+    cm.set_phase(case_id, "closed")
     cm.set_phase(case_id, "archived")
     count = cm.purge_source_docs(case_id)
     assert count == 0
@@ -231,6 +242,7 @@ def test_purge_empty_source_docs(cm, case_id):
 
 def test_purge_logged_in_activity(cm, case_id):
     cm.storage.save_file(case_id, "doc.pdf", b"x")
+    cm.set_phase(case_id, "closed")
     cm.set_phase(case_id, "archived")
     cm.purge_source_docs(case_id)
 
@@ -423,6 +435,7 @@ def test_full_lifecycle_active_to_purged(cm, case_id):
 def test_list_cases_hides_archived(cm):
     cid1 = cm.create_case("Active Case")
     cid2 = cm.create_case("Archived Case")
+    cm.set_phase(cid2, "closed")
     cm.set_phase(cid2, "archived")
 
     visible = cm.list_cases(include_archived=False)
@@ -434,6 +447,7 @@ def test_list_cases_hides_archived(cm):
 def test_list_cases_includes_archived(cm):
     cid1 = cm.create_case("Active Case")
     cid2 = cm.create_case("Archived Case")
+    cm.set_phase(cid2, "closed")
     cm.set_phase(cid2, "archived")
 
     all_cases = cm.list_cases(include_archived=True)

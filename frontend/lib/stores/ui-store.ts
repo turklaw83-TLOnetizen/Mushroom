@@ -26,7 +26,17 @@ export const useUIStore = create<UIState>()(
             pinnedCaseIds: [],
             toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
             setSidebarOpen: (open) => set({ sidebarOpen: open }),
-            setTheme: (theme) => set({ theme }),
+            setTheme: (theme) => {
+                if (typeof window !== "undefined") {
+                    document.documentElement.classList.add("theme-transition");
+                    document.documentElement.classList.toggle("dark", theme === "dark");
+                    setTimeout(
+                        () => document.documentElement.classList.remove("theme-transition"),
+                        250,
+                    );
+                }
+                set({ theme });
+            },
             setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
             pinCase: (id) =>
                 set((s) => {

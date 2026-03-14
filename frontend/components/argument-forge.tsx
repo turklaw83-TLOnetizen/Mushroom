@@ -522,7 +522,7 @@ export function ArgumentForge({ caseId, prepId }: ArgumentForgeProps) {
                         <Card className="glass-card overflow-hidden">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-xs" role="table" aria-label="Counter-matrix comparison">
-                                    <thead>
+                                    <thead className="sticky top-0 z-10 bg-background">
                                         <tr className="border-b border-white/10">
                                             <th scope="col" className="text-left px-3 py-2 text-muted-foreground font-medium">Our Argument</th>
                                             <th scope="col" className="text-left px-3 py-2 text-muted-foreground font-medium">Their Counter</th>

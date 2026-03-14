@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from api.auth import get_current_user, require_role
+from api.deps import sanitize_path_param
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -31,6 +32,7 @@ def get_module_notes(
     user: dict = Depends(get_current_user),
 ):
     """Get attorney notes for a specific module."""
+    module_key = sanitize_path_param(module_key, "module_key")
     try:
         from api.deps import get_case_manager
 
@@ -53,6 +55,7 @@ def save_module_notes(
     user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Save or update attorney notes for a specific module."""
+    module_key = sanitize_path_param(module_key, "module_key")
     try:
         from api.deps import get_case_manager
 

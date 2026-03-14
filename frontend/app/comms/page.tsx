@@ -162,9 +162,15 @@ export default function CommsPage() {
             formData.append("platform", platform);
             const token = await getToken();
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const csrfMatch = document.cookie.match(/(?:^|;\s*)mc-csrf=([^;]*)/);
+            const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : "";
+            const headers: Record<string, string> = {};
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+            if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
             const res = await fetch(`${baseUrl}/api/v1${routes.paymentFeed.upload}`, {
                 method: "POST",
-                headers: { Authorization: `Bearer ${token}` },
+                headers,
+                credentials: "include",
                 body: formData,
             });
             if (!res.ok) throw new Error("Upload failed");

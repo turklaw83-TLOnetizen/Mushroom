@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { z } from "zod";
 import { api } from "@/lib/api-client";
+import { formatCurrency } from "@/lib/constants";
 import { useRole } from "@/hooks/use-role";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
@@ -16,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -226,9 +228,7 @@ type SettingsInput = z.infer<typeof settingsSchema>;
 
 // ---- Helpers --------------------------------------------------------------
 
-function fmtCurrency(v: number): string {
-    return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+const fmtCurrency = formatCurrency;
 
 const INVOICE_STATUS_STYLE: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
     draft: { variant: "secondary" },
@@ -581,11 +581,11 @@ export default function BillingPage() {
                         </div>
                     )}
                     {timeEntries.length === 0 ? (
-                        <Card className="border-dashed">
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                No time entries yet.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="&#x23F1;&#xFE0F;"
+                            title="No time entries yet"
+                            description="Track time spent on this case by adding your first time entry."
+                        />
                     ) : (
                         timeEntries.map((entry, i) => (
                             <Card
@@ -638,11 +638,11 @@ export default function BillingPage() {
                         </div>
                     )}
                     {expenses.length === 0 ? (
-                        <Card className="border-dashed">
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                No expenses yet.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="&#x1F4B8;"
+                            title="No expenses yet"
+                            description="Record case-related costs by adding an expense entry."
+                        />
                     ) : (
                         expenses.map((exp, i) => (
                             <Card
@@ -716,11 +716,11 @@ export default function BillingPage() {
 
                     {/* Invoice list */}
                     {caseInvoices.length === 0 ? (
-                        <Card className="border-dashed">
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                No invoices yet. Create one from unbilled time and expenses.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="🧾"
+                            title="No invoices yet"
+                            description="Create one from unbilled time and expenses."
+                        />
                     ) : (
                         caseInvoices.map((inv) => {
                             const style = INVOICE_STATUS_STYLE[inv.status] ?? { variant: "secondary" as const };
@@ -792,11 +792,11 @@ export default function BillingPage() {
                             {[1, 2, 3].map((n) => <Skeleton key={n} className="h-14 w-full rounded-lg" />)}
                         </div>
                     ) : retainer.history.length === 0 ? (
-                        <Card className="border-dashed">
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                No retainer transactions yet.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="💰"
+                            title="No retainer transactions yet"
+                            description="Track retainer deposits and withdrawals for this case."
+                        />
                     ) : (
                         retainer.history.map((tx) => (
                             <Card key={tx.id}>
@@ -819,11 +819,11 @@ export default function BillingPage() {
                    ================================================================ */}
                 <TabsContent value="aging" className="space-y-4 mt-4">
                     {!(isAdmin || isAttorney) ? (
-                        <Card>
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                Aging reports are available to administrators and attorneys only.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="🔒"
+                            title="Admin access required"
+                            description="Contact your administrator for billing aging and settings access."
+                        />
                     ) : !aging ? (
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

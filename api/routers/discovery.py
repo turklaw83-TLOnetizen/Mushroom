@@ -99,8 +99,8 @@ class MeetConferRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _assert_civil(case_id: str):
-    """Raise 400 if the case is not a civil case."""
+def _assert_civil(case_id: str) -> dict:
+    """Raise 400 if the case is not a civil case. Returns case metadata."""
     from core.discovery import is_civil_case
     case_mgr = get_case_manager()
     meta = case_mgr.get_case_metadata(case_id)

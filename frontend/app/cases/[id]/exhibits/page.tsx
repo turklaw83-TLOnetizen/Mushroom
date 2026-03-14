@@ -8,12 +8,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { formatDate } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EmptyState } from "@/components/shared/empty-state";
 
 interface ExhibitItem {
     id: string;
@@ -132,6 +134,27 @@ export default function ExhibitsPage() {
     const exhibits = exhibitsQuery.data?.items ?? [];
     const batesItems = batesQuery.data?.items ?? [];
 
+    // Show error state if either query failed
+    const queryError = exhibitsQuery.error || batesQuery.error;
+    if (queryError) {
+        return (
+            <div className="p-6">
+                <Card className="border-destructive/50">
+                    <CardContent className="py-8 text-center">
+                        <p className="text-destructive font-medium">Failed to load data</p>
+                        <p className="text-sm text-muted-foreground mt-1">{queryError.message || "An unexpected error occurred"}</p>
+                        <Button variant="outline" size="sm" className="mt-4" onClick={() => {
+                            exhibitsQuery.refetch();
+                            batesQuery.refetch();
+                        }}>
+                            Try Again
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     const handleAssignExhibits = () => {
         const keys = exhibitFileKeys
             .split(",")
@@ -228,11 +251,11 @@ export default function ExhibitsPage() {
                             ))}
                         </div>
                     ) : exhibits.length === 0 ? (
-                        <Card className="border-dashed">
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                No exhibits assigned yet.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="&#x1F4C1;"
+                            title="No exhibits assigned yet"
+                            description="Go to the Files tab to upload documents, then assign exhibit numbers here."
+                        />
                     ) : (
                         <div className="space-y-2">
                             {exhibits.map((exhibit) => (
@@ -255,7 +278,7 @@ export default function ExhibitsPage() {
                                             </div>
                                             {exhibit.assigned_at && (
                                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                                    {new Date(exhibit.assigned_at).toLocaleDateString()}
+                                                    {formatDate(exhibit.assigned_at)}
                                                 </span>
                                             )}
                                         </div>
@@ -321,11 +344,11 @@ export default function ExhibitsPage() {
                             ))}
                         </div>
                     ) : batesItems.length === 0 ? (
-                        <Card className="border-dashed">
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                No Bates numbers assigned yet.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="#&#xFE0F;&#x20E3;"
+                            title="No Bates numbers assigned yet"
+                            description="Assign Bates numbers to documents for systematic identification in discovery and at trial."
+                        />
                     ) : (
                         <div className="space-y-2">
                             {batesItems.map((bates) => (
@@ -348,7 +371,7 @@ export default function ExhibitsPage() {
                                             </div>
                                             {bates.assigned_at && (
                                                 <span className="text-xs text-muted-foreground whitespace-nowrap">
-                                                    {new Date(bates.assigned_at).toLocaleDateString()}
+                                                    {formatDate(bates.assigned_at)}
                                                 </span>
                                             )}
                                         </div>

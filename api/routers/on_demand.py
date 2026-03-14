@@ -81,7 +81,7 @@ def _load_state_or_404(case_id: str, prep_id: str) -> dict:
     return state
 
 
-def _save_result(case_id: str, prep_id: str, updates: dict):
+def _save_result(case_id: str, prep_id: str, updates: dict) -> None:
     from api.deps import get_case_manager
     cm = get_case_manager()
     cm.save_prep_state(case_id, prep_id, updates)

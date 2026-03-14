@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { api } from "@/lib/api-client";
+import { formatDate } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -382,9 +383,7 @@ export default function AnalysisDiffPage() {
                                     {prepList.find((p) => p.id === selectedPrepA)?.created_at && (
                                         <span className="text-xs text-muted-foreground">
                                             Created{" "}
-                                            {new Date(
-                                                prepList.find((p) => p.id === selectedPrepA)!.created_at!,
-                                            ).toLocaleDateString()}
+                                            {formatDate(prepList.find((p) => p.id === selectedPrepA)!.created_at!)}
                                         </span>
                                     )}
                                 </div>
@@ -428,9 +427,7 @@ export default function AnalysisDiffPage() {
                                     {prepList.find((p) => p.id === selectedPrepB)?.created_at && (
                                         <span className="text-xs text-muted-foreground">
                                             Created{" "}
-                                            {new Date(
-                                                prepList.find((p) => p.id === selectedPrepB)!.created_at!,
-                                            ).toLocaleDateString()}
+                                            {formatDate(prepList.find((p) => p.id === selectedPrepB)!.created_at!)}
                                         </span>
                                     )}
                                 </div>

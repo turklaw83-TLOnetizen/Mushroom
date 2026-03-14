@@ -61,7 +61,7 @@ if (typeof window !== "undefined") {
 
 // ---- CSRF Token ---------------------------------------------------------
 
-function _getCsrfToken(): string {
+export function getCsrfToken(): string {
     if (typeof document === "undefined") return "";
     const match = document.cookie.match(/(?:^|;\s*)mc-csrf=([^;]*)/);
     return match ? decodeURIComponent(match[1]) : "";
@@ -74,7 +74,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
     // Attach CSRF token on mutation requests
     if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-        const csrfToken = _getCsrfToken();
+        const csrfToken = getCsrfToken();
         if (csrfToken) {
             headers["X-CSRF-Token"] = csrfToken;
         }
@@ -224,7 +224,7 @@ export const api = {
             if (token) headers["Authorization"] = `Bearer ${token}`;
         }
         // CSRF token for uploads
-        const csrfToken = _getCsrfToken();
+        const csrfToken = getCsrfToken();
         if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
 
         const response = await fetch(url.toString(), {

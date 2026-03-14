@@ -7,9 +7,11 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { formatDate } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,18 +88,6 @@ const SOL_JURISDICTIONS = ["default", "CA", "TX", "NY", "FL"] as const;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatDate(iso: string): string {
-    try {
-        return new Date(iso).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-        });
-    } catch {
-        return iso;
-    }
-}
 
 function toDateStr(iso: string): string {
     try {
@@ -239,6 +229,29 @@ export default function TimelinePage() {
         return Math.min(100, Math.max(0, (elapsed / total) * 100));
     }, [sol]);
 
+    // ---- Error handling -----------------------------------------------------
+
+    const queryError = solQuery.error || eventsQuery.error || refQuery.error;
+    if (queryError) {
+        return (
+            <div className="p-6">
+                <Card className="border-destructive/50">
+                    <CardContent className="py-8 text-center">
+                        <p className="text-destructive font-medium">Failed to load data</p>
+                        <p className="text-sm text-muted-foreground mt-1">{queryError.message || "An unexpected error occurred"}</p>
+                        <Button variant="outline" size="sm" className="mt-4" onClick={() => {
+                            solQuery.refetch();
+                            eventsQuery.refetch();
+                            refQuery.refetch();
+                        }}>
+                            Try Again
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
     // ---- Render ------------------------------------------------------------
 
     return (
@@ -303,9 +316,11 @@ export default function TimelinePage() {
                             ))}
                         </div>
                     ) : sortedEvents.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-8">
-                            No events on the calendar for this case.
-                        </p>
+                        <EmptyState
+                            icon="\uD83D\uDCC5"
+                            title="No events on the timeline"
+                            description="Add events in the Calendar tab to see them on the timeline."
+                        />
                     ) : (
                         <div className="relative">
                             {/* Vertical line */}
@@ -401,7 +416,7 @@ export default function TimelinePage() {
                     <CardContent>
                         <div className="rounded-md border">
                             <table className="w-full text-sm">
-                                <thead>
+                                <thead className="sticky top-0 z-10 bg-background">
                                     <tr className="border-b bg-muted/50">
                                         <th className="text-left font-medium px-4 py-2">
                                             Claim Type

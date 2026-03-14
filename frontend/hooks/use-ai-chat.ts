@@ -6,7 +6,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api-client";
+import { api, getCsrfToken } from "@/lib/api-client";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -70,12 +70,15 @@ export function useAiChat(caseId: string, prepId: string | null, contextModule: 
             const token = await getToken();
             const url = `${API_BASE}/api/v1/cases/${caseId}/preparations/${prepId}/chat`;
 
+            const csrfToken = getCsrfToken();
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+            if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+
             const response = await fetch(url, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                },
+                headers,
+                credentials: "include",
                 body: JSON.stringify({
                     message: text.trim(),
                     context_module: contextModule,
@@ -145,7 +148,7 @@ export function useAiChat(caseId: string, prepId: string | null, contextModule: 
             }
 
             // If we got tokens but no "done" event, finalize
-            if (fullContent && streamingContent) {
+            if (fullContent) {
                 setStreamingContent("");
                 setMessages((prev) => {
                     const last = prev[prev.length - 1];
@@ -171,7 +174,7 @@ export function useAiChat(caseId: string, prepId: string | null, contextModule: 
             setStreamingContent("");
             abortRef.current = null;
         }
-    }, [prepId, isStreaming, caseId, contextModule, getToken, messages, streamingContent]);
+    }, [prepId, isStreaming, caseId, contextModule, getToken, messages]);
 
     // Stop streaming
     const stopStreaming = useCallback(() => {

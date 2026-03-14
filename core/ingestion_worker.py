@@ -19,6 +19,8 @@ DATA_DIR = str(_PROJECT_ROOT / "data" / "cases")
 
 logger = logging.getLogger(__name__)
 
+STALE_TIMEOUT_SECONDS = 300  # 5 minutes
+
 
 def _save_file_cache(cache_path: str, file_cache: dict):
     """Atomically save the ingestion file cache to disk.
@@ -98,7 +100,7 @@ def get_ingestion_status(case_id: str) -> dict:
             try:
                 last_update = datetime.fromisoformat(updated_at)
                 age_secs = (datetime.now() - last_update).total_seconds()
-                if age_secs > 300:  # 5 minutes
+                if age_secs > STALE_TIMEOUT_SECONDS:  # 5 minutes
                     logger.warning(
                         f"Ingestion status stale for {case_id} ({int(age_secs)}s). "
                         f"Auto-resetting from 'running' to 'none'."

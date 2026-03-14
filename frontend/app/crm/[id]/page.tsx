@@ -367,9 +367,15 @@ function RepAgreementTab({ clientId, hasAgreement }: { clientId: string; hasAgre
             const formData = new FormData();
             formData.append("file", file);
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const csrfMatch = document.cookie.match(/(?:^|;\s*)mc-csrf=([^;]*)/);
+            const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : "";
+            const headers: Record<string, string> = {};
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+            if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
             const res = await fetch(`${apiUrl}/api/v1/crm/clients/${clientId}/rep-agreement`, {
                 method: "POST",
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                headers,
+                credentials: "include",
                 body: formData,
             });
             if (!res.ok) {

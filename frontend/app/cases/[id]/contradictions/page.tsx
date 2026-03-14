@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import type {
     ContradictionMatrix,
     ContradictionFinding,
@@ -179,11 +180,51 @@ export default function ContradictionMatrixPage() {
 
     // ---- Guards ---------------------------------------------------------
 
-    if (prepLoading) {
+    if (prepLoading || matrixQuery.isLoading) {
         return (
-            <div className="space-y-4">
-                <Skeleton className="h-8 w-48" />
-                <Skeleton className="h-64 w-full" />
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <Skeleton className="h-7 w-72" />
+                    <div className="flex items-center gap-2">
+                        <Skeleton className="h-3 w-32" />
+                        <Skeleton className="h-8 w-16" />
+                    </div>
+                </div>
+                <Skeleton className="h-20 w-full rounded-lg" />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <Card key={i}>
+                            <CardContent className="p-4 text-center space-y-2">
+                                <Skeleton className="h-8 w-10 mx-auto" />
+                                <Skeleton className="h-3 w-24 mx-auto" />
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+                <div className="flex gap-1">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Skeleton key={i} className="h-8 w-28 rounded-md" />
+                    ))}
+                </div>
+                <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Card key={i}>
+                            <CardContent className="p-4 space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <Skeleton className="h-5 w-16 rounded-full" />
+                                    <Skeleton className="h-5 w-24 rounded-full" />
+                                    <Skeleton className="h-3 w-40" />
+                                </div>
+                                <div className="grid md:grid-cols-2 gap-3">
+                                    <Skeleton className="h-20 w-full rounded-md" />
+                                    <Skeleton className="h-20 w-full rounded-md" />
+                                </div>
+                                <Skeleton className="h-4 w-full" />
+                                <Skeleton className="h-4 w-3/4" />
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
             </div>
         );
     }
@@ -254,28 +295,15 @@ export default function ContradictionMatrixPage() {
                 <h2 className="text-xl font-bold tracking-tight">
                     Cross-Document Contradiction Matrix
                 </h2>
-                <Card>
-                    <CardContent className="py-12 text-center space-y-4">
-                        <div className="text-4xl">&#x1f50d;</div>
-                        <h3 className="text-lg font-semibold">
-                            No Contradiction Matrix Found
-                        </h3>
-                        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                            Run a contradiction analysis to systematically compare all case
-                            documents and identify inconsistencies, timeline discrepancies,
-                            and impeachment opportunities.
-                        </p>
-                        {canEdit && (
-                            <Button
-                                onClick={() => runAnalysis.mutate()}
-                                disabled={runAnalysis.isPending}
-                                className="mt-4"
-                            >
-                                {runAnalysis.isPending ? "Starting..." : "Run Contradiction Analysis"}
-                            </Button>
-                        )}
-                    </CardContent>
-                </Card>
+                <EmptyState
+                    icon="&#x1f50d;"
+                    title="No Contradiction Matrix Found"
+                    description="Run a contradiction analysis to systematically compare all case documents and identify inconsistencies, timeline discrepancies, and impeachment opportunities."
+                    action={canEdit ? {
+                        label: runAnalysis.isPending ? "Starting..." : "Run Contradiction Analysis",
+                        onClick: () => runAnalysis.mutate(),
+                    } : undefined}
+                />
             </div>
         );
     }
@@ -306,7 +334,10 @@ export default function ContradictionMatrixPage() {
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => deleteMatrix.mutate()}
+                                onClick={() => {
+                                    if (!window.confirm("Delete the entire contradiction matrix? This action cannot be undone.")) return;
+                                    deleteMatrix.mutate();
+                                }}
                                 disabled={deleteMatrix.isPending}
                                 className="text-destructive hover:text-destructive"
                             >
@@ -425,11 +456,11 @@ export default function ContradictionMatrixPage() {
 
                     {/* Contradiction Cards */}
                     {filteredContradictions.length === 0 ? (
-                        <Card>
-                            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                                No contradictions match the current filters.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="\uD83D\uDD0D"
+                            title="No contradictions match the current filters"
+                            description="Try adjusting your severity, category, or document filters."
+                        />
                     ) : (
                         filteredContradictions.map((c, idx) => {
                             const key = `c-${idx}`;
@@ -633,11 +664,11 @@ export default function ContradictionMatrixPage() {
                             </Card>
                         ))}
                     {Object.keys(matrix.by_document).length === 0 && (
-                        <Card>
-                            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                                No per-document data available.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="\uD83D\uDCC2"
+                            title="No per-document data available"
+                            description="Run the contradiction analysis to generate per-document breakdowns."
+                        />
                     )}
                 </div>
             )}
@@ -675,11 +706,11 @@ export default function ContradictionMatrixPage() {
                             </Card>
                         ))}
                     {Object.keys(matrix.by_entity).length === 0 && (
-                        <Card>
-                            <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                                No entity-level data available.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="\uD83C\uDFF7\uFE0F"
+                            title="No entity-level data available"
+                            description="Run the contradiction analysis to generate entity-level breakdowns."
+                        />
                     )}
                 </div>
             )}

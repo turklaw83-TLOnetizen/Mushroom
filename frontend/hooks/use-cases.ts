@@ -31,6 +31,7 @@ export interface CaseItem {
     district: string;
     created_at: string;
     last_updated: string;
+    readiness_score?: number | null;
 }
 
 export interface PaginatedCases {

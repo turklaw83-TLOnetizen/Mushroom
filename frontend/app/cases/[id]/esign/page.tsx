@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
     Dialog,
     DialogContent,
@@ -211,11 +212,11 @@ export default function ESignPage() {
                     ))}
                 </div>
             ) : requests.length === 0 ? (
-                <Card className="border-dashed">
-                    <CardContent className="py-12 text-center text-muted-foreground">
-                        No signature requests yet.
-                    </CardContent>
-                </Card>
+                <EmptyState
+                    icon="&#x270D;&#xFE0F;"
+                    title="No signature requests yet"
+                    description="Upload a document in Files first, then send it here for e-signature."
+                />
             ) : (
                 <div className="space-y-2">
                     {requests.map((req) => (

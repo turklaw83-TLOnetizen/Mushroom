@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState } from "@/components/shared/empty-state";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -190,13 +191,11 @@ export default function ExportsPage() {
             </div>
 
             {!prepId && preparations.length === 0 && (
-                <Card>
-                    <CardContent className="py-12 text-center">
-                        <p className="text-muted-foreground">
-                            No preparations found. Run an analysis first to generate exportable reports.
-                        </p>
-                    </CardContent>
-                </Card>
+                <EmptyState
+                    icon="📦"
+                    title="No preparations found"
+                    description="Run an analysis first to generate exportable reports."
+                />
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

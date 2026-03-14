@@ -2,7 +2,7 @@
 // Sub-tabs: Pipeline | Summary | Devil's Advocate | Investigation | Readiness | Chat
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { usePrep } from "@/hooks/use-prep";
@@ -22,7 +22,9 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import type { InvestigationItem } from "@/hooks/use-prep-state";
 
 // ---- Per-Node Cost Estimates --------------------------------------------
@@ -237,6 +239,11 @@ export default function AnalysisPage() {
     const isAnalysisRunning = workerStatus.analysis.status === "running";
     const isIngestionRunning = workerStatus.ingestion.status === "running";
 
+    // Stream-of-consciousness auto-scroll ref
+    const streamRef = useRef<HTMLDivElement>(null);
+    // Track previous analysis status for completion detection
+    const prevAnalysisStatus = useRef(workerStatus.analysis.status);
+
     // Poll progress while analysis is running
     const { progress } = useAnalysisProgress(caseId, activePrepId, isAnalysisRunning);
 
@@ -256,6 +263,36 @@ export default function AnalysisPage() {
         }).length;
     }, [analysisState]);
 
+    // Auto-scroll stream-of-consciousness panel
+    useEffect(() => {
+        if (streamRef.current) {
+            streamRef.current.scrollTop = streamRef.current.scrollHeight;
+        }
+    }, [(progress as any).streamed_text]);
+
+    // Detect analysis completion → toast + desktop notification
+    useEffect(() => {
+        const prev = prevAnalysisStatus.current;
+        const curr = workerStatus.analysis.status;
+        prevAnalysisStatus.current = curr;
+
+        if (prev === "running" && curr === "idle") {
+            toast.success("Analysis complete", {
+                description: `${completedCount} modules populated`,
+            });
+            if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+                new Notification("Analysis Complete", {
+                    body: `${completedCount} modules populated for this case.`,
+                    icon: "/favicon.ico",
+                });
+            }
+        } else if (prev === "running" && curr === "error") {
+            toast.error("Analysis failed", {
+                description: workerStatus.analysis.error || "Check logs for details",
+            });
+        }
+    }, [workerStatus.analysis.status, completedCount]);
+
     // Start Analysis mutation
     const startAnalysis = useMutationWithToast({
         mutationFn: () =>
@@ -265,7 +302,13 @@ export default function AnalysisPage() {
             }, { getToken }),
         successMessage: "Analysis started — modules will update as they complete",
         errorMessage: "Failed to start analysis",
-        onSuccess: () => reconnect(),
+        onSuccess: () => {
+            reconnect();
+            // Request notification permission for completion alerts
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission();
+            }
+        },
     });
 
     // Stop Analysis mutation
@@ -365,6 +408,34 @@ export default function AnalysisPage() {
                             </div>
                         )}
 
+                        {isAnalysisRunning && (progress as any).streamed_text && (
+                            <Collapsible defaultOpen={true}>
+                                <Card className="border-[oklch(0.55_0.23_264_/_30%)] bg-[oklch(0.55_0.23_264_/_5%)]">
+                                    <CollapsibleTrigger asChild>
+                                        <CardHeader className="pb-2 cursor-pointer hover:bg-accent/30 transition-colors">
+                                            <CardTitle className="text-sm flex items-center gap-2">
+                                                <span>🧠</span> AI Thinking...
+                                                <span className="ml-auto text-xs font-normal text-muted-foreground">
+                                                    {(progress as any).node_token_rate > 0 && `${(progress as any).node_token_rate} tok/s`}
+                                                    {(progress as any).node_pct > 0 && ` · ${Math.round((progress as any).node_pct)}% node`}
+                                                </span>
+                                            </CardTitle>
+                                        </CardHeader>
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent>
+                                        <CardContent className="pt-0">
+                                            <div
+                                                ref={streamRef}
+                                                className="font-mono text-xs leading-relaxed text-muted-foreground max-h-64 overflow-auto whitespace-pre-wrap bg-black/20 rounded-md p-3"
+                                            >
+                                                {(progress as any).streamed_text}
+                                            </div>
+                                        </CardContent>
+                                    </CollapsibleContent>
+                                </Card>
+                            </Collapsible>
+                        )}
+
                         <div className="flex gap-4 text-sm text-muted-foreground">
                             <span className="flex items-center gap-1.5">
                                 Ingestion: <Badge variant="outline" className={statusColor(workerStatus.ingestion.status)}>{workerStatus.ingestion.status}</Badge>
@@ -433,7 +504,7 @@ export default function AnalysisPage() {
                                 <Card
                                     key={mod.key}
                                     className={cn(
-                                        "transition-all cursor-pointer hover:shadow-md",
+                                        "transition-all cursor-pointer hover:shadow-md stagger-item",
                                         isCurrentlyProcessing
                                             ? "border-[oklch(0.55_0.23_264_/_50%)] shadow-[oklch(0.55_0.23_264_/_10%)] shadow-md animate-pulse"
                                             : hasData

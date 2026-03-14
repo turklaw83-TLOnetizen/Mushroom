@@ -1,19 +1,107 @@
 // ---- Sidebar Component (Responsive) ------------------------------------
+// Grouped navigation with collapsible sections and lucide-react icons.
 "use client";
 
 import { useEffect, memo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton, useUser } from "@clerk/nextjs";
+import {
+    LayoutDashboard,
+    Sun,
+    CheckSquare,
+    Calendar,
+    Users,
+    FileInput,
+    Mail,
+    MessageSquare,
+    CreditCard,
+    FileSearch,
+    Scale,
+    BarChart3,
+    Workflow,
+    Bell,
+    Search,
+    Globe,
+    User,
+    Settings,
+    ShieldCheck,
+    ChevronDown,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/stores/ui-store";
 import { useCases, type CaseItem } from "@/hooks/use-cases";
+import { useNavCounts } from "@/hooks/use-nav-counts";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { ThemeToggle } from "@/components/theme-toggle";
+
+// ---- Navigation structure ------------------------------------------------
+
+interface NavSectionDef {
+    title: string;
+    items: {
+        href: string;
+        label: string;
+        icon: React.ComponentType<{ className?: string }>;
+    }[];
+}
+
+const navSections: NavSectionDef[] = [
+    {
+        title: "Core",
+        items: [
+            { href: "/", label: "Dashboard", icon: LayoutDashboard },
+            { href: "/brief", label: "Morning Brief", icon: Sun },
+            { href: "/tasks", label: "Tasks", icon: CheckSquare },
+            { href: "/calendar", label: "Calendar", icon: Calendar },
+        ],
+    },
+    {
+        title: "Case Management",
+        items: [
+            { href: "/crm", label: "Clients", icon: Users },
+            { href: "/intake", label: "Intake", icon: FileInput },
+            { href: "/conflicts", label: "Conflicts", icon: Scale },
+            { href: "/discovery", label: "Discovery", icon: FileSearch },
+        ],
+    },
+    {
+        title: "Communication",
+        items: [
+            { href: "/email", label: "Email", icon: Mail },
+            { href: "/comms", label: "Comms", icon: MessageSquare },
+            { href: "/notifications", label: "Notifications", icon: Bell },
+        ],
+    },
+    {
+        title: "Finance",
+        items: [
+            { href: "/payments", label: "Payments", icon: CreditCard },
+            { href: "/analytics", label: "Analytics", icon: BarChart3 },
+        ],
+    },
+    {
+        title: "Tools",
+        items: [
+            { href: "/workflows", label: "Workflows", icon: Workflow },
+            { href: "/search", label: "Search", icon: Search },
+            { href: "/portal", label: "Client Portal", icon: Globe },
+        ],
+    },
+    {
+        title: "Account",
+        items: [
+            { href: "/profile", label: "Profile", icon: User },
+            { href: "/settings", label: "Settings", icon: Settings },
+            { href: "/admin", label: "Admin", icon: ShieldCheck },
+        ],
+    },
+];
 
 // Memoized user button — only re-renders when Clerk auth state actually changes
 const StableUserButton = memo(function StableUserButton() {
@@ -45,6 +133,14 @@ export function Sidebar() {
     const pinCase = useUIStore((s) => s.pinCase);
     const unpinCase = useUIStore((s) => s.unpinCase);
     const { data: casesData, isLoading } = useCases();
+    const { data: navCounts } = useNavCounts();
+
+    // Map item labels to their notification counts
+    const badgeCounts: Record<string, number> = {
+        Tasks: navCounts?.tasks ?? 0,
+        Comms: navCounts?.comms ?? 0,
+        Notifications: navCounts?.notifications ?? 0,
+    };
 
     // Auto-collapse on mobile
     useEffect(() => {
@@ -144,42 +240,113 @@ export function Sidebar() {
                     <div className="px-3 py-2">
                         <button
                             onClick={() => {
-                                window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+                                useUIStore.getState().setCommandPaletteOpen(true);
                             }}
                             className="w-full flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/50 transition-colors"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="11" cy="11" r="8" />
-                                <path d="m21 21-4.3-4.3" />
-                            </svg>
+                            <Search className="h-3.5 w-3.5" />
                             <span className="flex-1 text-left">Search...</span>
-                            <kbd className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
+                            <kbd className="text-[10px] bg-muted px-1.5 py-0.5 rounded font-mono">&#x2318;K</kbd>
                         </button>
                     </div>
                 )}
 
-                {/* Navigation */}
+                {/* Navigation — Collapsible Groups */}
                 <nav className="flex-1 overflow-y-auto px-2 py-3">
-                    <div className="space-y-1">
-                        <NavItem href="/" label="Dashboard" icon="⚡" active={pathname === "/"} collapsed={!sidebarOpen} />
-                        <NavItem href="/brief" label="Morning Brief" icon="☀️" active={pathname === "/brief"} collapsed={!sidebarOpen} />
-                        <NavItem href="/tasks" label="Tasks" icon="📋" active={pathname === "/tasks"} collapsed={!sidebarOpen} />
-                        <NavItem href="/calendar" label="Calendar" icon="📅" active={pathname === "/calendar"} collapsed={!sidebarOpen} />
-                        <NavItem href="/crm" label="Clients" icon="👥" active={pathname === "/crm"} collapsed={!sidebarOpen} />
-                        <NavItem href="/intake" label="Intake" icon="📝" active={pathname === "/intake"} collapsed={!sidebarOpen} />
-                        <NavItem href="/email" label="Email" icon="📧" active={pathname === "/email"} collapsed={!sidebarOpen} />
-                        <NavItem href="/comms" label="Comms" icon="💬" active={pathname === "/comms"} collapsed={!sidebarOpen} />
-                        <NavItem href="/payments" label="Payments" icon="💰" active={pathname === "/payments"} collapsed={!sidebarOpen} />
-                        <NavItem href="/discovery" label="Discovery" icon="📑" active={pathname === "/discovery"} collapsed={!sidebarOpen} />
-                        <NavItem href="/conflicts" label="Conflicts" icon="⚖️" active={pathname === "/conflicts"} collapsed={!sidebarOpen} />
-                        <NavItem href="/analytics" label="Analytics" icon="📊" active={pathname === "/analytics"} collapsed={!sidebarOpen} />
-                        <NavItem href="/workflows" label="Workflows" icon="🔄" active={pathname === "/workflows"} collapsed={!sidebarOpen} />
-                        <NavItem href="/notifications" label="Notifications" icon="🔔" active={pathname === "/notifications"} collapsed={!sidebarOpen} />
-                        <NavItem href="/search" label="Search" icon="🔍" active={pathname === "/search"} collapsed={!sidebarOpen} />
-                        <NavItem href="/portal" label="Client Portal" icon="🌐" active={pathname === "/portal"} collapsed={!sidebarOpen} />
-                        <NavItem href="/profile" label="Profile" icon="👤" active={pathname === "/profile"} collapsed={!sidebarOpen} />
-                        <NavItem href="/settings" label="Settings" icon="⚙️" active={pathname === "/settings"} collapsed={!sidebarOpen} />
-                        <NavItem href="/admin" label="Admin" icon="🛡️" active={pathname === "/admin"} collapsed={!sidebarOpen} />
+                    <div className="space-y-2">
+                        {navSections.map((section) => {
+                            // Check if any item in this section is active
+                            const sectionHasActive = section.items.some((item) =>
+                                item.href === "/"
+                                    ? pathname === "/"
+                                    : pathname.startsWith(item.href),
+                            );
+
+                            if (!sidebarOpen) {
+                                // Collapsed mode: just show icons, no section headers
+                                return (
+                                    <div key={section.title} className="space-y-1">
+                                        {section.items.map((item) => {
+                                            const Icon = item.icon;
+                                            const isActive =
+                                                item.href === "/"
+                                                    ? pathname === "/"
+                                                    : pathname.startsWith(item.href);
+                                            const count = badgeCounts[item.label] ?? 0;
+                                            return (
+                                                <Tooltip key={item.href}>
+                                                    <TooltipTrigger asChild>
+                                                        <Link
+                                                            href={item.href}
+                                                            className={cn(
+                                                                "relative flex items-center justify-center rounded-md p-2 transition-colors",
+                                                                isActive
+                                                                    ? "bg-primary/10 text-primary"
+                                                                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                                                            )}
+                                                        >
+                                                            <Icon className="h-4 w-4" />
+                                                            {count > 0 && (
+                                                                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-card" />
+                                                            )}
+                                                        </Link>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="right" className="text-xs">
+                                                        {item.label}
+                                                        {count > 0 && ` (${count})`}
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            }
+
+                            // Expanded mode: collapsible sections
+                            return (
+                                <Collapsible key={section.title} defaultOpen={true}>
+                                    <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2 py-1 text-xs font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors group">
+                                        <ChevronDown className="h-3 w-3 transition-transform group-data-[state=closed]:-rotate-90" />
+                                        {section.title}
+                                        {sectionHasActive && (
+                                            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
+                                        )}
+                                    </CollapsibleTrigger>
+                                    <CollapsibleContent>
+                                        <div className="space-y-0.5 mt-0.5">
+                                            {section.items.map((item) => {
+                                                const Icon = item.icon;
+                                                const isActive =
+                                                    item.href === "/"
+                                                        ? pathname === "/"
+                                                        : pathname.startsWith(item.href);
+                                                const count = badgeCounts[item.label] ?? 0;
+                                                return (
+                                                    <Link
+                                                        key={item.href}
+                                                        href={item.href}
+                                                        className={cn(
+                                                            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                                                            isActive
+                                                                ? "bg-primary/10 text-primary font-medium"
+                                                                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                                                        )}
+                                                    >
+                                                        <Icon className="h-4 w-4 shrink-0" />
+                                                        <span className="truncate">{item.label}</span>
+                                                        {count > 0 && (
+                                                            <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground min-w-[18px] text-center">
+                                                                {count > 99 ? "99+" : count}
+                                                            </span>
+                                                        )}
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    </CollapsibleContent>
+                                </Collapsible>
+                            );
+                        })}
                     </div>
 
                     {sidebarOpen && (
@@ -276,7 +443,7 @@ function CaseNavItem({
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             )}
         >
-            {isPinned && <span className="text-xs shrink-0">📌</span>}
+            {isPinned && <span className="text-xs shrink-0">&#x1F4CC;</span>}
             <span className="truncate flex-1">{caseItem.name}</span>
             {caseItem.phase && (
                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
@@ -292,64 +459,8 @@ function CaseNavItem({
                 className="opacity-0 group-hover:opacity-100 transition-opacity text-xs shrink-0"
                 title={isPinned ? "Unpin" : "Pin"}
             >
-                {isPinned ? "📌" : "📍"}
+                {isPinned ? "&#x1F4CC;" : "&#x1F4CD;"}
             </button>
         </Link>
     );
-}
-
-// ---- Nav Item with Tooltip for collapsed state --------------------------
-
-function NavItem({
-    href,
-    label,
-    icon,
-    active,
-    collapsed,
-    badge,
-}: {
-    href: string;
-    label: string;
-    icon?: string;
-    active: boolean;
-    collapsed: boolean;
-    badge?: string;
-}) {
-    const linkContent = (
-        <Link
-            href={href}
-            className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                active
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                collapsed && "justify-center",
-            )}
-        >
-            {icon && <span className="text-base">{icon}</span>}
-            {!collapsed && (
-                <>
-                    <span className="truncate flex-1">{label}</span>
-                    {badge && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                            {badge}
-                        </Badge>
-                    )}
-                </>
-            )}
-        </Link>
-    );
-
-    if (collapsed) {
-        return (
-            <Tooltip>
-                <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                <TooltipContent side="right" className="text-xs">
-                    {label}
-                </TooltipContent>
-            </Tooltip>
-        );
-    }
-
-    return linkContent;
 }

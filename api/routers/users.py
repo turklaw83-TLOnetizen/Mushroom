@@ -44,7 +44,7 @@ def _check_login_rate(client_ip: str) -> bool:
         return len(attempts) < _LOGIN_MAX_ATTEMPTS
 
 
-def _record_failed_login(client_ip: str):
+def _record_failed_login(client_ip: str) -> None:
     """Record a failed login attempt."""
     now = time.time()
     with _login_lock:

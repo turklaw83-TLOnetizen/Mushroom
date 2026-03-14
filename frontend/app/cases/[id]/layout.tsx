@@ -3,21 +3,24 @@
 // Wraps children in PrepProvider. Supports tab prefetching on hover.
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams, usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import { z } from "zod";
 import { useCase } from "@/hooks/use-cases";
 import { PrepProvider, usePrep } from "@/hooks/use-prep";
 import { useCreatePrep } from "@/hooks/use-create-prep";
 import { useTabPrefetch } from "@/hooks/use-tab-prefetch";
+import { useTabPersistence } from "@/hooks/use-tab-persistence";
 import { FormDialog, type FieldConfig } from "@/components/shared/form-dialog";
-import { ScrollableTabs } from "@/components/shared/scrollable-tabs";
+import { ScrollableTabs, type TabGroup } from "@/components/shared/scrollable-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const tabs = [
+// Primary tabs — always visible in the tab bar
+const primaryTabs = [
     { label: "Overview", href: "" },
     { label: "Files", href: "/files" },
     { label: "Analysis", href: "/analysis" },
@@ -25,24 +28,43 @@ const tabs = [
     { label: "Witnesses", href: "/witnesses" },
     { label: "Evidence", href: "/evidence" },
     { label: "Strategy", href: "/strategy" },
-    { label: "Timeline", href: "/timeline" },
-    { label: "Mock Exam", href: "/mock-exam" },
-    { label: "War Game", href: "/war-game" },
-    { label: "Contradictions", href: "/contradictions" },
-    { label: "Research", href: "/research" },
-    { label: "Discovery", href: "/discovery" },
-    { label: "Redaction", href: "/redaction" },
-    { label: "Billing", href: "/billing" },
-    { label: "Calendar", href: "/calendar" },
-    { label: "Compliance", href: "/compliance" },
-    { label: "Exhibits", href: "/exhibits" },
-    { label: "E-Sign", href: "/esign" },
-    { label: "Transcription", href: "/transcription" },
-    { label: "Exports", href: "/exports" },
-    { label: "Activity", href: "/activity" },
-    { label: "Case Score", href: "/predictive-score" },
-    { label: "Ask Case", href: "/ask" },
-    { label: "Command Center", href: "/command-center" },
+];
+
+// Grouped tabs — appear as dropdown menus in the tab bar
+const tabGroups: TabGroup[] = [
+    {
+        label: "Practice & Testing",
+        tabs: [
+            { label: "Mock Exam", href: "/mock-exam" },
+            { label: "War Game", href: "/war-game" },
+            { label: "Ask Case", href: "/ask" },
+            { label: "Command Center", href: "/command-center" },
+            { label: "Case Score", href: "/predictive-score" },
+        ],
+    },
+    {
+        label: "Research & Discovery",
+        tabs: [
+            { label: "Research", href: "/research" },
+            { label: "Discovery", href: "/discovery" },
+            { label: "Timeline", href: "/timeline" },
+            { label: "Contradictions", href: "/contradictions" },
+            { label: "Transcription", href: "/transcription" },
+            { label: "Redaction", href: "/redaction" },
+        ],
+    },
+    {
+        label: "Admin & Compliance",
+        tabs: [
+            { label: "Billing", href: "/billing" },
+            { label: "Calendar", href: "/calendar" },
+            { label: "Compliance", href: "/compliance" },
+            { label: "Exhibits", href: "/exhibits" },
+            { label: "E-Sign", href: "/esign" },
+            { label: "Exports", href: "/exports" },
+            { label: "Activity", href: "/activity" },
+        ],
+    },
 ];
 
 // Prep creation schema
@@ -67,6 +89,16 @@ const prepFields: FieldConfig<PrepInput>[] = [
     },
     { name: "name", label: "Name (optional)", placeholder: "e.g. Suppression Hearing" },
 ];
+
+function phaseColors(phase: string): string {
+    switch (phase?.toLowerCase()) {
+        case "active": return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+        case "closed": return "bg-zinc-500/15 text-zinc-400 border-zinc-500/30";
+        case "archived": return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+        case "purged": return "bg-red-500/15 text-red-400 border-red-500/30";
+        default: return "bg-blue-500/15 text-blue-400 border-blue-500/30";
+    }
+}
 
 export default function CaseLayout({
     children,
@@ -96,8 +128,22 @@ function CaseLayoutInner({
     const prefetch = useTabPrefetch(caseId, activePrepId);
     const createPrep = useCreatePrep(caseId);
     const [prepDialogOpen, setPrepDialogOpen] = useState(false);
+    const [isScrolled, setIsScrolled] = useState(false);
+    const contentRef = useRef<HTMLDivElement>(null);
 
     const basePath = `/cases/${caseId}`;
+
+    // Restore last-visited tab on case root and persist tab changes
+    useTabPersistence(caseId);
+
+    // Track whether content area has scrolled for header shadow effect
+    useEffect(() => {
+        const el = contentRef.current;
+        if (!el) return;
+        const onScroll = () => setIsScrolled(el.scrollTop > 8);
+        el.addEventListener("scroll", onScroll, { passive: true });
+        return () => el.removeEventListener("scroll", onScroll);
+    }, []);
 
     const handleCreatePrep = async (data: PrepInput) => {
         await createPrep.mutateAsync(data);
@@ -106,8 +152,11 @@ function CaseLayoutInner({
 
     return (
         <div className="flex flex-col h-full">
-            {/* Case Header */}
-            <div className="border-b border-border bg-card/50 px-6 pt-5 pb-0">
+            {/* Case Header — gains shadow when content scrolls */}
+            <div className={cn(
+                "border-b border-border bg-card/50 px-6 pt-5 pb-0 transition-shadow",
+                isScrolled && "shadow-md",
+            )}>
                 {isLoading ? (
                     <div className="space-y-2 pb-4">
                         <Skeleton className="h-7 w-64" />
@@ -119,10 +168,7 @@ function CaseLayoutInner({
                             <h1 className="text-xl font-bold tracking-tight">
                                 {caseData.name}
                             </h1>
-                            <Badge
-                                variant="outline"
-                                className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                            >
+                            <Badge variant="outline" className={phaseColors(caseData.phase)}>
                                 {caseData.phase}
                             </Badge>
                             {caseData.case_type && (
@@ -188,15 +234,16 @@ function CaseLayoutInner({
 
                 {/* Tab Navigation — scrollable with arrow indicators */}
                 <ScrollableTabs
-                    tabs={tabs}
+                    tabs={primaryTabs}
+                    groups={tabGroups}
                     basePath={basePath}
                     activeHref={pathname}
                     onPrefetch={prefetch}
                 />
             </div>
 
-            {/* Tab Content */}
-            <div className="flex-1 overflow-y-auto p-6">{children}</div>
+            {/* Tab Content — page-enter animation on route change */}
+            <div ref={contentRef} key={pathname} className="flex-1 overflow-y-auto p-6 page-enter">{children}</div>
 
             {/* Prep Creation Dialog */}
             <FormDialog

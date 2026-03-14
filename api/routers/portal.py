@@ -11,7 +11,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from api.auth import get_current_user
+from api.auth import require_role
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/portal", tags=["Portal"])
@@ -27,13 +27,115 @@ class ClientMessage(BaseModel):
     case_id: Optional[str] = None
 
 
+# ---- Portal Status Helpers -----------------------------------------------
+
+
+def _get_portal_cases(case_ids: List[str], cm) -> List[dict]:
+    """Collect basic case metadata for the portal (max 10 cases)."""
+    cases: List[dict] = []
+    for cid in case_ids[:10]:
+        meta = cm.get_case_metadata(cid)
+        if meta:
+            cases.append({
+                "id": cid,
+                "name": meta.get("name", cid),
+                "phase": meta.get("phase", meta.get("status", "active")),
+                "sub_phase": meta.get("sub_phase", ""),
+                "case_type": meta.get("case_type", ""),
+                "last_updated": meta.get("last_updated", ""),
+            })
+    return cases
+
+
+def _get_next_court_dates(case_ids: List[str]) -> dict:
+    """Find the next future court date for each case."""
+    next_dates: dict = {}
+    try:
+        from core.calendar_events import get_events_for_case
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        for cid in case_ids[:10]:
+            events = get_events_for_case(cid)
+            future = [
+                e for e in events
+                if e.get("date", "") >= today and e.get("status") != "cancelled"
+            ]
+            future.sort(key=lambda e: e.get("date", ""))
+            if future:
+                next_dates[cid] = {
+                    "date": future[0].get("date", ""),
+                    "title": future[0].get("title", ""),
+                }
+    except Exception:
+        pass
+    return next_dates
+
+
+def _get_payment_summary(client_id: str) -> Optional[dict]:
+    """Build a payment plan summary for the portal view."""
+    try:
+        from core.billing import load_payment_plans
+
+        plans = load_payment_plans(client_id)
+        if not plans:
+            return None
+
+        active_plans = [p for p in plans if p.get("status") == "active"]
+        plan = active_plans[0] if active_plans else plans[0]
+        total = plan.get("total_amount", 0)
+        payments = plan.get("payments", [])
+        paid = sum(p.get("amount", 0) for p in payments)
+
+        summary: dict = {
+            "plan_id": plan.get("id", ""),
+            "total_amount": total,
+            "total_paid": round(paid, 2),
+            "remaining": round(total - paid, 2),
+            "status": plan.get("status", "active"),
+            "next_due_date": None,
+            "next_due_amount": 0,
+        }
+
+        for sp in plan.get("scheduled_payments", []):
+            if sp.get("status") in ("pending", "overdue"):
+                summary["next_due_date"] = sp.get("due_date")
+                summary["next_due_amount"] = sp.get("amount", 0)
+                break
+
+        return summary
+    except Exception:
+        logger.warning("Failed to load payment plan for portal")
+        return None
+
+
+def _get_recent_communications(client_id: str, limit: int = 5) -> List[dict]:
+    """Fetch the most recent communications for a client."""
+    recent: List[dict] = []
+    try:
+        from core.comms import get_comm_log
+
+        log = get_comm_log()
+        client_comms = [e for e in log if e.get("client_id") == client_id]
+        client_comms.sort(key=lambda e: e.get("sent_at", ""), reverse=True)
+        for comm in client_comms[:limit]:
+            recent.append({
+                "subject": comm.get("subject", ""),
+                "channel": comm.get("channel", "email"),
+                "sent_at": comm.get("sent_at", ""),
+                "status": comm.get("status", "sent"),
+            })
+    except Exception:
+        pass
+    return recent
+
+
 # ---- Endpoints -----------------------------------------------------------
 
 
 @router.get("/client/{client_id}/status")
 def client_portal_status(
     client_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Get a read-only portal view for a client.
     Returns: client name, linked cases (with phases/next dates),
@@ -42,104 +144,31 @@ def client_portal_status(
     """
     try:
         from core.crm import get_client, get_cases_for_client
+
         client = get_client(client_id)
         if not client:
             raise HTTPException(status_code=404, detail="Client not found")
 
-        client_name = client.get("name", "") or f"{client.get('first_name', '')} {client.get('last_name', '')}".strip()
+        client_name = (
+            client.get("name", "")
+            or f"{client.get('first_name', '')} {client.get('last_name', '')}".strip()
+        )
 
-        # Get linked cases with basic info
         from api.deps import get_case_manager
         cm = get_case_manager()
         case_ids = get_cases_for_client(client_id)
-        cases = []
-        for cid in case_ids[:10]:  # Limit to 10 cases
-            meta = cm.get_case_metadata(cid)
-            if meta:
-                cases.append({
-                    "id": cid,
-                    "name": meta.get("name", cid),
-                    "phase": meta.get("phase", meta.get("status", "active")),
-                    "sub_phase": meta.get("sub_phase", ""),
-                    "case_type": meta.get("case_type", ""),
-                    "last_updated": meta.get("last_updated", ""),
-                })
 
-        # Get next court dates from calendar events
-        next_dates = {}
-        try:
-            from core.calendar_events import get_events_for_case
-            today = datetime.now().strftime("%Y-%m-%d")
-            for cid in case_ids[:10]:
-                events = get_events_for_case(cid)
-                future = [e for e in events
-                          if e.get("date", "") >= today
-                          and e.get("status") != "cancelled"]
-                future.sort(key=lambda e: e.get("date", ""))
-                if future:
-                    next_dates[cid] = {
-                        "date": future[0].get("date", ""),
-                        "title": future[0].get("title", ""),
-                    }
-        except Exception:
-            pass
-
+        cases = _get_portal_cases(case_ids, cm)
+        next_dates = _get_next_court_dates(case_ids)
         for c in cases:
             c["next_court_date"] = next_dates.get(c["id"])
-
-        # Payment plan summary
-        payment_summary = None
-        try:
-            from core.billing import load_payment_plans
-            plans = load_payment_plans(client_id)
-            if plans:
-                active_plans = [p for p in plans if p.get("status") == "active"]
-                plan = active_plans[0] if active_plans else plans[0]
-                total = plan.get("total_amount", 0)
-                payments = plan.get("payments", [])
-                paid = sum(p.get("amount", 0) for p in payments)
-                payment_summary = {
-                    "plan_id": plan.get("id", ""),
-                    "total_amount": total,
-                    "total_paid": round(paid, 2),
-                    "remaining": round(total - paid, 2),
-                    "status": plan.get("status", "active"),
-                    "next_due_date": None,
-                    "next_due_amount": 0,
-                }
-                # Find next unpaid scheduled payment
-                scheduled = plan.get("scheduled_payments", [])
-                for sp in scheduled:
-                    if sp.get("status") in ("pending", "overdue"):
-                        payment_summary["next_due_date"] = sp.get("due_date")
-                        payment_summary["next_due_amount"] = sp.get("amount", 0)
-                        break
-        except Exception:
-            logger.warning("Failed to load payment plan for portal")
-
-        # Recent communications (last 5)
-        recent_comms = []
-        try:
-            from core.comms import get_comm_log
-            log = get_comm_log()
-            client_comms = [e for e in log if e.get("client_id") == client_id]
-            client_comms.sort(key=lambda e: e.get("sent_at", ""), reverse=True)
-            for comm in client_comms[:5]:
-                recent_comms.append({
-                    "subject": comm.get("subject", ""),
-                    "channel": comm.get("channel", "email"),
-                    "sent_at": comm.get("sent_at", ""),
-                    "status": comm.get("status", "sent"),
-                })
-        except Exception:
-            pass
 
         return {
             "client_id": client_id,
             "client_name": client_name,
             "cases": cases,
-            "payment_summary": payment_summary,
-            "recent_communications": recent_comms,
+            "payment_summary": _get_payment_summary(client_id),
+            "recent_communications": _get_recent_communications(client_id),
         }
     except HTTPException:
         raise
@@ -151,7 +180,7 @@ def client_portal_status(
 @router.get("/client/{client_id}/documents")
 def client_portal_documents(
     client_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Get client-accessible documents.
 
@@ -211,7 +240,7 @@ def client_portal_documents(
 @router.get("/client/{client_id}/invoices")
 def client_portal_invoices(
     client_id: str,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Get outstanding invoices for a client.
 
@@ -299,7 +328,7 @@ def client_portal_invoices(
 def client_portal_send_message(
     client_id: str,
     body: ClientMessage,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Submit a message from the client to the firm.
 
@@ -357,7 +386,7 @@ def client_portal_send_message(
 def client_portal_messages(
     client_id: str,
     limit: int = 50,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Get message history between client and firm.
 
@@ -420,7 +449,7 @@ def client_portal_messages(
 def client_portal_deadlines(
     client_id: str,
     days: int = 60,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_role("admin", "attorney")),
 ):
     """Get upcoming deadlines and events relevant to the client.
 

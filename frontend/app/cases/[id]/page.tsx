@@ -9,15 +9,19 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { useCase } from "@/hooks/use-cases";
 import { usePrep } from "@/hooks/use-prep";
+import { usePrepState } from "@/hooks/use-prep-state";
 import { api } from "@/lib/api-client";
 import { routes } from "@/lib/api-routes";
 import { queryKeys } from "@/lib/query-keys";
+import { cn } from "@/lib/utils";
 import { formatDate, formatRelativeTime } from "@/lib/constants";
 import { ExportPanel } from "@/components/export-panel";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ShieldCheck, AlertTriangle } from "lucide-react";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -68,6 +72,85 @@ function useCaseActivity(caseId: string, getToken: TokenFn) {
     });
 }
 
+function useCaseFiles(caseId: string, getToken: TokenFn) {
+    return useQuery<any>({
+        queryKey: [...queryKeys.files.list(caseId)],
+        queryFn: () => api.get(routes.files.list(caseId), { getToken }),
+        retry: false,
+    });
+}
+
+// ---- Phase Steps --------------------------------------------------------
+
+function getPhaseSteps(caseType: string): { key: string; label: string }[] {
+    switch (caseType) {
+        case "criminal":
+            return [
+                { key: "Arrest & Booking", label: "Arrest & Booking" },
+                { key: "First Appearance", label: "First Appearance" },
+                { key: "Arraignment", label: "Arraignment" },
+                { key: "Discovery", label: "Discovery" },
+                { key: "Pre-Trial Motions", label: "Pre-Trial Motions" },
+                { key: "Plea Negotiations", label: "Plea Negotiations" },
+                { key: "Trial Preparation", label: "Trial Preparation" },
+                { key: "Trial", label: "Trial" },
+                { key: "Sentencing", label: "Sentencing" },
+            ];
+        case "criminal-juvenile":
+            return [
+                { key: "Intake & Detention", label: "Intake & Detention" },
+                { key: "Arraignment", label: "Arraignment" },
+                { key: "Discovery", label: "Discovery" },
+                { key: "Pre-Trial Motions", label: "Pre-Trial Motions" },
+                { key: "Plea Negotiations", label: "Plea Negotiations" },
+                { key: "Adjudication", label: "Adjudication" },
+                { key: "Disposition", label: "Disposition" },
+                { key: "Post-Disposition", label: "Post-Disposition" },
+            ];
+        case "civil-plaintiff":
+            return [
+                { key: "Complaint Filed", label: "Complaint Filed" },
+                { key: "Service of Process", label: "Service of Process" },
+                { key: "Answer/Response", label: "Answer/Response" },
+                { key: "Discovery", label: "Discovery" },
+                { key: "Depositions", label: "Depositions" },
+                { key: "Mediation", label: "Mediation" },
+                { key: "Pre-Trial Motions", label: "Pre-Trial Motions" },
+                { key: "Trial Preparation", label: "Trial Preparation" },
+                { key: "Trial", label: "Trial" },
+            ];
+        case "civil-defendant":
+            return [
+                { key: "Complaint Received", label: "Complaint Received" },
+                { key: "Answer Filed", label: "Answer Filed" },
+                { key: "Discovery", label: "Discovery" },
+                { key: "Depositions", label: "Depositions" },
+                { key: "Mediation", label: "Mediation" },
+                { key: "Pre-Trial Motions", label: "Pre-Trial Motions" },
+                { key: "Trial Preparation", label: "Trial Preparation" },
+                { key: "Trial", label: "Trial" },
+            ];
+        case "civil-juvenile":
+            return [
+                { key: "Petition Filed", label: "Petition Filed" },
+                { key: "Service & Response", label: "Service & Response" },
+                { key: "Discovery", label: "Discovery" },
+                { key: "Mediation", label: "Mediation" },
+                { key: "Pre-Trial", label: "Pre-Trial" },
+                { key: "Adjudication", label: "Adjudication" },
+                { key: "Disposition", label: "Disposition" },
+            ];
+        default:
+            return [
+                { key: "Filed", label: "Filed" },
+                { key: "Discovery", label: "Discovery" },
+                { key: "Pre-Trial", label: "Pre-Trial" },
+                { key: "Trial", label: "Trial" },
+                { key: "Resolution", label: "Resolution" },
+            ];
+    }
+}
+
 // ---- Components ---------------------------------------------------------
 
 function ReadinessGauge({ score, grade }: { score: number; grade: string }) {
@@ -85,7 +168,7 @@ function ReadinessGauge({ score, grade }: { score: number; grade: string }) {
             <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
                 <circle
                     cx="60" cy="60" r="52" fill="none"
-                    stroke="currentColor" className="text-white/5" strokeWidth="8"
+                    stroke="currentColor" className="text-muted-foreground/10" strokeWidth="8"
                 />
                 <circle
                     cx="60" cy="60" r="52" fill="none"
@@ -108,7 +191,7 @@ function StatCard({
     value,
     sub,
     icon,
-    color = "text-white",
+    color = "text-foreground",
     delay = 0,
 }: {
     label: string;
@@ -146,16 +229,167 @@ function QuickAction({
     return (
         <Link
             href={href}
-            className="flex items-start gap-3 p-4 rounded-lg border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-indigo-500/30 transition-all group"
+            className="flex items-start gap-3 p-4 rounded-lg border border-border bg-muted/30 hover:bg-muted/50 hover:border-indigo-500/30 transition-all group stagger-item"
         >
             <span className="text-xl mt-0.5">{icon}</span>
             <div>
-                <p className="text-sm font-medium text-zinc-200 group-hover:text-white transition-colors">
+                <p className="text-sm font-medium text-foreground group-hover:text-foreground transition-colors">
                     {label}
                 </p>
                 <p className="text-xs text-muted-foreground">{description}</p>
             </div>
         </Link>
+    );
+}
+
+// ---- Next Step Banner ---------------------------------------------------
+
+function NextStepBanner({
+    hasFiles,
+    hasAnalysis,
+    score,
+    witnessCount,
+    hasOverdueDeadlines,
+    caseId,
+}: {
+    hasFiles: boolean;
+    hasAnalysis: boolean;
+    score: number | null;
+    witnessCount: number;
+    hasOverdueDeadlines: boolean;
+    caseId: string;
+}) {
+    let message = "";
+    let action = { label: "", href: "" };
+
+    if (hasOverdueDeadlines) {
+        message = "You have overdue deadlines that need attention";
+        action = { label: "View Calendar", href: `/cases/${caseId}/calendar` };
+    } else if (!hasFiles) {
+        message = "Upload case documents to begin AI-powered analysis";
+        action = { label: "Upload Files", href: `/cases/${caseId}/documents` };
+    } else if (!hasAnalysis) {
+        message = "Run AI analysis on your uploaded documents";
+        action = { label: "Start Analysis", href: `/cases/${caseId}/analysis` };
+    } else if (score !== null && score < 60) {
+        message = "Your case readiness score needs attention — review analysis gaps";
+        action = { label: "Review Analysis", href: `/cases/${caseId}/analysis` };
+    } else if (witnessCount === 0) {
+        message = "Define witnesses for cross and direct examination planning";
+        action = { label: "Add Witnesses", href: `/cases/${caseId}/witnesses` };
+    } else if (score !== null && score >= 80) {
+        message = "Case is well-prepared — run a War Game to test vulnerabilities";
+        action = { label: "War Game", href: `/cases/${caseId}/war-game` };
+    }
+
+    if (!message) return null;
+
+    return (
+        <Card className="relative overflow-hidden border-amber-500/30 bg-amber-500/5">
+            <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-amber-400 to-orange-500" />
+            <CardContent className="py-3 pl-5 flex items-center gap-3">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    className="w-5 h-5 text-amber-400 shrink-0"
+                    aria-hidden="true"
+                >
+                    <path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7ZM9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9v1Z" />
+                </svg>
+                <p className="text-sm flex-1">{message}</p>
+                <Link href={action.href}>
+                    <Button size="sm" variant="outline" className="shrink-0">
+                        {action.label}
+                    </Button>
+                </Link>
+            </CardContent>
+        </Card>
+    );
+}
+
+// ---- Phase Timeline -----------------------------------------------------
+
+function PhaseTimeline({
+    currentPhase,
+    subPhase,
+    caseType,
+}: {
+    currentPhase: string;
+    subPhase: string;
+    caseType: string;
+}) {
+    const phases = getPhaseSteps(caseType);
+    const currentIdx = phases.findIndex((p) => p.key === subPhase);
+
+    // If the case is Closed or Archived, mark all phases complete
+    const allComplete = currentPhase === "Closed" || currentPhase === "Archived";
+
+    return (
+        <Card className="border-border/50">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Case Progress</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="relative pl-6">
+                    {/* Vertical line */}
+                    <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-border" />
+                    <div className="space-y-3">
+                        {phases.map((phase, i) => {
+                            const isComplete = allComplete || i < currentIdx;
+                            const isCurrent = !allComplete && i === currentIdx;
+                            const isFuture = !allComplete && (currentIdx === -1 ? true : i > currentIdx);
+
+                            return (
+                                <div key={phase.key} className="relative flex items-center gap-3">
+                                    {/* Dot */}
+                                    <div
+                                        className={cn(
+                                            "absolute -left-6 w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center text-[10px] font-bold",
+                                            isComplete &&
+                                                "bg-emerald-500 border-emerald-500 text-white",
+                                            isCurrent &&
+                                                "bg-primary border-primary text-primary-foreground animate-pulse",
+                                            isFuture &&
+                                                "bg-muted border-border text-muted-foreground",
+                                        )}
+                                    >
+                                        {isComplete ? (
+                                            <svg
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                viewBox="0 0 20 20"
+                                                fill="currentColor"
+                                                className="w-3 h-3"
+                                            >
+                                                <path
+                                                    fillRule="evenodd"
+                                                    d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"
+                                                    clipRule="evenodd"
+                                                />
+                                            </svg>
+                                        ) : (
+                                            i + 1
+                                        )}
+                                    </div>
+                                    <div>
+                                        <p
+                                            className={cn(
+                                                "text-sm",
+                                                isCurrent
+                                                    ? "font-semibold text-foreground"
+                                                    : "text-muted-foreground",
+                                            )}
+                                        >
+                                            {phase.label}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 
@@ -174,6 +408,8 @@ export default function CaseOverviewPage() {
     const { data: witnesses, isLoading: witnessesLoading } = useCaseWitnesses(caseId, prepId, getToken);
     const { data: evidence, isLoading: evidenceLoading } = useCaseEvidence(caseId, prepId, getToken);
     const { data: activity, isLoading: activityLoading } = useCaseActivity(caseId, getToken);
+    const { data: filesData } = useCaseFiles(caseId, getToken);
+    const { sections: prepSections } = usePrepState(caseId, prepId ?? null);
 
     const score = scoreData?.score;
 
@@ -198,6 +434,13 @@ export default function CaseOverviewPage() {
 
     const defenseCount = witnessList.filter((w) => /^defense$/i.test(w.type)).length;
     const stateCount = witnessList.filter((w) => /^(state|prosecution)$/i.test(w.type)).length;
+
+    // Derived values for NextStepBanner
+    const filesList: any[] = Array.isArray(filesData?.items || filesData)
+        ? (filesData?.items || filesData) : [];
+    const hasFiles = filesList.length > 0;
+    const hasAnalysis = !!prepSections.caseSummary;
+    const overallScore: number | null = score?.overall ?? null;
 
     if (isLoading) {
         return (
@@ -224,10 +467,20 @@ export default function CaseOverviewPage() {
 
     return (
         <div className="space-y-6 max-w-7xl">
+            {/* Next Step Recommendation Banner */}
+            <NextStepBanner
+                hasFiles={hasFiles}
+                hasAnalysis={hasAnalysis}
+                score={overallScore}
+                witnessCount={witnessList.length}
+                hasOverdueDeadlines={overdueCount > 0}
+                caseId={caseId}
+            />
+
             {/* Row 1: Readiness + Case Vitals */}
             <div className="flex flex-col lg:flex-row gap-6">
                 {/* Readiness Score */}
-                <Card className="border-white/5 lg:w-56 flex-shrink-0">
+                <Card className="border-border/50 lg:w-56 flex-shrink-0">
                     <CardContent className="pt-5 pb-4 flex flex-col items-center">
                         {scoreLoading ? (
                             <Skeleton className="w-32 h-32 rounded-full" />
@@ -237,7 +490,7 @@ export default function CaseOverviewPage() {
                                 <p className="text-xs text-muted-foreground mt-2">Case Readiness</p>
                             </>
                         ) : (
-                            <div className="w-32 h-32 rounded-full border-4 border-dashed border-white/10 flex items-center justify-center">
+                            <div className="w-32 h-32 rounded-full border-4 border-dashed border-border flex items-center justify-center">
                                 <p className="text-xs text-muted-foreground text-center px-2">
                                     Run analysis to score
                                 </p>
@@ -275,10 +528,19 @@ export default function CaseOverviewPage() {
                 </div>
             </div>
 
+            {/* Case Phase Timeline */}
+            {caseData.case_type && caseData.phase && (
+                <PhaseTimeline
+                    currentPhase={caseData.phase}
+                    subPhase={caseData.sub_phase || ""}
+                    caseType={caseData.case_type}
+                />
+            )}
+
             {/* Row 2: Description (if exists) + Upcoming Deadlines */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Description / Case Notes */}
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-medium">Case Summary</CardTitle>
                     </CardHeader>
@@ -314,7 +576,7 @@ export default function CaseOverviewPage() {
                 </Card>
 
                 {/* Upcoming Deadlines */}
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-sm font-medium">Upcoming Deadlines</CardTitle>
@@ -342,9 +604,9 @@ export default function CaseOverviewPage() {
                                     </div>
                                 )}
                                 {upcomingDeadlines.map((d: any, i: number) => (
-                                    <div key={i} className="flex items-center justify-between p-2 rounded bg-white/[0.02]">
+                                    <div key={i} className="flex items-center justify-between p-2 rounded bg-muted/30">
                                         <div>
-                                            <p className="text-sm text-zinc-300">{d.title || d.description}</p>
+                                            <p className="text-sm text-foreground/90">{d.title || d.description}</p>
                                             <p className="text-xs text-muted-foreground">{formatDate(d.due_date || d.date)}</p>
                                         </div>
                                         <span className="text-xs text-muted-foreground shrink-0 ml-2">
@@ -362,36 +624,48 @@ export default function CaseOverviewPage() {
             {score && (score.strengths?.length > 0 || score.vulnerabilities?.length > 0) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {score.strengths?.length > 0 && (
-                        <Card className="border-green-500/10">
+                        <Card className="border-emerald-500/10">
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-green-400">Key Strengths</CardTitle>
+                                <CardTitle className="text-sm font-medium text-emerald-400 flex items-center gap-2">
+                                    <ShieldCheck className="h-4 w-4" />
+                                    Key Strengths
+                                </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <ul className="space-y-1.5">
+                                <div className="space-y-2">
                                     {score.strengths.slice(0, 4).map((s: string, i: number) => (
-                                        <li key={i} className="text-sm text-zinc-400 flex items-start gap-2">
-                                            <span className="text-green-500 mt-0.5 shrink-0">+</span>
-                                            {s}
-                                        </li>
+                                        <div
+                                            key={i}
+                                            className="flex items-start gap-2.5 border-l-2 border-l-emerald-500 bg-emerald-500/5 rounded-md px-3 py-2"
+                                        >
+                                            <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                                            <span className="text-sm text-foreground/90">{s}</span>
+                                        </div>
                                     ))}
-                                </ul>
+                                </div>
                             </CardContent>
                         </Card>
                     )}
                     {score.vulnerabilities?.length > 0 && (
                         <Card className="border-red-500/10">
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium text-red-400">Vulnerabilities</CardTitle>
+                                <CardTitle className="text-sm font-medium text-red-400 flex items-center gap-2">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    Vulnerabilities
+                                </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <ul className="space-y-1.5">
+                                <div className="space-y-2">
                                     {score.vulnerabilities.slice(0, 4).map((v: string, i: number) => (
-                                        <li key={i} className="text-sm text-zinc-400 flex items-start gap-2">
-                                            <span className="text-red-500 mt-0.5 shrink-0">-</span>
-                                            {v}
-                                        </li>
+                                        <div
+                                            key={i}
+                                            className="flex items-start gap-2.5 border-l-2 border-l-red-500 bg-red-500/5 rounded-md px-3 py-2"
+                                        >
+                                            <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                                            <span className="text-sm text-foreground/90">{v}</span>
+                                        </div>
                                     ))}
-                                </ul>
+                                </div>
                             </CardContent>
                         </Card>
                     )}
@@ -444,7 +718,7 @@ export default function CaseOverviewPage() {
                 </div>
 
                 {/* Recent Activity */}
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
@@ -468,7 +742,7 @@ export default function CaseOverviewPage() {
                                     <div key={i} className="flex items-start gap-2">
                                         <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
                                         <div className="min-w-0">
-                                            <p className="text-sm text-zinc-300 truncate">
+                                            <p className="text-sm text-foreground/90 truncate">
                                                 {a.description || a.action || a.event}
                                             </p>
                                             <p className="text-xs text-muted-foreground">
@@ -485,7 +759,7 @@ export default function CaseOverviewPage() {
 
             {/* Row 5: Witness roster (compact) */}
             {witnessList.length > 0 && (
-                <Card className="border-white/5">
+                <Card className="border-border/50">
                     <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-sm font-medium">Witnesses</CardTitle>
@@ -496,18 +770,44 @@ export default function CaseOverviewPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="flex flex-wrap gap-2">
-                            {witnessList.slice(0, 12).map((w: any, i: number) => (
-                                <div
-                                    key={i}
-                                    className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02]"
-                                >
-                                    <div className="w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center text-[10px] font-medium text-indigo-400">
-                                        {(w.name || "?")[0]}
+                            {witnessList.slice(0, 12).map((w: any, i: number) => {
+                                const wType = (w.type || "").toLowerCase();
+                                const dotColor =
+                                    /^(state|prosecution)$/i.test(wType)
+                                        ? "bg-amber-500"
+                                        : /^defense$/i.test(wType)
+                                          ? "bg-blue-500"
+                                          : /^expert$/i.test(wType)
+                                            ? "bg-violet-500"
+                                            : /^character$/i.test(wType)
+                                              ? "bg-emerald-500"
+                                              : "bg-zinc-500";
+                                const avatarColor =
+                                    /^(state|prosecution)$/i.test(wType)
+                                        ? "bg-amber-500/20 text-amber-400"
+                                        : /^defense$/i.test(wType)
+                                          ? "bg-blue-500/20 text-blue-400"
+                                          : /^expert$/i.test(wType)
+                                            ? "bg-violet-500/20 text-violet-400"
+                                            : /^character$/i.test(wType)
+                                              ? "bg-emerald-500/20 text-emerald-400"
+                                              : "bg-indigo-500/20 text-indigo-400";
+                                return (
+                                    <div
+                                        key={i}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-muted/30"
+                                    >
+                                        <div className={`w-5 h-5 rounded-full ${avatarColor} flex items-center justify-center text-[10px] font-medium`}>
+                                            {(w.name || "?")[0]}
+                                        </div>
+                                        <span className="text-xs text-foreground/90">{w.name}</span>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} />
+                                            <StatusBadge status={w.type || "unknown"} domain="witness" />
+                                        </div>
                                     </div>
-                                    <span className="text-xs text-zinc-300">{w.name}</span>
-                                    <StatusBadge status={w.type || "unknown"} domain="witness" />
-                                </div>
-                            ))}
+                                );
+                            })}
                             {witnessList.length > 12 && (
                                 <span className="text-xs text-muted-foreground self-center ml-1">
                                     +{witnessList.length - 12} more

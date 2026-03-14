@@ -38,12 +38,16 @@ export function useWorkerStatus(caseId: string | null) {
 
         ws.onopen = () => setConnected(true);
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data._done) {
-                ws.close();
-                return;
+            try {
+                const data = JSON.parse(event.data);
+                if (data._done) {
+                    ws.close();
+                    return;
+                }
+                setStatus(data as WorkerStatus);
+            } catch {
+                // Skip malformed JSON messages
             }
-            setStatus(data as WorkerStatus);
         };
         ws.onclose = () => {
             setConnected(false);

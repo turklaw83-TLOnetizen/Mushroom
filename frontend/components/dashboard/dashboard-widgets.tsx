@@ -8,6 +8,7 @@ import { api } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 
 interface ActivityItem {
     id: string;
@@ -25,17 +26,6 @@ interface DashboardStats {
     upcoming_deadlines: number;
 }
 
-function timeAgo(ts: string): string {
-    const diff = Date.now() - new Date(ts).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
-}
-
 function activityIcon(type: string) {
     switch (type) {
         case "case_created": return "📁";
@@ -51,15 +41,31 @@ function activityIcon(type: string) {
 export function DashboardStats() {
     const { getToken } = useAuth();
 
-    const { data: notifications } = useQuery({
+    const { data: notifications, isLoading: notificationsLoading } = useQuery({
         queryKey: ["notifications"],
         queryFn: () => api.get<{ items: Array<{ type: string; case_id: string }>; total: number }>("/notifications", { getToken }),
     });
 
-    const { data: cases } = useQuery({
+    const { data: cases, isLoading: casesLoading } = useQuery({
         queryKey: ["cases"],
         queryFn: () => api.get<{ items: Array<{ status: string }>; total: number }>("/cases", { getToken }),
     });
+
+    const isLoading = notificationsLoading || casesLoading;
+
+    if (isLoading) {
+        return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="glass-card px-5 py-4 space-y-2">
+                        <Skeleton className="h-5 w-5 rounded" />
+                        <Skeleton className="h-7 w-16" />
+                        <Skeleton className="h-3 w-20" />
+                    </div>
+                ))}
+            </div>
+        );
+    }
 
     const totalCases = cases?.total ?? 0;
     const activeCases = cases?.items?.filter((c) => c.status === "active").length ?? 0;
@@ -105,7 +111,7 @@ export function ActivityFeed() {
         return (
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
+                    <CardTitle className="text-sm font-medium">Recent Cases</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                     {Array.from({ length: 5 }).map((_, i) => (
@@ -125,9 +131,11 @@ export function ActivityFeed() {
             </CardHeader>
             <CardContent className="space-y-0">
                 {items.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                        No recent activity
-                    </p>
+                    <EmptyState
+                        icon="📋"
+                        title="No recent activity"
+                        description="Cases will appear here as they are created."
+                    />
                 )}
                 {items.slice(0, 8).map((item, i) => (
                     <div

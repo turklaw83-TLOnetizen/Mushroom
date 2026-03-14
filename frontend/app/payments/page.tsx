@@ -172,9 +172,15 @@ export default function PaymentsPage() {
             formData.append("platform", csvPlatform);
             const token = await getToken();
             const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const csrfMatch = document.cookie.match(/(?:^|;\s*)mc-csrf=([^;]*)/);
+            const csrfToken = csrfMatch ? decodeURIComponent(csrfMatch[1]) : "";
+            const headers: Record<string, string> = {};
+            if (token) headers["Authorization"] = `Bearer ${token}`;
+            if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
             const res = await fetch(`${baseUrl}/api/v1${routes.paymentFeed.upload}`, {
                 method: "POST",
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                headers,
+                credentials: "include",
                 body: formData,
             });
             if (!res.ok) throw new Error("Upload failed");
@@ -888,7 +894,7 @@ export default function PaymentsPage() {
                                     ) : (
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-sm">
-                                                <thead>
+                                                <thead className="sticky top-0 z-10 bg-background">
                                                     <tr className="border-b text-left">
                                                         <th className="pb-2 pr-4 text-xs font-medium text-muted-foreground">
                                                             Client

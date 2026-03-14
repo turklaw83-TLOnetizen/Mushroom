@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
+import { formatDate } from "@/lib/constants";
 import { usePrep } from "@/hooks/use-prep";
 import { useMockExam, type MockExamMessage, type CoachingNote } from "@/hooks/use-mock-exam";
 import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
@@ -250,7 +251,7 @@ export default function MockExamPage() {
                                         )}
                                     </div>
                                     <p className="text-xs text-muted-foreground mt-0.5">
-                                        {new Date(s.created_at).toLocaleDateString()} ·{" "}
+                                        {formatDate(s.created_at)} ·{" "}
                                         {s.message_count} questions
                                     </p>
                                 </div>
@@ -497,7 +498,7 @@ function SessionCompareDialog({
     onCompare: () => void;
 }) {
     const fmtSession = (s: SessionSummary) =>
-        `${s.witness_name} (${s.exam_type === "cross" ? "Cross" : "Direct"}) - ${new Date(s.created_at).toLocaleDateString()}`;
+        `${s.witness_name} (${s.exam_type === "cross" ? "Cross" : "Direct"}) - ${formatDate(s.created_at)}`;
 
     const scorecardA = detailA?.scorecard;
     const scorecardB = detailB?.scorecard;

@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = str(_PROJECT_ROOT / "data" / "cases")
 
+STALE_TIMEOUT_SECONDS = 300  # 5 minutes
+
 # Singleton guard: one worker thread per case
 _active_workers: dict = {}  # {case_id: threading.Thread}
 _stop_flags: dict = {}  # {case_id: threading.Event}
@@ -82,7 +84,7 @@ def get_ocr_status(case_id: str) -> dict:
         if updated:
             try:
                 age = (datetime.now() - datetime.fromisoformat(updated)).total_seconds()
-                if age > 600:  # 10 minutes with no update = dead thread
+                if age > STALE_TIMEOUT_SECONDS:  # 5 minutes with no update = dead thread
                     logger.warning(f"OCR worker stale for {case_id} ({int(age)}s). Resetting.")
                     data["status"] = "idle"
             except Exception:
@@ -213,6 +215,8 @@ def _run_ocr_thread(case_id: str, case_mgr, model_provider: str):
     finally:
         _active_workers.pop(case_id, None)
         _stop_flags.pop(case_id, None)
+        with _priority_lock:
+            _priority_files.pop(case_id, None)
 
 
 def _process_single_file(case_id, fpath, fname, file_key, ext,
@@ -337,7 +341,7 @@ def start_ocr_worker(case_id: str, case_mgr, model_provider: str) -> bool:
     # Check status for stale detection
     status = get_ocr_status(case_id)
     if status.get("status") == "running":
-        return False  # Already running (or stale — get_ocr_status auto-resets after 10 min)
+        return False  # Already running (or stale — get_ocr_status auto-resets after 5 min)
 
     stop_event = threading.Event()
     _stop_flags[case_id] = stop_event

@@ -157,7 +157,7 @@ export default function AskCasePage() {
                             <button
                                 key={sq}
                                 onClick={() => askQuestion(sq)}
-                                className="text-left p-4 rounded-lg border border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-indigo-500/30 transition-all text-sm text-zinc-300"
+                                className="text-left p-4 rounded-lg border border-border bg-muted/30 hover:bg-muted/50 hover:border-indigo-500/30 transition-all text-sm text-foreground/90"
                             >
                                 {sq}
                             </button>
@@ -201,12 +201,12 @@ export default function AskCasePage() {
 
                 {/* History */}
                 {history.map((entry, i) => (
-                    <Card key={i} className="border-white/5">
+                    <Card key={i} className="border-border/50">
                         <CardContent className="pt-4">
-                            <p className="text-sm font-medium text-zinc-300 mb-3">
+                            <p className="text-sm font-medium text-foreground/90 mb-3">
                                 Q: {entry.question}
                             </p>
-                            <div className="prose prose-invert prose-sm max-w-none text-zinc-400">
+                            <div className="prose prose-invert prose-sm max-w-none text-muted-foreground">
                                 <div className="whitespace-pre-wrap">{entry.answer}</div>
                             </div>
                         </CardContent>
@@ -215,7 +215,7 @@ export default function AskCasePage() {
             </div>
 
             {/* Input bar (fixed at bottom) */}
-            <div className="px-6 py-4 border-t border-white/10 bg-background">
+            <div className="px-6 py-4 border-t border-border bg-background">
                 <form onSubmit={handleSubmit} className="flex gap-3">
                     <textarea
                         ref={textareaRef}
@@ -229,7 +229,7 @@ export default function AskCasePage() {
                         }}
                         placeholder="Ask anything about your case..."
                         rows={1}
-                        className="flex-1 resize-none rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50"
+                        className="flex-1 resize-none rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50"
                         disabled={streaming}
                     />
                     <Button

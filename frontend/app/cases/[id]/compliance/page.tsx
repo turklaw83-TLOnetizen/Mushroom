@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -370,6 +371,50 @@ export default function CompliancePage() {
     // RENDER
     // =====================================================================
 
+    // ---- Page-level loading skeleton ----
+    if (dashboardQuery.isLoading && prospectiveQuery.isLoading && trustQuery.isLoading) {
+        return (
+            <div className="space-y-6">
+                <div className="flex gap-2 mb-4">
+                    {Array.from({ length: 7 }).map((_, i) => (
+                        <Skeleton key={i} className="h-8 w-24" />
+                    ))}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card>
+                        <CardContent className="pt-6 pb-4 text-center space-y-2">
+                            <Skeleton className="h-3 w-28 mx-auto" />
+                            <Skeleton className="h-16 w-20 mx-auto" />
+                            <Skeleton className="h-3 w-16 mx-auto" />
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardContent className="pt-6 pb-4 text-center space-y-2">
+                            <Skeleton className="h-3 w-24 mx-auto" />
+                            <Skeleton className="h-16 w-12 mx-auto" />
+                            <Skeleton className="h-3 w-24 mx-auto" />
+                        </CardContent>
+                    </Card>
+                </div>
+                <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Card key={i}>
+                            <CardContent className="py-3">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <Skeleton className="h-4 w-40 mb-1" />
+                                        <Skeleton className="h-3 w-56" />
+                                    </div>
+                                    <Skeleton className="h-5 w-20 rounded-full" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
             <Tabs defaultValue="dashboard">
@@ -497,7 +542,7 @@ export default function CompliancePage() {
                                     <CardContent>
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-sm">
-                                                <thead>
+                                                <thead className="sticky top-0 z-10 bg-background">
                                                     <tr className="border-b border-border text-left">
                                                         <th className="pb-2 font-medium text-muted-foreground">Case</th>
                                                         <th className="pb-2 font-medium text-muted-foreground">Last Contact</th>
@@ -568,11 +613,11 @@ export default function CompliancePage() {
                             </Card>
                         </>
                     ) : (
-                        <Card className="border-dashed">
-                            <CardContent className="py-12 text-center text-muted-foreground">
-                                Unable to load compliance dashboard.
-                            </CardContent>
-                        </Card>
+                        <EmptyState
+                            icon="\u2696\uFE0F"
+                            title="Unable to load compliance dashboard"
+                            description="Check your API connection or try refreshing the page."
+                        />
                     )}
                 </TabsContent>
 
@@ -769,7 +814,7 @@ export default function CompliancePage() {
                             ) : (
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm">
-                                        <thead>
+                                        <thead className="sticky top-0 z-10 bg-background">
                                             <tr className="border-b border-border text-left">
                                                 <th className="pb-2 font-medium text-muted-foreground">Name</th>
                                                 <th className="pb-2 font-medium text-muted-foreground">Subject</th>
@@ -1349,7 +1394,7 @@ export default function CompliancePage() {
                             ) : (
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm">
-                                        <thead>
+                                        <thead className="sticky top-0 z-10 bg-background">
                                             <tr className="border-b border-border text-left">
                                                 <th className="pb-2 font-medium text-muted-foreground">Task</th>
                                                 <th className="pb-2 font-medium text-muted-foreground">Assignee</th>

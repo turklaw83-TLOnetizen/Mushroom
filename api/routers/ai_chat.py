@@ -162,7 +162,7 @@ def clear_chat_history(
 
 # ---- Helpers -------------------------------------------------------------
 
-def _save_chat_message(cm, case_id: str, prep_id: str, role: str, content: str, context_module: str = ""):
+def _save_chat_message(cm, case_id: str, prep_id: str, role: str, content: str, context_module: str = "") -> None:
     """Append a message to the chat history file (prep-level + case-level)."""
     try:
         history = cm.storage.load_prep_json(case_id, prep_id, "chat_history.json", [])
@@ -217,7 +217,7 @@ def clear_case_chat_history(
 
 # ---- Helpers -------------------------------------------------------------
 
-def _build_module_context(state: dict, module: str, case_id: str, cm) -> str:
+def _build_module_context(state: dict, module: str, case_id: str, cm: object) -> str:
     """Build contextual information based on which module the user is on."""
     parts = []
 

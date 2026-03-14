@@ -59,6 +59,13 @@ DEFAULT_PHASE_CONFIG = {
 # Days a case can remain in "closed" before auto-archiving
 CLOSED_AUTO_ARCHIVE_DAYS = 21
 
+# Valid phase transitions — prevents illegal state jumps
+VALID_PHASE_TRANSITIONS: Dict[str, set] = {
+    "active": {"closed"},
+    "closed": {"active", "archived"},
+    "archived": {"active"},
+}
+
 
 def _now_iso() -> str:
     return datetime.now().isoformat()
@@ -262,7 +269,15 @@ class CaseManager:
         return new_id
 
     def archive_case(self, case_id: str) -> None:
-        """Legacy-compatible: set phase to archived."""
+        """Legacy-compatible: set phase to archived.
+
+        Automatically transitions through 'closed' if currently 'active',
+        honouring the phase transition state machine.
+        """
+        meta = self.storage.get_case_metadata(case_id)
+        current_phase = meta.get("phase", meta.get("status", "active"))
+        if current_phase == "active":
+            self.set_phase(case_id, "closed")
         self.set_phase(case_id, "archived")
 
     def unarchive_case(self, case_id: str) -> None:
@@ -319,11 +334,23 @@ class CaseManager:
         return meta.get("phase", "active"), meta.get("sub_phase", "")
 
     def set_phase(self, case_id: str, phase: str, sub_phase: str = "") -> None:
-        """Set master phase (active/closed/archived) and optional sub-phase."""
+        """Set master phase (active/closed/archived) and optional sub-phase.
+
+        Validates the transition against VALID_PHASE_TRANSITIONS to prevent
+        illegal state jumps (e.g. active→archived without closing first).
+        """
         if phase not in PHASES:
             raise ValueError(f"Invalid phase: {phase}")
         meta = self.storage.get_case_metadata(case_id)
         old_phase = meta.get("phase", meta.get("status", "active"))
+        # Validate transition (skip if same phase — idempotent)
+        if old_phase != phase:
+            allowed = VALID_PHASE_TRANSITIONS.get(old_phase, set())
+            if phase not in allowed:
+                raise ValueError(
+                    f"Invalid phase transition: {old_phase} → {phase}. "
+                    f"Allowed transitions from '{old_phase}': {sorted(allowed) or 'none'}"
+                )
         meta["phase"] = phase
         meta["status"] = _PHASE_TO_STATUS.get(phase, "active")  # backward compat
         if phase == "active":

@@ -3,16 +3,14 @@
 > Forked from AllRise Beta (Feb 2026). Independent repo — no shared git history.
 
 ## Project Overview
-Project Mushroom Cloud — a Streamlit-based legal case management and AI analysis platform.
+Project Mushroom Cloud — a legal case management and AI analysis platform.
+Frontend: Next.js 16 + Clerk + React Query. Backend: FastAPI + core/ Python engine.
 Location: `C:\Users\turkl\project-mushroom-cloud`
 
-## Architecture (Two-Tier UI + Clean Core/UI Split)
-- **app.py** (~95 lines) — thin entry: splash -> login -> sidebar -> route
-- **Tier 1**: `ui/case_dashboard.py` — landing when no case selected (metrics, case table, filters, **client directory**)
-- **Tier 2**: `ui/case_view.py` — war room when case open (header, directives, contacts, files, analysis, tabs)
-- **Router**: `ui/router.py` — dispatches between dashboard and case view
-- **Sidebar**: `ui/navigation.py` — API keys, exports, journal, negotiations, version history, case management
-- **Shared**: `ui/shared.py` — singletons, session state, friendly_error(), run_single_node(), render_module_notes()
+## Architecture (Next.js + FastAPI + Core Engine)
+- **Frontend**: `frontend/` — Next.js 16 App Router (see "Next.js Frontend" section below)
+- **API**: `api/` — FastAPI REST layer exposing core/ functionality
+- **Core Engine**: `core/` — Business logic, AI pipeline, storage, workers (zero UI coupling)
 
 ## Key Classes
 - **CaseManager** (`core/case_manager.py`) — all case CRUD, state, files, preps, deadlines, contacts, phase lifecycle, purge
@@ -77,18 +75,9 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 - **Stats keys**: `total_clients`, `active`, `prospective`, `former`, `declined` (NOT `active_clients` etc.)
 - **Intake templates**: general, criminal, civil
 
-## Navigation Groups
-- **Investigation Plan** is in **Core Analysis** (moved from Research & Draft for visibility)
-- Groups by prep type: Core Analysis, Evidence & Facts, Witnesses & Exam, Strategy & Jury, Research & Draft, Tools, Ethical Compliance, Billing, Client CRM, Calendar, E-Signature, Activity
-
 ## Patterns & Conventions
 - **Append-only keys**: witnesses, timeline, evidence_foundations, investigation_plan, consistency_check (use `safe_update_and_save`)
-- **Edit pattern**: `st.session_state["_editing_X_id"]` toggle for inline edit forms
-- **Cache pattern**: session state with `_dash_cache_ver` / `_file_cache_ver` version counters
-- **Error handling**: `friendly_error()` in shared.py translates 25+ exception patterns
-- **Module notes**: `render_module_notes()` shared helper for per-tab attorney notes
-- **Streaming chat**: `invoke_with_retry_streaming()` + `st.write_stream()`
-- **Background status**: All workers use JSON files on disk for status communication (not session_state)
+- **Background status**: All workers use JSON files on disk for status communication
 - **Stale detection**: Workers check `updated_at` timestamp; auto-reset stuck "running" states
 - **Heartbeat**: Long-running file processing sends heartbeat every 15s to refresh `updated_at`
 
@@ -114,8 +103,7 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 - **Deploy**: `deploy/` directory has systemd service, Cloudflare Tunnel, Tailscale, backup timer/script
 
 ## Export System
-- **Sidebar exports** (`ui/navigation.py`): Word Report, PDF Report, IRAC Brief, Trial Binder (13-tab)
-- **Export All ZIP**: One-click button packages all 4 formats into a single ZIP download
+- **Exports**: Word Report, PDF Report, IRAC Brief, Trial Binder (13-tab), Export All ZIP
 - **Quick Cards**: Courtroom reference cards (witness, evidence, objections) in `core/export/quick_cards.py`
 - Uses fpdf 1.7.2 (not fpdf2). `epw` property polyfill on PDFReport and QuickCardPDF. Use `ln=1` not `new_x/new_y`.
 
@@ -125,18 +113,10 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 - **`_last_per_node_times`**: Saved after each analysis for ETA estimates on next run
 - Core nodes (analyzer, strategist) always run; others skip if docs unchanged + results populated
 
-## UI Features
-- **Dashboard**: Readiness column (merged Score+Grade), pagination (10/25/50), sort by 8 columns, filters
-- **War Room**: Metrics cards, charges prompt (when missing), performance profile bar chart
-- **Analysis progress**: Node grid with ETA estimates, completion toast + summary with cached/regenerated badges
-- **Prep selector**: Sorted newest-first by `created_at`
-
 ## Security Hardening
 - **Path traversal**: `save_file()` / `delete_file()` in json_backend.py reject `../` attacks via `path.resolve()` + `startswith()` check
 - **OCRCache thread safety**: Class-level `_manifest_locks` dict with `_manifest_locks_guard` for per-path locking
 - **Case locks**: Threading locks on all preparation index mutations (create, delete, rename, clone) and purge
-- **Session state isolation**: Staff/client counts keyed by `case_id` to prevent stale data on case switch
-- **Router guard**: Checks `case_exists()` before rendering case view; redirects to dashboard if deleted
 
 ## Tests
 - 222 tests in `tests/` — pytest, all passing at fork point
@@ -147,12 +127,10 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 ## Config
 - `config.yaml` — LLM providers (anthropic/xai), models, storage paths
 - `.env` — API keys (XAI_API_KEY, ANTHROPIC_API_KEY)
-- `.streamlit/config.toml` — theme, server, upload limits
-- `.streamlit/secrets.toml` — OAuth secrets (gitignored)
 
 ## User Info
 - Default users: Daniel Joseph Turklay (DJT, admin), Cody Ryan Johnson (CRJ, admin)
-- Users authenticate via PIN or Google OAuth
+- Users authenticate via Clerk (Next.js frontend)
 
 ## Known Issues (Inherited from AllRise Beta)
 - **clone_preparation null deref**: Fixed — `source_prep.get(...)` guarded with `if source_prep else` fallback
@@ -166,6 +144,17 @@ Location: `C:\Users\turkl\project-mushroom-cloud`
 - `api/routers/ai_features.py` — ghost feature router (endpoints never connected to real backend)
 - `core/deadline_chains.py` — orphaned LangChain deadline system (1,031 lines, 0 imports)
 - `core/morning_brief.py` — orphaned morning brief generator (replaced by api/routers/morning_brief.py rewrite)
+- `frontend/components/access-gates.tsx` — unused access gate component (0 imports)
+- `frontend/components/pdf-viewer.tsx` — unused PDF viewer component (0 imports)
+- `frontend/components/export-dropdown.tsx` — unused export dropdown component (0 imports)
+
+## Streamlit UI Removed (Migration Complete)
+The legacy Streamlit frontend (~10K lines) was fully removed after the Next.js frontend reached feature parity. Deleted:
+- `app.py` — Streamlit entry point
+- `launcher.py` — Desktop pywebview wrapper
+- `ui/` — Entire directory (shared.py, splash.py, theme.py, login.py, router.py, navigation.py, case_dashboard.py, case_view.py, components/, pages/)
+- `.streamlit/` — Streamlit config directory
+- Dependencies: streamlit, streamlit-autorefresh, pywebview removed from requirements.txt
 
 ## Branding Note
 Source files still reference "AllRise Beta" in many places. These should be updated to "Project Mushroom Cloud" / "mushroom-cloud" as the project evolves. The `core/storage/encrypted_backend.py` magic bytes must NOT be changed (would break encryption verification).

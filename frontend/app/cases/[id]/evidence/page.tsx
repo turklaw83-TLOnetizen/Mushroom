@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/shared/empty-state";
 import {
     Dialog,
     DialogContent,
@@ -265,6 +266,7 @@ export default function EvidencePage() {
     }
 
     async function handleDeleteCustody(entryId: string) {
+        if (!window.confirm("Delete this custody entry? This action cannot be undone.")) return;
         try {
             await api.delete(`/cases/${caseId}/evidence/custody/${entryId}`, { getToken });
             toast.success("Custody entry deleted");
@@ -272,6 +274,47 @@ export default function EvidencePage() {
         } catch {
             toast.error("Failed to delete custody entry");
         }
+    }
+
+    // ---- Loading skeleton ----
+    if (prepLoading || query.isLoading) {
+        return (
+            <div className="space-y-4 p-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <Skeleton className="h-7 w-36" />
+                        <Skeleton className="h-4 w-56 mt-1" />
+                    </div>
+                    <Skeleton className="h-9 w-28" />
+                </div>
+                <div className="flex gap-2 mb-4">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                        <Skeleton key={i} className="h-8 w-24" />
+                    ))}
+                </div>
+                <Skeleton className="h-9 w-full max-w-sm" />
+                <div className="grid grid-cols-1 gap-3">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <Card key={i}>
+                            <CardContent className="py-3">
+                                <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                        <Skeleton className="h-5 w-5 rounded" />
+                                        <Skeleton className="h-4 w-48" />
+                                    </div>
+                                    <Skeleton className="h-5 w-20 rounded-full" />
+                                </div>
+                                <Skeleton className="h-3 w-36 ml-7 mt-1" />
+                                <div className="flex gap-1 ml-7 mt-2">
+                                    <Skeleton className="h-4 w-12 rounded-full" />
+                                    <Skeleton className="h-4 w-16 rounded-full" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+            </div>
+        );
     }
 
     if (!activePrepId && !prepLoading) {
@@ -568,11 +611,11 @@ export default function EvidencePage() {
                         ))}
                     </div>
                 ) : custodyEntries.length === 0 ? (
-                    <Card className="border-dashed">
-                        <CardContent className="py-12 text-center text-muted-foreground">
-                            No custody entries recorded yet.
-                        </CardContent>
-                    </Card>
+                    <EmptyState
+                        icon="&#x1F517;"
+                        title="No custody entries recorded yet"
+                        description="Track chain of custody by logging when evidence changes hands."
+                    />
                 ) : (
                     <div className="relative">
                         {/* Timeline line */}

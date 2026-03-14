@@ -1,5 +1,6 @@
 // ---- Notification Bell --------------------------------------------------
 // Shows notification count badge + dropdown with severity-sorted alerts.
+// Includes "Mark all read" button to clear notifications.
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -7,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api-client";
+import { useMutationWithToast } from "@/hooks/use-mutation-with-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -43,8 +45,7 @@ export function NotificationBell() {
     const ref = useRef<HTMLDivElement>(null);
     const { getToken } = useAuth();
     const router = useRouter();
-
-    const { data } = useQuery({
+    const { data, error } = useQuery({
         queryKey: ["notifications"],
         queryFn: () =>
             api.get<{ items: Notification[]; total: number }>("/notifications", { getToken }),
@@ -56,6 +57,15 @@ export function NotificationBell() {
 
     const items = data?.items ?? [];
     const count = items.length;
+
+    // Mark all read mutation
+    const markAllRead = useMutationWithToast<void>({
+        mutationFn: () =>
+            api.post("/notifications/mark-read", {}, { getToken }),
+        successMessage: "All notifications cleared",
+        errorMessage: "Failed to clear notifications",
+        invalidateKeys: [["notifications"]],
+    });
 
     // Click outside to close
     useEffect(() => {
@@ -76,29 +86,54 @@ export function NotificationBell() {
                 className="relative"
                 onClick={() => setOpen(!open)}
                 aria-label="Notifications"
+                aria-haspopup="true"
+                aria-expanded={open}
             >
-                <span className="text-lg" aria-hidden="true">🔔</span>
-                {count > 0 && (
+                <span className={`text-lg ${error ? "text-destructive" : ""}`} aria-hidden="true">&#x1F514;</span>
+                {error ? (
+                    <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-destructive text-white text-[10px] font-bold flex items-center justify-center" title="Failed to load notifications">
+                        !
+                    </span>
+                ) : count > 0 ? (
                     <span className="absolute -top-0.5 -right-0.5 h-4 min-w-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                         {count > 99 ? "99+" : count}
                     </span>
-                )}
+                ) : null}
             </Button>
 
             {open && (
-                <div className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-auto bg-popover border rounded-lg shadow-xl z-50">
-                    <div className="p-3 border-b">
-                        <p className="text-sm font-semibold">Notifications</p>
-                        <p className="text-xs text-muted-foreground">{count} alert{count !== 1 ? "s" : ""}</p>
+                <div
+                    className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-auto bg-popover border rounded-lg shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-200"
+                    role="menu"
+                    aria-label="Notifications"
+                    onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}
+                >
+                    <div className="p-3 border-b flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-semibold">Notifications</p>
+                            <p className="text-xs text-muted-foreground">{count} alert{count !== 1 ? "s" : ""}</p>
+                        </div>
+                        {count > 0 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs h-7 px-2 text-muted-foreground hover:text-foreground"
+                                onClick={() => markAllRead.mutate()}
+                                disabled={markAllRead.isPending}
+                            >
+                                {markAllRead.isPending ? "Clearing..." : "Mark all read"}
+                            </Button>
+                        )}
                     </div>
 
                     {items.length === 0 && (
-                        <p className="text-sm text-muted-foreground text-center py-6">All clear 🎉</p>
+                        <p className="text-sm text-muted-foreground text-center py-6">All clear &#x1F389;</p>
                     )}
 
                     {items.map((n, i) => (
                         <button
                             key={`${n.type}-${n.case_id}-${i}`}
+                            role="menuitem"
                             className="w-full text-left px-3 py-2.5 hover:bg-accent/50 transition-colors border-b last:border-0"
                             onClick={() => {
                                 if (n.case_id) {
