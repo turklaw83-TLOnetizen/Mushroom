@@ -22,6 +22,69 @@ from api.deps import get_case_manager, get_config, get_data_dir
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cases/{case_id}/analysis", tags=["Analysis"])
 
+
+def _load_documents_from_cache(case_id: str, cm, data_dir: str, model_provider: str) -> list:
+    """Load documents from the ingestion cache, or auto-ingest if missing."""
+    import json as _json
+    from langchain_core.documents import Document
+
+    cache_path = os.path.join(data_dir, "cases", case_id, "ingestion_cache.json")
+    file_cache = {}
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                file_cache = _json.load(f)
+        except (ValueError, IOError):
+            file_cache = {}
+
+    if file_cache:
+        docs = []
+        for cached_docs in file_cache.values():
+            for cd in cached_docs:
+                docs.append(Document(
+                    page_content=cd.get("page_content", ""),
+                    metadata=cd.get("metadata", {}),
+                ))
+        logger.info("Loaded %d documents from ingestion cache for case %s", len(docs), case_id)
+        return docs
+
+    # No cache — auto-ingest
+    logger.info("No ingestion cache for case %s — auto-ingesting", case_id)
+    all_files = cm.get_case_files(case_id)
+    if not all_files:
+        return []
+
+    from core.ingest import DocumentIngester, OCRCache
+    from core.llm import get_llm
+
+    ingester = DocumentIngester()
+    ocr_cache = OCRCache(os.path.join(data_dir, "cases", case_id))
+    vision_llm = get_llm(model_provider) if model_provider else None
+    all_docs = []
+    new_cache = {}
+
+    for fpath in all_files:
+        fname = os.path.basename(fpath)
+        try:
+            docs = ingester.process_file_with_cache(fpath, ocr_cache, vision_model=vision_llm)
+            all_docs.extend(docs)
+            new_cache[fname] = [
+                {"page_content": d.page_content, "metadata": d.metadata} for d in docs
+            ]
+        except Exception as e:
+            logger.warning("Failed to ingest %s: %s", fname, e)
+
+    if new_cache:
+        try:
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            with open(cache_path, "w", encoding="utf-8") as f:
+                _json.dump(new_cache, f)
+        except Exception:
+            pass
+
+    logger.info("Auto-ingested %d docs for case %s", len(all_docs), case_id)
+    return all_docs
+
 # Worker dispatch mode
 WORKER_MODE = os.environ.get("WORKER_MODE", "thread")
 
@@ -95,6 +158,12 @@ async def start_analysis(
             from core.bg_analysis import start_background_analysis
 
             state = cm.load_prep_state(case_id, body.prep_id) or {}
+
+            # Load raw_documents from ingestion cache if not already present
+            if not state.get("raw_documents"):
+                state["raw_documents"] = _load_documents_from_cache(
+                    case_id, cm, get_data_dir(), provider,
+                )
 
             await asyncio.to_thread(
                 start_background_analysis,

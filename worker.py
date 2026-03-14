@@ -68,6 +68,89 @@ def _get_case_manager():
     return CaseManager(JSONStorageBackend(data_dir))
 
 
+def _load_or_ingest_documents(case_id: str, cm, model_provider: str) -> list:
+    """Load documents from ingestion cache, or auto-ingest if cache is missing.
+
+    Returns a list of LangChain Document objects ready for analysis.
+    """
+    from langchain_core.documents import Document
+
+    data_dir = os.environ.get("DATA_DIR", str(_PROJECT_ROOT / "data"))
+    cache_path = os.path.join(data_dir, "cases", case_id, "ingestion_cache.json")
+
+    # Try loading from ingestion cache first
+    file_cache = {}
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                file_cache = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            file_cache = {}
+
+    if file_cache:
+        docs = []
+        for file_key, cached_docs in file_cache.items():
+            for cd in cached_docs:
+                docs.append(Document(
+                    page_content=cd.get("page_content", ""),
+                    metadata=cd.get("metadata", {}),
+                ))
+        logger.info("Loaded %d documents from ingestion cache for case %s", len(docs), case_id)
+        return docs
+
+    # No cache — auto-ingest all case files
+    logger.info("No ingestion cache for case %s — auto-ingesting files", case_id)
+    all_files = cm.get_case_files(case_id)
+    if not all_files:
+        logger.warning("No files found for case %s", case_id)
+        return []
+
+    from core.ingest import DocumentIngester, OCRCache
+    from core.llm import get_llm
+
+    ingester = DocumentIngester()
+    ocr_cache = OCRCache(os.path.join(data_dir, "cases", case_id))
+    vision_llm = get_llm(model_provider) if model_provider else None
+    all_docs = []
+    new_cache = {}
+
+    for fpath in all_files:
+        fname = os.path.basename(fpath)
+        try:
+            docs = ingester.process_file_with_cache(
+                fpath, ocr_cache, vision_model=vision_llm,
+            )
+            all_docs.extend(docs)
+            new_cache[fname] = [
+                {"page_content": d.page_content, "metadata": d.metadata}
+                for d in docs
+            ]
+            # Store OCR text
+            file_text = "\n\n".join(d.page_content for d in docs)
+            if file_text.strip():
+                try:
+                    fsize = os.path.getsize(fpath)
+                    file_key = f"{fname}:{fsize}"
+                except OSError:
+                    file_key = fname
+                ocr_cache.store_text(file_key, file_text, fname)
+        except Exception as e:
+            logger.warning("Failed to ingest %s: %s", fname, e)
+
+    # Save the cache for next time
+    if new_cache:
+        try:
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            with open(cache_path, "w", encoding="utf-8") as f:
+                json.dump(new_cache, f)
+        except Exception as e:
+            logger.warning("Failed to save ingestion cache: %s", e)
+
+    logger.info("Auto-ingested %d documents from %d files for case %s",
+                len(all_docs), len(all_files), case_id)
+    return all_docs
+
+
 def _process_analysis_request(request: dict):
     """Process an analysis work request."""
     from core.bg_analysis import is_analysis_running
@@ -97,6 +180,16 @@ def _process_analysis_request(request: dict):
     state.setdefault("attorney_directives", cm.load_directives(case_id))
     state.setdefault("prep_type", prep_type)
     state.setdefault("_file_tags", cm.get_all_file_tags(case_id))
+
+    # -- Load raw_documents from ingestion cache (or auto-ingest) --
+    # Analysis nodes need state["raw_documents"] populated with Document objects.
+    # The ingestion worker saves processed docs to ingestion_cache.json.
+    state["raw_documents"] = _load_or_ingest_documents(
+        case_id, cm, model_provider,
+    )
+    if not state["raw_documents"]:
+        logger.error("No documents available for analysis — case %s has no files or ingestion failed", case_id)
+        return
 
     if isinstance(active_modules, list):
         active_modules = set(active_modules)
